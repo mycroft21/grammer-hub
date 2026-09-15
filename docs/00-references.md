@@ -168,3 +168,32 @@
 7. 비상업 데이터셋(Kor-Lang8 등) 무단 사용.
 8. LLM 단독 교정의 과교정·미세 오류 누락 → 규칙층 결합.
 9. 개인정보 섞인 업무 메시지를 외부 무료 검사기로 전송하는 구조.
+
+---
+
+## E. 크롬 확장 · 온디바이스 AI · 시장 가격 (2026-09)
+
+### E1. Chrome 내장 AI (Gemini Nano)
+- Prompt API: 확장은 Stable(138+), 지원 언어 en/ja/es, 149부터 de/fr. **ko 없음.** https://developer.chrome.com/docs/ai/prompt-api , https://developer.chrome.com/docs/ai/built-in-apis
+- Proofreader API 오리진 트라이얼 https://developer.chrome.com/blog/proofreader-api-ot , Writer/Rewriter https://developer.chrome.com/docs/ai/rewriter-api
+- 하드웨어: 디스크 22GB, VRAM 4GB+ 또는 RAM 16GB+. https://developer.chrome.com/docs/ai/get-started
+- Android ML Kit Proofreading은 ko 포함 7개 언어 지원(모델은 가능하나 Chrome 배포엔 미포함). https://developers.google.com/ml-kit/genai/proofreading/android
+
+### E2. 인라인 통합 사례·이슈
+- Grammarly 오버레이 방식 https://www.grammarly.com/blog/engineering/making-grammarly-feel-native-on-every-website/
+- Quill 커서 점프 https://github.com/slab/quill/issues/574
+- Atlassian Grammarly 차단 https://confluence.atlassian.com/confkb/confluence-collaborative-editing-blocks-grammarly-extension-857066095.html
+- Google Docs Canvas 전환 https://www.forbes.com/sites/barrycollins/2021/05/13/google-docs-update-breaks-browser-extensions/ , 허용목록 논의 https://groups.google.com/a/chromium.org/g/chromium-extensions/c/dLnxATEOcqg
+- LanguageTool 지원 사이트 https://help.languagetool.org/hc/en-us/articles/39254502620183
+- 국내 확장: 센텐시파이(선택→버튼) https://chromewebstore.google.com/detail/clfeejjmcegnmnhoaaffboddkajhenep , 웨않되(인라인 밑줄) https://chromewebstore.google.com/detail/alddllhhoalhongghdfhelgaabcnbfej
+
+### E3. 확장 아키텍처·심사
+- chrome.sidePanel https://developer.chrome.com/docs/extensions/reference/api/sidePanel
+- Remotely hosted code https://developer.chrome.com/docs/extensions/develop/migrate/remote-hosted-code
+- User data FAQ https://developer.chrome.com/docs/webstore/program-policies/user-data-faq , Limited Use https://developer.chrome.com/docs/webstore/program-policies/limited-use , 2026 정책 https://developer.chrome.com/blog/cws-policy-updates-2026
+
+### E4. 가격·원가 참고
+- Grammarly Pro https://costbench.com/software/ai-writing-tools/grammarly/ , 엔그램 https://blog.engram.us/your-guide-to-engrams-free-and-premium-plan/ , DeepL https://www.eesel.ai/blog/deepl-pricing , LanguageTool https://help.languagetool.org/hc/en-us/articles/39254510973335 , 카카오워크 https://blog.kakaowork.com/260 , 뤼튼 무료화 https://www.bloter.net/news/articleView.html?idxno=609794
+- 추론 원가 참고 https://www.cloudzero.com/blog/inference-cost/ , https://theremarkableagency.com/blog/inference-cost-cac-payback-ai-saas/
+- Grammarly 사용량 통계 https://sqmagazine.co.uk/grammarly-ai-statistics/
+- Claude API 가격·캐시 규칙: https://platform.claude.com/docs/en/about-claude/pricing , https://platform.claude.com/docs/en/build-with-claude/prompt-caching
