@@ -197,3 +197,37 @@
 - 추론 원가 참고 https://www.cloudzero.com/blog/inference-cost/ , https://theremarkableagency.com/blog/inference-cost-cac-payback-ai-saas/
 - Grammarly 사용량 통계 https://sqmagazine.co.uk/grammarly-ai-statistics/
 - Claude API 가격·캐시 규칙: https://platform.claude.com/docs/en/about-claude/pricing , https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+
+---
+
+## F. 로컬 LLM · Apple Silicon (2026-09)
+
+### F1. 모델
+- Gemma 4 (31B / 26B-A4B / 12B, Apache 2.0): 커뮤니티 한국어 평 https://arca.live/b/alpaca/166622732 , 실무 비교 https://brunch.co.kr/@6280ce27834d483/39 , 26B-A4B QAT https://huggingface.co/google/gemma-4-26B-A4B-it-qat-q4_0-gguf , 12B https://gigazine.net/gsc_news/en/20260604-google-ai-gemma-4-12b/
+- Qwen3.6/3.8-27B https://github.com/QwenLM/Qwen3.6 , https://datanorth.ai/news/alibaba-releases-qwen3-8-27b , 35B-A3B https://qwen.ai/blog?id=qwen3.6-35b-a3b
+- EXAONE 4.0 https://github.com/LG-AI-EXAONE/EXAONE-4.0 , 4.5 https://github.com/LG-AI-EXAONE/EXAONE-4.5 (비상업)
+- HyperCLOVA X SEED Think https://arxiv.org/abs/2601.03286 , https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Think-14B
+- Kanana-2 https://github.com/kakao/kanana-2 ; Mi:dm 2.0 https://github.com/K-intelligence-Midm/Midm-2.0 ; A.X 4.0 https://huggingface.co/skt/A.X-4.0
+- gpt-oss 한국어 파인튜닝 쿡북(기본 한국어 약함) https://developers.openai.com/cookbook/articles/gpt-oss/fine-tune-korean
+- KMMLU-Redux/Pro 비교 https://arxiv.org/pdf/2507.08924
+
+### F2. Apple Silicon 속도
+- llama.cpp Apple Silicon 성능표 https://github.com/ggml-org/llama.cpp/discussions/4167
+- M4 Pro Qwen3.8-27B 14 tok/s https://llmcheck.net/best-llm/mac-mini-m4-pro-24gb/ ; 35B-A3B ~80 tok/s https://unsloth.ai/docs/models/qwen3.6
+- M4 Max Qwen3.8-27B oMLX+MTP https://github.com/Weschera/Qwen3.8-27B-oMLX-MTP-Mac ; llama.cpp M4 Max https://markaicode.com/benchmarks/llamacpp-m4-max-benchmark/
+- M5 Max Gemma 4 31B Ollama https://github.com/ollama/ollama/issues/15368 ; Ollama 0.19 MLX 백엔드 https://medium.com/@tentenco/ollama-0-19-ships-mlx-backend-for-apple-silicon-local-ai-inference-gets-a-real-speed-bump-878b4928f680
+- M5 Neural Accelerator prefill 4배 https://blog.starmorph.com/blog/apple-silicon-llm-inference-optimization-guide
+- MLX vs llama.cpp https://www.linkedin.com/pulse/running-llms-locally-your-mac-deep-dive-mlx-m4-max-travis-lelle-gp6ce
+
+### F3. 캐시·구조화 출력
+- llama-server README(cache-reuse, slot save, json_schema) https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md , 튜토리얼 https://github.com/ggml-org/llama.cpp/discussions/13606 , restore 버그 https://github.com/ggml-org/llama.cpp/issues/25913
+- mlx_lm cache_prompt https://github.com/ml-explore/mlx-lm/blob/main/README.md , 영속화 PR(미머지) https://github.com/ml-explore/mlx-lm/pull/1405 , Outlines https://dottxt-ai.github.io/outlines/latest/features/models/mlxlm/
+- LM Studio structured output https://lmstudio.ai/docs/developer/openai-compat/structured-output ; Ollama Gemma 4 MLX 이슈 https://github.com/ollama/ollama/issues/16662
+
+### F4. Apple Foundation Models
+- 프레임워크 발표 https://www.apple.com/newsroom/2025/09/apples-foundation-models-framework-unlocks-new-intelligent-app-experiences/ , 모델 평가 https://machinelearning.apple.com/research/apple-foundation-models-2025-updates , WWDC26 https://developer.apple.com/videos/play/wwdc2026/241/
+- Writing Tools 한국어 평 https://raycat.net/484267
+
+### F5. 품질 격차·제품
+- KoGEC https://arxiv.org/abs/2506.11432 , https://huggingface.co/sionic-ai/nllb-200-ko-gec-3.3B ; ChatGPT 한국어 GEC https://doi.org/10.3390/app14083195
+- 로컬 글쓰기 도우미: Grambo https://gramboapp.com/ , WritingTools https://github.com/theJayTea/WritingTools , Private LLM https://apps.apple.com/us/app/private-llm-local-ai-chat/id6448106860 , EmberType https://embertype.com/
