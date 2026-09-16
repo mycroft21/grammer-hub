@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Nav } from "@/components/Nav";
 import "./globals.css";
 
 export const metadata: Metadata = { title: "Grammar Hub", description: "상황 프로필에 맞춘 어투·문법 교정" };
@@ -6,7 +7,10 @@ export const metadata: Metadata = { title: "Grammar Hub", description: "상황 �
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ko">
-      <body className="min-h-screen bg-neutral-50 text-neutral-900 antialiased">{children}</body>
+      <body className="min-h-screen bg-neutral-50 text-neutral-900 antialiased">
+        <Nav />
+        <main className="mx-auto max-w-6xl p-4">{children}</main>
+      </body>
     </html>
   );
 }
