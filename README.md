@@ -2,10 +2,39 @@
 
 상황 프로필에 맞춰 문법·오탈자·어투를 교정하고, 내 선택을 학습해 어투가 점점 나에게 맞춰지는 개인용 글쓰기 교정 페이지.
 
+## 문서
 - [제품 기획서](docs/01-product-plan.md)
 - [레퍼런스 리서치](docs/00-references.md)
 - [실현 가능성 · 가성비 판정](docs/02-feasibility.md)
 - [로컬 LLM 판정 (Mac 32GB)](docs/03-local-llm.md)
 - [Phase 1 구현 스펙](docs/04-spec-phase1.md)
 
-현재 상태: 기획 단계. 구현은 기획서 10장 Phase 1부터 시작한다.
+## 구조
+```
+apps/web        Next.js 16 에디터 + API 라우트 (SSE)
+packages/core   스키마 · 프롬프트 · 앵커 해소 · PII 마스킹 · provider(cloud/local/fake) · 파이프라인
+packages/db     Drizzle + SQLite 스키마 · 마이그레이션 · 리포지토리
+tools/          비용/지연 모델, 주간 리포트
+```
+
+## 실행
+```bash
+pnpm install
+cp .env.example .env            # ANTHROPIC_API_KEY 입력
+pnpm dev                        # http://localhost:3000
+```
+- 키 없이 UI만 보려면 `.env`에 `FAKE_PROVIDER=1` (결정적 가짜 교정, 품질 무관).
+- 로컬 LLM: `llama-server -m gemma-4-26B-A4B-it-qat-q4_0.gguf -c 8192 --cache-reuse 256 --slot-save-path ./slots --swa-full --port 8080` 후 에디터의 provider 배지를 `local`로 전환.
+- DB는 `apps/web/data/grammer.db`(SQLite). 원문 저장을 끄려면 `STORE_DRAFTS=false`.
+
+## 검증
+```bash
+pnpm test        # core 77 · db 2
+pnpm typecheck
+pnpm build
+pnpm --filter @grammer-hub/web e2e     # FAKE_PROVIDER 서버를 띄워 에디터 흐름 검증 (Chromium 필요)
+node tools/report-week.mjs             # 최근 7일 비용·수락률·무수정 복사율
+```
+
+## 상태
+Phase 1 구현 완료(스펙 WBS 1~13, 15). WBS 14(내 실제 메시지 30건 골든셋)는 사용자 데이터가 필요해 미착수.

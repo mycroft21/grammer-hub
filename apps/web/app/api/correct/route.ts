@@ -22,7 +22,7 @@ export async function POST(req: Request): Promise<Response> {
   let provider;
   try { provider = getProvider(body.data.provider ?? null); }
   catch (e) { return Response.json({ error: { code: "provider_unavailable", message: String(e) } }, { status: 503 }); }
-  if (provider.id === "cloud" && !env.hasAnthropicKey) {
+  if (provider.id === "cloud" && !env.hasAnthropicKey && !env.fakeProvider) {
     return Response.json({ error: { code: "provider_unavailable", message: "ANTHROPIC_API_KEY가 설정되지 않았습니다" } }, { status: 503 });
   }
 

@@ -9,4 +9,5 @@ export const env = {
   piiBlock: (process.env["PII_BLOCK"] ?? "").split(",").map((s) => s.trim()).filter(Boolean),
   storeDrafts: (process.env["STORE_DRAFTS"] ?? "true") !== "false",
   hasAnthropicKey: Boolean(process.env["ANTHROPIC_API_KEY"]),
+  fakeProvider: process.env["FAKE_PROVIDER"] === "1",
 };
