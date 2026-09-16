@@ -178,7 +178,7 @@ export interface CorrectionProvider {
 ```
 
 ### 4.1 cloud (Claude Sonnet 5)
-- `@anthropic-ai/sdk`, `client.messages.stream({...})` + `output_config: { format: zodOutputFormat(CorrectionOutputLoose), effort: "low" }`, `thinking: { type: "adaptive" }`, `max_tokens: 8000`.
+- `@anthropic-ai/sdk`, `client.messages.stream({...})` + `output_config: { format: { type: "json_schema", schema: toOutputJsonSchema(CorrectionOutput) }, effort: "low" }`. `zodOutputFormat`은 zod 4 정수의 safe-integer 범위를 `minimum/maximum`으로 내보내 API가 거부하므로 쓰지 않는다(core 테스트로 고정). 응답 텍스트는 zod로 직접 파싱, `thinking: { type: "adaptive" }`, `max_tokens: 8000`.
 - `system`은 3블록. 앞 두 블록(고정 지침, 프로필 스냅샷)에 `cache_control: {type:"ephemeral"}`. Sonnet 5 캐시 최소 1,024토큰이므로 고정 지침 블록은 1,024토큰 이상이 되도록 카테고리 정의·예시를 포함한다.
 - 스트림의 텍스트 델타를 `partial-json`으로 누적 파싱해 `edits[i]`가 완성될 때마다 앵커 해소 → `edit` 이벤트. 최종 메시지는 zod 검증.
 - `stop_reason === "refusal"` 또는 `max_tokens`면 `error`. 429/5xx는 SDK 재시도 2회 후 `provider_unavailable`.
