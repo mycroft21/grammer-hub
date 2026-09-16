@@ -3,3 +3,4 @@ export * from "./anchor/index";
 export * from "./prompt/index";
 export * from "./providers/index";
 export * from "./pii/index";
+export * from "./pipeline/index";

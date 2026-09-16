@@ -19,6 +19,7 @@ export type Usage = z.infer<typeof Usage>;
 export const ErrorCode = z.enum([
   "provider_unavailable", "refusal", "schema_invalid", "timeout", "pii_blocked", "bad_request",
 ]);
+export type ErrorCode = z.infer<typeof ErrorCode>;
 
 export const SseEvent = z.discriminatedUnion("event", [
   z.object({ event: z.literal("meta"), data: z.object({
