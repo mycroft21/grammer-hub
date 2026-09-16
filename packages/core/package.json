@@ -12,7 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.126.0",
     "diff-match-patch": "^1.0.5",
+    "partial-json": "^0.1.7",
     "zod": "^4.1.0"
   },
   "devDependencies": {
