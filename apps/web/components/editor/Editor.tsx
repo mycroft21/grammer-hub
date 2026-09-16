@@ -104,7 +104,7 @@ export function Editor({ profiles, defaultProvider }: { profiles: SituationProfi
         {running ? (
           <button className="rounded bg-neutral-200 px-3 py-1 text-sm" onClick={cancel}>취소</button>
         ) : (
-          <button className="rounded bg-neutral-900 px-3 py-1 text-sm text-white disabled:opacity-40" disabled={!text.trim() || chars > 4000} onClick={start}>교정 <kbd className="ml-1 opacity-70">⌘↵</kbd></button>
+          <button data-testid="run" className="rounded bg-neutral-900 px-3 py-1 text-sm text-white disabled:opacity-40" disabled={!text.trim() || chars > 4000} onClick={start}>교정 <kbd className="ml-1 opacity-70">⌘↵</kbd></button>
         )}
       </div>
 
