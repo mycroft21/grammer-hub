@@ -12,10 +12,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "diff-match-patch": "^1.0.5",
     "zod": "^4.1.0"
   },
   "devDependencies": {
-    "vitest": "^4.0.0",
-    "@types/node": "^22.20.0"
+    "@types/diff-match-patch": "^1.0.36",
+    "@types/node": "^22.20.0",
+    "vitest": "^4.0.0"
   }
 }
