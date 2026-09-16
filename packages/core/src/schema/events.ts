@@ -2,7 +2,7 @@ import { z } from "zod";
 import { LlmRewrite, ProviderId, Suggestion } from "./correction";
 
 /** `POST /api/correct` SSE 이벤트. 순서: meta → (edit|edit_dropped|rewrite)* → text → usage → done | error */
-export const MaskedSpan = z.object({
+export const MaskedSpanDto = z.object({
   start: z.number().int(), end: z.number().int(), kind: z.string(),
 });
 export const Usage = z.object({
@@ -23,7 +23,7 @@ export const ErrorCode = z.enum([
 export const SseEvent = z.discriminatedUnion("event", [
   z.object({ event: z.literal("meta"), data: z.object({
     runId: z.string(), provider: ProviderId, model: z.string(),
-    profileVersionId: z.string().nullable(), maskedSpans: z.array(MaskedSpan),
+    profileVersionId: z.string().nullable(), maskedSpans: z.array(MaskedSpanDto),
   }) }),
   z.object({ event: z.literal("edit"), data: Suggestion }),
   z.object({ event: z.literal("edit_dropped"), data: z.object({ id: z.string(), reason: z.string() }) }),
