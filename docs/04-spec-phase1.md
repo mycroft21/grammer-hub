@@ -23,8 +23,8 @@
 | 배포 | 로컬 `pnpm dev` + SQLite. Vercel/Postgres는 Phase 2 | DB 드라이버만 교체(Drizzle) |
 | 사용자 | 단일 사용자, 이메일 화이트리스트 1개 | 스키마는 `user_id` 스코프 유지 |
 | 언어 | 한국어 1급, 영어 2급 | 프롬프트 언어 분기 |
-| 로컬 모델 | Gemma 4 26B-A4B QAT Q4_0, llama-server | 칩이 M2 Pro면 12B로 하향 |
-| 메신저 | 슬랙 기준 채널 관례 | 카카오워크면 프로필 시드 문구 수정 |
+| 로컬 모델 | Gemma 4 26B-A4B QAT Q4_0, llama-server | **확정: M5 기본형 32GB.** 출력 토큰 최소화 설계 필수(§4.2) |
+| 메신저·OS | **확정: 슬랙 · macOS** | Phase 2 단축키는 Raycast 확장 또는 Shortcuts |
 
 ---
 
@@ -190,6 +190,7 @@ export interface CorrectionProvider {
 - 프롬프트는 Gemma chat 템플릿으로 직렬화하되 **고정 지침+프로필 스냅샷이 항상 동일 바이트로 앞에 오도록** 하여 `cache_reuse`가 prefix를 재사용하게 한다. 프로필 스냅샷이 바뀔 때 `POST /slots/0?action=save`로 저장, 서버 재시작 후 `restore`.
 - `json_schema`는 zod → JSON Schema 변환본. 로컬은 `additionalProperties` 제약이 느슨해도 됨.
 - `health()`는 `GET /health`. 실패 시 UI가 cloud로 폴백할지 묻는다(자동 폴백 금지: 데이터 외부 전송이 걸려 있으므로).
+- **출력 토큰 최소화(M5 기본형 디코드 37 tok/s 대응)**: 로컬에서는 `corrected_text`를 모델이 내지 않고 서버가 edits 적용으로 합성한다(`omit_corrected_text` 프롬프트 변형). L3 rewrites는 1안. 목표 L2 300자 7초 이내.
 
 ### 4.3 선택 규칙
 `provider` 미지정 시 설정값(`DEFAULT_PROVIDER`). L3는 로컬에서 rewrites를 1개로 제한(지연 20초 초과 방지).
@@ -282,7 +283,9 @@ resolve(edit):
 
 - 마스킹은 NFC 정규화 **후**, 문장 분할 **전**에 수행. 토큰 길이 차이로 오프셋이 달라지므로 `maskedSpans`를 응답 `meta`에 포함하고, 앵커 해소는 마스킹된 문자열 기준으로 한 뒤 `unmask`가 오프셋을 원문 기준으로 되돌린다.
 - 로컬 provider에서도 동일 적용(로그에 원문이 남지 않게).
-- 주민등록번호 등 조직 정책상 금지 항목이 감지되면 마스킹이 아니라 **요청 거부**(400 `pii_blocked`)로 처리하고, 어떤 항목을 막을지는 설정으로 둔다.
+- **정책(확정)**: 감지된 PII는 종류를 가리지 않고 **전부 마스킹해서 전송하고, 응답을 받은 뒤 토큰을 원문으로 복원**한다. 차단은 기본 없음. `PII_BLOCK` 설정에 종류를 넣으면 그 종류만 400 `pii_blocked`로 거부(기본값 빈 값).
+- 복원 실패 대비: 모델이 토큰을 변형하면(`⟦PII:PHONE:1⟧` → `⟦PII:PHONE:1 ⟧` 등) 퍼지 매칭으로 복원하고, 그래도 못 찾으면 해당 edit을 폐기하고 `edit_dropped(reason=pii_token_lost)`로 알린다. 원문 토큰 개수와 복원 개수가 다르면 결과에 경고 배지.
+- 마스킹 토큰은 LLM이 문법 판단을 할 수 있게 종류별로 자연어 대체어를 쓰는 옵션을 둔다(예: 전화 → `010-0000-0000`, 이메일 → `user@example.com`, 고객사 → `A사`). 조사 결합(을/를, 이/가) 판단에 유리. 기본은 자연어 대체어.
 
 ---
 
@@ -368,11 +371,11 @@ DEFAULT_PROVIDER=cloud        # cloud | local
 LOCAL_LLM_URL=http://127.0.0.1:8080
 LOCAL_LLM_MODEL=gemma-4-26B-A4B-it-qat-q4_0
 ALLOWED_EMAIL=                # 단일 사용자 화이트리스트
-PII_BLOCK=RRN                 # 감지 시 요청 거부할 종류(쉼표 구분)
+PII_BLOCK=                    # 감지 시 요청 거부할 종류(쉼표 구분). 기본 없음: 전부 마스킹 후 복원
 DATABASE_URL=file:./data/grammer.db
 ```
 - API 키는 서버 전용. 클라이언트 번들에 절대 포함하지 않음(Next.js `server-only`).
-- 로그에 원문 저장 여부는 `STORE_DRAFTS=true|false`. false면 `drafts.text_*`를 저장하지 않고 해시만(학습 루프 품질은 떨어짐. 기본 true, 로컬 DB).
+- 원문 저장: **확정 `STORE_DRAFTS=true`**, 로컬 SQLite. false면 해시만 저장.
 - 인증: Auth.js 이메일 매직링크 또는 개발 중에는 `BASIC_AUTH` 대체.
 
 ---
@@ -412,14 +415,18 @@ CI(GitHub Actions): lint, typecheck, core/api 테스트. E2E와 라이브 호출
 | 15 | E2E 1본, README 실행 가이드 | | 0.5일 |
 | | **합계** | | **약 17일(3.5주)** |
 
-순서: 1→2→3,4 병렬→5→6,7 병렬→8→9→10→11→12→13→14→15. 6과 7 중 하나만 먼저 붙여도 11까지 진행 가능.
+순서: 1→2→3,4 병렬→5→6→8→9→10→11→12→13→7(local)→14→15. cloud로 UI까지 완성한 뒤 local을 붙인다.
 
 ---
 
-## 15. 결정 필요 항목 (기본값으로 진행 중)
+## 15. 확정된 결정 (2026-09-16)
 
-1. **Mac 칩** → 로컬 모델 크기. 기본값 M4 Pro 가정, Gemma 4 26B-A4B.
-2. **메신저·OS** → 프로필 시드 문구, Phase 2 단축키 유틸 방식. 기본값 슬랙·macOS.
-3. **원문 저장 여부**(`STORE_DRAFTS`) → 학습 품질 vs 보관 리스크. 기본값 저장(로컬 SQLite).
-4. **PII 차단 항목** → 기본값 주민등록번호만 차단, 나머지는 마스킹.
-5. **첫 provider** → 기본값 cloud로 UI까지 완성 후 local 붙임(로컬 서버 세팅이 병목이 되지 않도록).
+| 항목 | 결정 |
+|---|---|
+| Mac 칩 | **M5 기본형 32GB.** 로컬은 Gemma 4 26B-A4B, 출력 토큰 최소화 설계. dense 30B급 제외 |
+| 메신저·OS | **슬랙 · macOS.** 프로필 시드는 슬랙 관례, Phase 2 단축키는 Raycast 확장 우선 |
+| 첫 provider | **cloud(Sonnet 5) 먼저.** UI·앵커 해소 검증 후 local 연결(WBS 7은 11 이후로 이동) |
+| 원문 저장 | **로컬 SQLite에 저장** |
+| PII | **전부 마스킹 → 전송 → 복원.** 차단 기본 없음(`PII_BLOCK` 빈 값). 대체어는 자연어형 |
+
+남은 미확정: 없음. 골든셋 30건은 사용자의 실제 메시지가 필요하므로 WBS 14 시점에 요청.

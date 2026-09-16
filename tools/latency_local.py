@@ -6,6 +6,7 @@ CHIPS = {  # name: (대역폭 GB/s, 7B Q4 prefill tok/s 실측)
   "M4 Pro 32GB":  (273, 440),
   "M3 Max 36GB":  (400, 760),
   "M4 Max 36GB":  (546, 886),
+  "M5 기본 32GB": (153, 1100),   # 대역폭 153GB/s. prefill은 M4 기본(~275) × Neural Accelerator 약 4배 추정
   "M5 Pro 32GB":  (307, 1621),
   "M5 Max 36GB":  (614, 3220),
 }
