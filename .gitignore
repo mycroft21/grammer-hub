@@ -5,6 +5,7 @@ coverage/
 *.tsbuildinfo
 .env
 .env.local
-data/*.db
-data/*.db-*
+**/data/*.db
+**/data/*.db-*
+**/data/
 .DS_Store

@@ -8,6 +8,7 @@
 - [실현 가능성 · 가성비 판정](docs/02-feasibility.md)
 - [로컬 LLM 판정 (Mac 32GB)](docs/03-local-llm.md)
 - [Phase 1 구현 스펙](docs/04-spec-phase1.md)
+- [구동 · 배포 가이드](docs/05-run-deploy.md)
 
 ## 구조
 ```
@@ -18,11 +19,13 @@ tools/          비용/지연 모델, 주간 리포트
 ```
 
 ## 실행
+Node 22 + pnpm 10 필요. 자세한 내용은 [구동 · 배포 가이드](docs/05-run-deploy.md).
 ```bash
 pnpm install
 cp .env.example .env            # ANTHROPIC_API_KEY 입력
-pnpm dev                        # http://localhost:3000
+pnpm build && pnpm start        # http://localhost:3000  (개발 중엔 pnpm dev)
 ```
+⚠️ 인증이 없습니다. 외부에 노출하지 말고 로컬에서만 쓰세요.
 - 키 없이 UI만 보려면 `.env`에 `FAKE_PROVIDER=1` (결정적 가짜 교정, 품질 무관).
 - 로컬 LLM: `llama-server -m gemma-4-26B-A4B-it-qat-q4_0.gguf -c 8192 --cache-reuse 256 --slot-save-path ./slots --swa-full --port 8080` 후 에디터의 provider 배지를 `local`로 전환.
 - DB는 `apps/web/data/grammer.db`(SQLite). 원문 저장을 끄려면 `STORE_DRAFTS=false`.
