@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "@grammer-hub/core": "workspace:*",
+    "@grammer-hub/db": "workspace:*",
     "next": "^16.3.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "server-only": "^0.0.1",
     "zod": "^4.1.0"
   },
   "devDependencies": {

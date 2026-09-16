@@ -20,6 +20,10 @@ export function createDraft(db: Db, i: CreateDraftInput): string {
   return id;
 }
 
+export function updateDraftMask(db: Db, draftId: string, textMasked: string, maskMap: Record<string, string>): void {
+  db.update(drafts).set({ textMasked, maskMap }).where(eq(drafts.id, draftId)).run();
+}
+
 export interface CreateRunInput { draftId: string; level: string; provider: string; model: string; promptVersion: string; profileVersionId: string | null }
 
 export function createRun(db: Db, i: CreateRunInput): string {
