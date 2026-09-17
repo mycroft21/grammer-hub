@@ -11,6 +11,7 @@
 - [구동 · 배포 가이드](docs/05-run-deploy.md)
 - [UI · UX 검토와 디자인 방향](docs/06-ui-review.md)
 - [디자인 토큰 v1 — 팔레트](docs/07-design-tokens.md)
+- [학습 데이터 수집과 기록 그래프](docs/08-learning-data.md)
 
 ## 구조
 ```

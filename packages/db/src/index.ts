@@ -5,3 +5,6 @@ export * from "./repo/users";
 export * from "./repo/profiles";
 export * from "./repo/rules";
 export * from "./repo/runs";
+export * from "./repo/samples";
+export * from "./repo/stats";
+export * from "./repo/context";

@@ -30,9 +30,22 @@ export const api = {
   feedback: (body: Record<string, unknown>) => fetch("/api/feedback", json("POST", body)).then(j<{ id: string; ruleId: string | null }>),
   final: (runId: string, finalText: string) => fetch(`/api/runs/${runId}/final`, json("POST", { finalText })).then(j<{ ok: true }>),
   runs: () => fetch("/api/runs").then(j<RunSummary[]>),
+  stats: () => fetch("/api/stats").then(j<Stats>),
+  samples: {
+    list: () => fetch("/api/samples").then(j<WritingSample[]>),
+    add: (body: { text: string; channel?: string; audience?: string; note?: string }) => fetch("/api/samples", json("POST", body)).then(j<WritingSample>),
+    remove: (id: string) => fetch(`/api/samples/${id}`, { method: "DELETE" }).then(j<{ ok: true }>),
+  },
 };
 
 export interface RunSummary {
   id: string; createdAt: number; level: string; provider: string; model: string; latencyMs: number | null;
   costUsd: number; cachedTokens: number; status: string; accepted: number; rejected: number; edits: number;
 }
+
+export interface WritingSample { id: string; userId: string; text: string; chars: number; channel: string | null; audience: string | null; note: string | null; createdAt: number }
+export interface WeeklyPoint { weekStart: number; runs: number; accepted: number; rejected: number; costUsd: number; edits: number }
+export interface CategoryPoint { category: string; accepted: number; rejected: number }
+export interface RecentRunPoint { id: string; createdAt: number; latencyMs: number | null; costUsd: number; level: string; cachedTokens: number; inputTokens: number }
+export interface Collection { samples: number; sampleChars: number; feedback: Record<string, number>; finals: number; editPairs: number; runsOk: number }
+export interface Stats { weekly: WeeklyPoint[]; byCategory: CategoryPoint[]; recent: RecentRunPoint[]; collection: Collection }

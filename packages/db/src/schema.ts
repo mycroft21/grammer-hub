@@ -125,3 +125,15 @@ export const runFinals = sqliteTable("run_finals", {
   finalText: text("final_text").notNull(),
   copiedAt: integer("copied_at").notNull().$defaultFn(now),
 });
+
+/** 사용자가 직접 넣은 "내 글" 샘플. Phase 2 규칙 증류·예시 검색의 시드. */
+export const writingSamples = sqliteTable("writing_samples", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  text: text("text").notNull(),
+  chars: integer("chars").notNull(),
+  channel: text("channel"),
+  audience: text("audience"),
+  note: text("note"),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+});
