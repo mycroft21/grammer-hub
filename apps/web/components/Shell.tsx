@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Layout, Menu, Tooltip, Button } from "antd";
@@ -18,6 +18,8 @@ const ITEMS = [
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(true);
+  useEffect(() => { try { setCollapsed(localStorage.getItem("gh:sider") !== "open"); } catch { /* noop */ } }, []);
+  const toggleCollapsed = () => setCollapsed((c) => { try { localStorage.setItem("gh:sider", c ? "open" : "closed"); } catch { /* noop */ } return !c; });
   const { mode, toggle } = useThemeMode();
   const selected = ITEMS.find((i) => i.key !== "/" && pathname.startsWith(i.key))?.key ?? "/";
   return (
@@ -36,7 +38,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <Button type="text" size="small" icon={mode === "dark" ? <SunOutlined /> : <MoonOutlined />} onClick={toggle} aria-label="테마 전환" />
             </Tooltip>
             <Tooltip title={collapsed ? "메뉴 펼치기" : "메뉴 접기"} placement="right">
-              <Button type="text" size="small" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setCollapsed((c) => !c)} aria-label="메뉴 접기/펼치기" />
+              <Button type="text" size="small" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={toggleCollapsed} aria-label="메뉴 접기/펼치기" />
             </Tooltip>
           </div>
         </div>

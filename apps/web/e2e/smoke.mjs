@@ -68,8 +68,8 @@ try {
 
   await page.goto(`http://127.0.0.1:${PORT}/runs`, { waitUntil: "load" });
   await page.waitForSelector("td:has-text('fake-dev')", { timeout: 10000 });
-  await page.waitForFunction(() => document.querySelectorAll("tbody tr").length >= 2, null, { timeout: 10000 }).catch(() => {});
-  const rows = await page.locator("tbody tr").count();
+  await page.waitForFunction(() => document.querySelectorAll("tbody tr.ant-table-row").length >= 2, null, { timeout: 10000 }).catch(() => {});
+  const rows = await page.locator("tbody tr.ant-table-row").count();
   check("runs page lists 2 runs", rows === 2);
   if (rows !== 2) console.log("rows:", rows, (await page.locator("tbody").textContent()).slice(0, 300));
   const body = await page.textContent("body");

@@ -14,7 +14,7 @@
 
 ## 구조
 ```
-apps/web        Next.js 16 에디터 + API 라우트 (SSE)
+apps/web        Next.js 16 + Ant Design v6 에디터 + API 라우트 (SSE)
 packages/core   스키마 · 프롬프트 · 앵커 해소 · PII 마스킹 · provider(cloud/local/fake) · 파이프라인
 packages/db     Drizzle + SQLite 스키마 · 마이그레이션 · 리포지토리
 tools/          비용/지연 모델, 주간 리포트
@@ -42,4 +42,4 @@ node tools/report-week.mjs             # 최근 7일 비용·수락률·무수�
 ```
 
 ## 상태
-Phase 1 구현 완료(스펙 WBS 1~13, 15). WBS 14(내 실제 메시지 30건 골든셋)는 사용자 데이터가 필요해 미착수.
+Phase 1 구현 완료(스펙 WBS 1~13, 15) + UI B안(Ant Design v6, 팔레트 v1, 다크모드) 적용. WBS 14(내 실제 메시지 30건 골든셋)는 사용자 데이터가 필요해 미착수.
