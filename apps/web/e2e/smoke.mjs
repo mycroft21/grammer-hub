@@ -42,7 +42,7 @@ try {
   await page.fill("textarea", "팀장님 어제 말씀하신 자료 정리해서 보내드릴께요. 커피 나오셨습니다 ㅎㅎ 연락은 010-1234-5678 로 부탁드리겠습니다.");
   await page.click("[data-testid=run]");
   await page.waitForSelector("[data-card]", { timeout: 20000 });
-  await page.waitForSelector("button.btn-success:has-text('최종본 복사')", { timeout: 20000 }); // 완료되면 강조색
+  await page.waitForSelector("[data-testid=copy][data-done='1']", { timeout: 20000 }); // 완료 표시
   const cards = await page.locator("[data-card]").count();
   check("edit cards appear (>=4)", cards >= 4);
   check("original phone visible unmasked in card", (await page.textContent("body")).includes("010-1234-5678"));
@@ -51,16 +51,16 @@ try {
   // 첫 카드 수락, 두 번째 무시, 결과 보기 확인
   await page.locator("[data-card] button[aria-label='수락']").first().click();
   await page.locator("[data-card] button[aria-label='무시']").nth(1).click();
-  await page.click("button:has-text('결과 보기')");
-  const result = await page.inputValue("section:nth-of-type(2) textarea");
+  await page.click("text=결과 보기");
+  const result = await page.inputValue("[data-testid=result-text]");
   check("result applies accepted edit only", result.includes("보내드릴게요") && result.includes("나오셨습니다"));
 
-  await page.click("button:has-text('최종본 복사')");
+  await page.click("[data-testid=copy]");
   await page.waitForSelector("text=복사했습니다", { timeout: 5000 });
   check("copy toast", true);
 
   // L3 대안
-  await page.click("button:has-text('다시 쓰기')");
+  await page.click("text=다시 쓰기");
   await page.click("[data-testid=run]");
   await page.waitForSelector("text=톤 대안", { timeout: 20000 });
   await page.locator("[data-rewrite]").nth(2).waitFor({ timeout: 20000 });

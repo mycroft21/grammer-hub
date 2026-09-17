@@ -1,4 +1,6 @@
 "use client";
+import { Button, Tooltip } from "antd";
+import { CheckOutlined, CloseOutlined } from "@ant-design/icons";
 import { CAT_GROUP } from "./HighlightView";
 import type { EditItem } from "./useCorrection";
 
@@ -15,33 +17,33 @@ export function SuggestionCard({ item, focused, expanded, onHover, onFocus, onAc
   const { s, state } = item;
   const group = CAT_GROUP[s.category] ?? CAT_GROUP["CLARITY"]!;
   const isError = s.severity === "error";
-  const shell = state === "accepted" ? "border-primary-line bg-primary-soft/60" : state === "rejected" ? "opacity-50" : "bg-white";
+  const bg = state === "accepted" ? "var(--color-primary-soft)" : "var(--ant-color-bg-container)";
+  const border = state === "accepted" ? "var(--color-primary-line)" : focused ? "var(--color-primary)" : "var(--ant-color-border-secondary)";
   return (
     <div data-card={s.id} tabIndex={-1} onClick={onFocus}
-      className={`rounded-lg border px-3 py-2 text-[13px] transition ${shell} ${focused ? "ring-2 ring-primary/60" : ""}`}
+      className="rounded-lg px-3 py-2 text-[13px] transition"
+      style={{ background: bg, border: `1px solid ${border}`, boxShadow: focused ? `0 0 0 2px var(--color-primary-soft)` : undefined, opacity: state === "rejected" ? 0.55 : 1 }}
       onMouseEnter={() => onHover(s.id)} onMouseLeave={() => onHover(null)}>
       <div className="flex items-center gap-2">
         <span aria-hidden className="inline-block h-2 w-2 shrink-0 rounded-full" style={isError ? { background: group.color } : { boxShadow: `inset 0 0 0 1.5px ${group.color}` }} />
-        <span className="w-12 shrink-0 text-[12px] text-neutral-500">{CAT_KO[s.category] ?? s.category}</span>
+        <span className="w-12 shrink-0 text-[12px]" style={{ color: "var(--ant-color-text-secondary)" }}>{CAT_KO[s.category] ?? s.category}</span>
         <span className="min-w-0 flex-1 truncate">
-          <span className={state === "accepted" ? "text-neutral-400 line-through" : "text-neutral-700 line-through decoration-neutral-400"}>{s.original || "∅"}</span>
-          <span className="mx-1.5 text-neutral-300">→</span>
-          <span className="font-medium text-neutral-900">{s.replacement || <span className="text-neutral-500">삭제</span>}</span>
+          <span className="line-through" style={{ color: "var(--ant-color-text-tertiary)" }}>{s.original || "∅"}</span>
+          <span className="mx-1.5" style={{ color: "var(--ant-color-text-quaternary, #d4d4d4)" }}>→</span>
+          <span className="font-semibold">{s.replacement || <span style={{ color: "var(--ant-color-text-secondary)" }}>삭제</span>}</span>
         </span>
         <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
-          <button aria-label="수락" title="수락 (a)" onClick={onAccept} disabled={state === "accepted"}
-            className={`grid h-7 w-7 place-items-center rounded-md border transition ${state === "accepted" ? "border-primary bg-primary text-white" : "hover:border-primary hover:text-primary"}`}>✓<span className="sr-only">수락</span></button>
-          <button aria-label="무시" title="무시 (x)" onClick={onReject} disabled={state === "rejected"}
-            className="grid h-7 w-7 place-items-center rounded-md border transition hover:border-neutral-400 hover:bg-neutral-100">✕<span className="sr-only">무시</span></button>
+          <Tooltip title="수락 (a)"><Button size="small" aria-label="수락" type={state === "accepted" ? "primary" : "default"} icon={<CheckOutlined />} onClick={onAccept} disabled={state === "accepted"} /></Tooltip>
+          <Tooltip title="무시 (x)"><Button size="small" aria-label="무시" icon={<CloseOutlined />} onClick={onReject} disabled={state === "rejected"} /></Tooltip>
         </div>
       </div>
       {expanded && (
-        <div className="mt-2 border-t pt-2 text-neutral-600" onClick={(e) => e.stopPropagation()}>
-          <p>{s.reason_ko}</p>
+        <div className="mt-2 border-t pt-2" style={{ borderColor: "var(--ant-color-border-secondary)", color: "var(--ant-color-text-secondary)" }} onClick={(e) => e.stopPropagation()}>
+          <p className="m-0">{s.reason_ko}</p>
           <div className="mt-1.5 flex items-center gap-3 text-[12px]">
-            {s.rule_ref && <a className="text-sky-700 underline" href={s.rule_ref} target="_blank" rel="noreferrer">근거 보기</a>}
-            <span className="text-neutral-400" title={`확신 ${Math.round(s.confidence * 100)}% · 위치 ${s.resolveMethod}`}>{isError ? "오류" : "제안"}</span>
-            <button className="ml-auto text-neutral-500 hover:text-neutral-900" onClick={onMute} title="이 카테고리 제안을 이 프로필에서 끕니다">이런 제안 끄기</button>
+            {s.rule_ref && <a href={s.rule_ref} target="_blank" rel="noreferrer">근거 보기</a>}
+            <span style={{ color: "var(--ant-color-text-tertiary)" }} title={`확신 ${Math.round(s.confidence * 100)}% · 위치 ${s.resolveMethod}`}>{isError ? "오류" : "제안"}</span>
+            <Button type="link" size="small" className="ml-auto !px-0" onClick={onMute} title="이 카테고리 제안을 이 프로필에서 끕니다">이런 제안 끄기</Button>
           </div>
         </div>
       )}
