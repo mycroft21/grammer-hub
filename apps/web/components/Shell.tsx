@@ -27,9 +27,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <Layout.Sider collapsible collapsed={collapsed} trigger={null} width={200} collapsedWidth={56} theme="light"
         className="!hidden lg:!block border-r" style={{ borderColor: "var(--ant-color-border-secondary)", position: "sticky", top: 0, height: "100vh" }}>
         <div className="flex h-full flex-col">
-          <div className={`flex h-12 items-center ${collapsed ? "justify-center" : "gap-2 px-4"}`}>
+          <div className={`flex h-12 items-center transition-all duration-200 ${collapsed ? "justify-center" : "gap-2 px-4"}`}>
             <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary text-[12px] font-bold text-white">교</span>
-            {!collapsed && <span className="font-semibold">Grammar Hub</span>}
+            <span className="overflow-hidden font-semibold whitespace-nowrap transition-all duration-200" style={{ maxWidth: collapsed ? 0 : 140, opacity: collapsed ? 0 : 1 }}>Grammar Hub</span>
           </div>
           <Menu mode="inline" selectedKeys={[selected]} inlineCollapsed={collapsed} className="!border-e-0 flex-1"
             items={ITEMS.map((i) => ({ key: i.key, icon: i.icon, label: <Link href={i.key}>{i.label}</Link> }))} />

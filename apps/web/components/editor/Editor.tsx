@@ -20,11 +20,11 @@ const muted: React.CSSProperties = { color: "var(--ant-color-text-secondary)" };
 const faint: React.CSSProperties = { color: "var(--ant-color-text-tertiary)" };
 const divider: React.CSSProperties = { borderColor: "var(--ant-color-border-secondary)" };
 
-export function Editor({ profiles, defaultProvider }: { profiles: SituationProfile[]; defaultProvider: ProviderId }) {
+export function Editor({ profiles, defaultProvider, initialProfileId }: { profiles: SituationProfile[]; defaultProvider: ProviderId; initialProfileId?: string }) {
   const { message } = App.useApp();
   const isDesktop = useMediaQuery("(min-width: 1024px)", true);
   const [text, setText] = useState("");
-  const [profileId, setProfileId] = useState(profiles.find((p) => p.isDefault)?.id ?? profiles[0]?.id ?? "");
+  const [profileId, setProfileId] = useState(initialProfileId ?? profiles.find((p) => p.isDefault)?.id ?? profiles[0]?.id ?? "");
   const [level, setLevel] = useState<Level>("L2");
   const [provider, setProvider] = useState<ProviderId>(defaultProvider);
   const [view, setView] = useState<"diff" | "result">("diff");
@@ -196,7 +196,7 @@ export function Editor({ profiles, defaultProvider }: { profiles: SituationProfi
             {state.edits.map((item, i) => (
               <SuggestionCard key={item.s.id} item={item} focused={i === focusIdx} expanded={i === focusIdx || hoverId === item.s.id}
                 onHover={setHoverId} onFocus={() => setFocusIdx(i)}
-                onAccept={() => feedback(item.s.id, "accept")} onReject={() => feedback(item.s.id, "reject")} onMute={() => mute(item.s.id)} />
+                onAccept={() => feedback(item.s.id, "accept")} onReject={() => feedback(item.s.id, "reject")} onUndo={() => setCard(item.s.id, "pending")} onMute={() => mute(item.s.id)} />
             ))}
             {running && state.edits.length === 0 && <div className="h-10 animate-pulse rounded-md" style={{ background: "var(--ant-color-fill-tertiary, #f5f5f5)" }} />}
             {done && state.edits.length === 0 && <p className="m-0 p-3 text-center text-[13px]" style={muted}>고칠 곳이 없습니다. 그대로 보내도 됩니다.</p>}

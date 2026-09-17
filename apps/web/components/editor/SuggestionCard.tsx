@@ -10,9 +10,9 @@ const CAT_KO: Record<string, string> = {
 };
 
 /** 접힌 한 줄(점 · 카테고리 · 원문→교정 · ✓ ✕) + 펼치면 이유·근거·끄기. */
-export function SuggestionCard({ item, focused, expanded, onHover, onFocus, onAccept, onReject, onMute }: {
+export function SuggestionCard({ item, focused, expanded, onHover, onFocus, onAccept, onReject, onUndo, onMute }: {
   item: EditItem; focused: boolean; expanded: boolean; onHover: (id: string | null) => void; onFocus: () => void;
-  onAccept: () => void; onReject: () => void; onMute: () => void;
+  onAccept: () => void; onReject: () => void; onUndo: () => void; onMute: () => void;
 }) {
   const { s, state } = item;
   const group = CAT_GROUP[s.category] ?? CAT_GROUP["CLARITY"]!;
@@ -33,8 +33,14 @@ export function SuggestionCard({ item, focused, expanded, onHover, onFocus, onAc
           <span className="font-semibold">{s.replacement || <span style={{ color: "var(--ant-color-text-secondary)" }}>삭제</span>}</span>
         </span>
         <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
-          <Tooltip title="수락 (a)"><Button size="small" aria-label="수락" type={state === "accepted" ? "primary" : "default"} icon={<CheckOutlined />} onClick={onAccept} disabled={state === "accepted"} /></Tooltip>
-          <Tooltip title="무시 (x)"><Button size="small" aria-label="무시" icon={<CloseOutlined />} onClick={onReject} disabled={state === "rejected"} /></Tooltip>
+          <Tooltip title={state === "accepted" ? "수락 취소" : "수락 (a)"}>
+            <Button size="small" aria-label="수락" aria-pressed={state === "accepted"} type={state === "accepted" ? "primary" : "default"} icon={<CheckOutlined />}
+              onClick={state === "accepted" ? onUndo : onAccept} />
+          </Tooltip>
+          <Tooltip title={state === "rejected" ? "무시 취소" : "무시 (x)"}>
+            <Button size="small" aria-label="무시" aria-pressed={state === "rejected"} icon={<CloseOutlined />}
+              onClick={state === "rejected" ? onUndo : onReject} style={state === "rejected" ? { borderColor: "var(--ant-color-text-secondary)", color: "var(--ant-color-text)" } : undefined} />
+          </Tooltip>
         </div>
       </div>
       {expanded && (

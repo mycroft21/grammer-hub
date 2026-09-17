@@ -299,4 +299,4 @@ A안 반나절 + AntD 전환 2일(설정 페이지가 빨라져 shadcn 안보다
 
 AntD v6에서 바뀐 API(참고): `Tag bordered`→`variant`, `Drawer width`→`size`, `destroyOnClose`→`destroyOnHidden`, `Card bodyStyle`→`styles.body`, `cssVar`는 객체.
 
-남은 다듬기(선택): 다크모드에서 수락된 카드의 ✓ 버튼 대비, 사이드바 펼침 시 로고 애니메이션, 프로필 카드에 "이 프로필로 교정" 바로가기.
+후속 다듬기(적용 완료): 수락/무시 버튼을 비활성 대신 **눌림 상태(aria-pressed)**로 바꿔 다크모드 대비를 확보하고 한 번 더 누르면 되돌리기, 사이드바 펼침 시 로고 라벨 페이드 전환, 프로필 카드의 연필 아이콘으로 `/?profile=<id>` 바로가기(에디터가 쿼리로 초기 프로필 선택).

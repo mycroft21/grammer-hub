@@ -1,7 +1,8 @@
 "use client";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { App, Button, Card, Collapse, Drawer, Form, Grid, Input, Popconfirm, Select, Skeleton, Slider, Switch, Tag, Typography } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
+import { App, Button, Card, Collapse, Drawer, Form, Grid, Input, Popconfirm, Select, Skeleton, Slider, Switch, Tag, Typography, Tooltip } from "antd";
+import { PlusOutlined, EditOutlined } from "@ant-design/icons";
 import { renderProfile, type SituationProfile } from "@grammer-hub/core";
 import { api } from "@/lib/api";
 import { AUDIENCE_KO, CHANNEL_KO, HONORIFIC_KO, INTENT_KO, LANG_KO, LENGTH_KO, PageHeader, TONE_KO, errMsg, toOptions } from "./_shared";
@@ -120,6 +121,12 @@ export function ProfilesPage() {
                     <div className="flex items-center gap-2">
                       <Typography.Text strong ellipsis className="flex-1">{p.name}</Typography.Text>
                       {p.isDefault && <Tag variant="filled" style={{ marginInlineEnd: 0 }}>기본</Tag>}
+                      <Tooltip title="이 프로필로 교정하러 가기">
+                        <Link href={`/?profile=${encodeURIComponent(p.id)}`} onClick={(e) => e.stopPropagation()} aria-label={`${p.name} 프로필로 교정`}
+                          className="grid h-6 w-6 place-items-center rounded-md" style={{ color: "var(--ant-color-primary)" }}>
+                          <EditOutlined />
+                        </Link>
+                      </Tooltip>
                     </div>
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                       {AUDIENCE_KO[p.audience]} · {CHANNEL_KO[p.channel]} · {HONORIFIC_KO[p.honorific]} · 격식 {p.formality} · {TONE_KO[p.tone]}
