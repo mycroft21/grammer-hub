@@ -15,10 +15,10 @@ export function SuggestionCard({ item, focused, expanded, onHover, onFocus, onAc
   const { s, state } = item;
   const group = CAT_GROUP[s.category] ?? CAT_GROUP["CLARITY"]!;
   const isError = s.severity === "error";
-  const shell = state === "accepted" ? "border-emerald-200 bg-emerald-50/40" : state === "rejected" ? "opacity-50" : "bg-white";
+  const shell = state === "accepted" ? "border-primary-line bg-primary-soft/60" : state === "rejected" ? "opacity-50" : "bg-white";
   return (
     <div data-card={s.id} tabIndex={-1} onClick={onFocus}
-      className={`rounded-lg border px-3 py-2 text-[13px] transition ${shell} ${focused ? "ring-2 ring-neutral-800/70" : ""}`}
+      className={`rounded-lg border px-3 py-2 text-[13px] transition ${shell} ${focused ? "ring-2 ring-primary/60" : ""}`}
       onMouseEnter={() => onHover(s.id)} onMouseLeave={() => onHover(null)}>
       <div className="flex items-center gap-2">
         <span aria-hidden className="inline-block h-2 w-2 shrink-0 rounded-full" style={isError ? { background: group.color } : { boxShadow: `inset 0 0 0 1.5px ${group.color}` }} />
@@ -30,7 +30,7 @@ export function SuggestionCard({ item, focused, expanded, onHover, onFocus, onAc
         </span>
         <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
           <button aria-label="수락" title="수락 (a)" onClick={onAccept} disabled={state === "accepted"}
-            className={`grid h-7 w-7 place-items-center rounded-md border transition ${state === "accepted" ? "border-emerald-600 bg-emerald-600 text-white" : "hover:border-emerald-500 hover:text-emerald-700"}`}>✓<span className="sr-only">수락</span></button>
+            className={`grid h-7 w-7 place-items-center rounded-md border transition ${state === "accepted" ? "border-primary bg-primary text-white" : "hover:border-primary hover:text-primary"}`}>✓<span className="sr-only">수락</span></button>
           <button aria-label="무시" title="무시 (x)" onClick={onReject} disabled={state === "rejected"}
             className="grid h-7 w-7 place-items-center rounded-md border transition hover:border-neutral-400 hover:bg-neutral-100">✕<span className="sr-only">무시</span></button>
         </div>

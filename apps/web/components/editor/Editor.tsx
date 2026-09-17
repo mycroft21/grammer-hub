@@ -186,7 +186,7 @@ export function Editor({ profiles, defaultProvider }: { profiles: SituationProfi
                   onClick={(id) => setFocusIdx(Math.max(0, state.edits.findIndex((e) => e.s.id === id)))} />
               ) : (
                 <textarea value={resultText} onChange={(e) => setManual(e.target.value)} aria-label="결과 (직접 수정 가능)"
-                  className="min-h-[190px] w-full resize-y rounded-md bg-neutral-50 p-2 text-[16px] leading-[1.75] focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-800/60" />
+                  className="min-h-[190px] w-full resize-y rounded-md bg-neutral-50 p-2 text-[16px] leading-[1.75] focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/50" />
               ))}
             </div>
             {(state.readerView || state.usage) && (
@@ -247,7 +247,7 @@ export function Editor({ profiles, defaultProvider }: { profiles: SituationProfi
 
       <div className="flex items-center gap-2 text-[12px] text-neutral-400">
         <button className="flex items-center gap-1.5 hover:text-neutral-700" onClick={() => setProvider((p) => (p === "cloud" ? "local" : "cloud"))} title="클릭해서 처리 위치를 바꿉니다">
-          <span className={`inline-block h-2 w-2 rounded-full ${provider === "local" ? "bg-emerald-500" : "bg-sky-500"}`} />
+          <span className={`inline-block h-2 w-2 rounded-full ${provider === "local" ? "bg-primary" : "bg-neutral-400"}`} />
           {provider === "local" ? "내 Mac에서 처리" : "클라우드에서 처리 (개인정보는 마스킹 후 전송)"}
         </button>
       </div>
