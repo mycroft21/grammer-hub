@@ -70,7 +70,12 @@ export function AcceptanceTrend({ data, target = 65 }: { data: WeeklyPoint[]; ta
           ))}
           <text x={x(0)} y={H - 6} fontSize="9" fill={FAINT}>{fmt(pts[0]!.weekStart)}</text>
           <text x={W - PAD.r} y={H - 6} textAnchor="end" fontSize="9" fill={FAINT}>{fmt(pts[pts.length - 1]!.weekStart)}</text>
-          <text x={x(lastIdx) - 8} y={y(last.rate!) - 10} textAnchor="end" fontSize="11" fontWeight="600" fill={INK}>{Math.round(last.rate!)}%</text>
+          {(() => {
+            // 라벨이 위로 잘리면 점 아래에 그린다
+            const ly = y(last.rate!);
+            const above = ly - 10 >= PAD.t + 8;
+            return <text x={x(lastIdx) - 8} y={above ? ly - 10 : ly + 16} textAnchor="end" fontSize="11" fontWeight="600" fill={INK}>{Math.round(last.rate!)}%</text>;
+          })()}
         </svg>
         {node}
       </div>

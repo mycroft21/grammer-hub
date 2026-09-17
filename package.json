@@ -9,9 +9,12 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "start": "pnpm --filter @grammer-hub/web start",
-    "report": "node tools/report-week.mjs"
+    "report": "node tools/report-week.mjs",
+    "seed:demo": "node tools/seed-demo.mjs",
+    "seed:clear": "node tools/seed-demo.mjs --clear"
   },
   "devDependencies": {
+    "better-sqlite3": "^13.0.3",
     "typescript": "5.9.3"
   },
   "engines": {

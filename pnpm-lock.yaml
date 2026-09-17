@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      better-sqlite3:
+        specifier: ^13.0.3
+        version: 13.0.3
       typescript:
         specifier: 5.9.3
         version: 5.9.3

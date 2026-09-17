@@ -42,5 +42,12 @@ pnpm --filter @grammer-hub/web e2e     # FAKE_PROVIDER 서버를 띄워 에디�
 node tools/report-week.mjs             # 최근 7일 비용·수락률·무수정 복사율
 ```
 
+## 데모 데이터
+실제 교정 없이 기록 그래프와 수집 화면을 보고 싶을 때. 실제 데이터는 건드리지 않는다.
+```bash
+pnpm seed:demo     # 8주치 데모 주입
+pnpm seed:clear    # 데모만 삭제 (실제 교정 시작 전에 실행할 것)
+```
+
 ## 상태
 Phase 1 구현 완료(스펙 WBS 1~13, 15) + UI B안(Ant Design v6, 팔레트 v1, 다크모드) 적용. WBS 14(내 실제 메시지 30건 골든셋)는 사용자 데이터가 필요해 미착수.
