@@ -13,6 +13,7 @@
     "@grammer-hub/core": "workspace:*",
     "@grammer-hub/db": "workspace:*",
     "next": "^16.3.0",
+    "pretendard": "^1.3.9",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "server-only": "^0.0.1",
@@ -23,7 +24,7 @@
     "@types/node": "^22.20.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "tailwindcss": "^4.3.0",
-    "playwright-core": "^1.50.0"
+    "playwright-core": "^1.50.0",
+    "tailwindcss": "^4.3.0"
   }
 }
