@@ -214,3 +214,48 @@
 - next-shadcn-admin-dashboard https://github.com/arhamkhnz/next-shadcn-admin-dashboard
 - Grammarly 제안 카드 https://support.grammarly.com/hc/en-us/articles/360003474732 · DeepL Write UI https://support.deepl.com/hc/en-us/articles/9710730337820 · Apple Writing Tools https://developer.apple.com/videos/play/wwdc2024/10168/
 - KRDS 타이포 기준 https://www.krds.go.kr/html/site/style/style_03.html
+
+---
+
+## 6. 추가 검토: Ant Design v6를 고른다면 (2026-09-17)
+
+사용자 선호가 AntD라 다시 봤다. **결론: 이 프로젝트에서 AntD v6는 충분히 합리적이고, 선호가 있으면 그쪽이 맞다.** 3.2절의 "비권장"은 순수 미학·번들 기준이었고, 솔로 개발에서는 익숙함이 그 둘을 이긴다.
+
+### 6.1 확인한 사실 (2026-09-17, 실제 설치로 검증)
+| 항목 | 결과 |
+|---|---|
+| 버전 | antd **6.6.4**, peer `react >=18` (React 19 OK) |
+| Next 16 App Router | `@ant-design/nextjs-registry` 1.3.0 (`next >=14`)로 SSR 스타일 주입. v6는 CSS 변수 모드가 기본이라 v5 때보다 SSR 부담이 작다 |
+| 필요한 컴포넌트 | Splitter(2패널 드래그 분할) · Segmented(강도 3단) · Table · Form · Select · Slider · Tag · Tooltip · Popover · Collapse · Card · Drawer · Layout.Sider · Tabs · Empty · Statistic · FloatButton · App(message/notification) 전부 있음. `Kbd`만 없음(직접 1줄) |
+| 설치 크기 | node_modules 61MB. 실제 번들은 ESM 트리셰이킹으로 쓰는 컴포넌트만 들어감. 로컬 개인 도구에서는 무의미한 차이 |
+| 라이선스 | MIT |
+
+### 6.2 shadcn 대비 이 프로젝트에서의 득실
+
+| 관점 | AntD v6 | shadcn/ui |
+|---|---|---|
+| 설정 화면(프로필 폼·규칙·사전·기록 표) | **압도적으로 빠름.** Form 검증·Table 정렬/필터·Select 검색이 기본 | 조합해서 만들어야 함(TanStack Table 등) |
+| 에디터 2패널 | Splitter로 드래그 분할 즉시 | CSS grid 직접 |
+| 변경 카드·하이라이트 | 어차피 커스텀. AntD는 Tag/Collapse/Tooltip 정도만 씀 | 동일 |
+| 미학 | "관리 도구" 톤. `ConfigProvider` 토큰(색·radius·폰트)으로 상당히 바꿀 수 있고, `theme.compactAlgorithm`으로 밀도 조정 | 중립·현대적. 코드 소유라 무엇이든 가능 |
+| Tailwind v4 공존 | **Preflight를 꺼야 함.** 안 끄면 버튼 배경 등이 리셋됨. Tailwind는 레이아웃 유틸(flex/grid/spacing)로만 쓰고 색·타이포는 AntD 토큰으로 | 네이티브 |
+| 다크모드 | `theme.darkAlgorithm` 한 줄 | 토큰 자동 |
+| 한글 | `ko_KR` 로케일 내장(날짜·페이지네이션 문구). 폰트는 토큰 `fontFamily`에 Pretendard | 직접 |
+| 제품화 | AntD 티가 남. 브랜딩하려면 토큰을 꽤 만져야 함 | 자유도 최대 |
+| 솔로 개발 속도 | **익숙하면 가장 빠름** | 학습 곡선 낮지만 조립 시간 |
+
+### 6.3 AntD로 갈 때의 구성 원칙
+1. **Tailwind Preflight 끄기.** `globals.css`를 `@import "tailwindcss"` 대신 아래로. antd의 `reset.css`가 리셋을 맡는다.
+   ```css
+   @layer theme, base, components, utilities;
+   @import "tailwindcss/theme.css" layer(theme);
+   @import "tailwindcss/utilities.css" layer(utilities);
+   ```
+2. **역할 분담**: 레이아웃·간격·반응형은 Tailwind, 색·타이포·컴포넌트는 AntD 토큰. Tailwind 색 클래스(`bg-neutral-900` 등)를 새 코드에 쓰지 않는다.
+3. **`AntdRegistry`**를 `app/layout.tsx`에서 감싸고, `ConfigProvider`에 `locale={koKR}`, `theme={{ cssVar: true, token: { fontFamily: "Pretendard Variable, …", borderRadius: 6, colorPrimary: "#171717" }, algorithm: [compactAlgorithm] }}`. 다크는 `darkAlgorithm` 토글.
+4. **컴포넌트 매핑**: 프로필 셀렉트→`Select`, 강도→`Segmented`, 2패널→`Splitter`, 변경/결과 토글→`Tabs`(또는 `Segmented`), 카드→`Collapse`(ghost) + `Tag`, 톤 대안→`Segmented` + 본문, 토스트→`App.useApp().message`, 프로필 폼→`Form`+`Slider`+`Switch`, 규칙→`List`+`Progress`+`Dropdown`, 기록→`Statistic` 4개 + `Table`, 내비→`Layout.Sider`(collapsed 아이콘 모드), 빈 상태→`Empty`.
+5. **하이라이트 뷰는 그대로 커스텀.** 2.3절 규칙(점선 밑줄·4계열 색) 적용. 색값은 AntD 팔레트(`red-6`, `purple-6`, `blue-6`, `orange-6`)에서 가져와 통일.
+6. **A안(빠른 수정)은 그대로 선행.** 테두리·폰트·라벨·복사 버튼 위치는 라이브러리와 무관하다.
+
+### 6.4 공수
+A안 반나절 + AntD 전환 2일(설정 페이지가 빨라져 shadcn 안보다 반나절 짧다). 리스크는 Tailwind 공존 설정 한 번뿐이며, 첫 30분에 확인된다.
