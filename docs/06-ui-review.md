@@ -287,6 +287,7 @@ A안 반나절 + AntD 전환 2일(설정 페이지가 빨라져 shadcn 안보다
 ![B안 에디터](assets/ux-review/after-b-editor.png)
 ![B안 다크모드](assets/ux-review/after-b-editor-dark.png)
 ![B안 프로필](assets/ux-review/after-b-profiles.png)
+![B안 모바일](assets/ux-review/after-b-mobile.png)
 
 적용한 것:
 - **공존 설정**: Tailwind v4 Preflight를 끄고(`theme`·`utilities` 레이어만 import) `antd/dist/reset.css`를 base 레이어로. Tailwind는 레이아웃·간격 유틸리티만, 색·컴포넌트는 AntD 토큰. 첫 빌드에서 충돌 없이 확인됨.
@@ -294,7 +295,7 @@ A안 반나절 + AntD 전환 2일(설정 페이지가 빨라져 shadcn 안보다
 - **셸**: 아이콘 레일 사이드바(`Layout.Sider` 56px, 펼치면 200px, 상태 저장) + 하단에 테마 토글·접기. 모바일(<lg)은 상단 가로 메뉴.
 - **에디터**: 프로필 `Select`(검색 가능), 강도 `Segmented`(툴팁 설명), 변경/결과 `Segmented`, 2패널은 `Splitter`(드래그 분할, 46/54 기본), 버튼은 모두 AntD `Button`, 토스트는 `App.useApp().message`, 에러는 `Alert`. 변경 카드·본문 하이라이트는 커스텀 유지(✓ ✕만 AntD 아이콘 버튼).
 - **설정 페이지**: 프로필(`Card` 그리드 + `Form`/`Select`/`Slider`/`Switch`/`Collapse` 미리보기, 좁은 화면은 `Drawer`), 내 어투(`List` + 라벨 있는 `Progress` + `Dropdown` 메뉴 + `Empty` 안내), 사전(인라인 `Form` + `Table` + `Popconfirm`), 기록(`Statistic` 4개 + `Table`, 상태 `Tag`).
-- **E2E 9개 통과.** 셀렉터는 `data-testid=run/copy/result-text`, `data-done`, `aria-label`, `data-rewrite`, `tr.ant-table-row`로 고정.
+- **E2E 9개 통과.** 하이드레이션 전에 입력하면 React 상태에 반영되지 않는 경합이 있어(AntD 번들로 하이드레이션이 길어짐) 교정 버튼이 활성화될 때까지 입력을 재시도하도록 보강. 셀렉터는 `data-testid=run/copy/result-text`, `data-done`, `aria-label`, `data-rewrite`, `tr.ant-table-row`로 고정.
 
 AntD v6에서 바뀐 API(참고): `Tag bordered`→`variant`, `Drawer width`→`size`, `destroyOnClose`→`destroyOnHidden`, `Card bodyStyle`→`styles.body`, `cssVar`는 객체.
 

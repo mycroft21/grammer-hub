@@ -26,6 +26,18 @@ const waitServer = async () => {
   throw new Error("server did not start");
 };
 
+
+/** 하이드레이션 전에 fill하면 React 상태에 반영되지 않는다. 교정 버튼이 활성화될 때까지 재시도. */
+async function fillDraft(page, text) {
+  for (let i = 0; i < 20; i++) {
+    await page.fill("textarea", text);
+    const enabled = await page.locator("[data-testid=run]:not([disabled])").count();
+    if (enabled > 0) return;
+    await page.waitForTimeout(250);
+  }
+  throw new Error("draft fill never enabled the run button (hydration?)");
+}
+
 let failed = 0;
 const check = (name, cond) => { console.log(`${cond ? "ok  " : "FAIL"} ${name}`); if (!cond) failed++; };
 
@@ -39,7 +51,7 @@ try {
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: `http://127.0.0.1:${PORT}` });
 
   await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "load" });
-  await page.fill("textarea", "팀장님 어제 말씀하신 자료 정리해서 보내드릴께요. 커피 나오셨습니다 ㅎㅎ 연락은 010-1234-5678 로 부탁드리겠습니다.");
+  await fillDraft(page, "팀장님 어제 말씀하신 자료 정리해서 보내드릴께요. 커피 나오셨습니다 ㅎㅎ 연락은 010-1234-5678 로 부탁드리겠습니다.");
   await page.click("[data-testid=run]");
   await page.waitForSelector("[data-card]", { timeout: 20000 });
   await page.waitForSelector("[data-testid=copy][data-done='1']", { timeout: 20000 }); // 완료 표시
