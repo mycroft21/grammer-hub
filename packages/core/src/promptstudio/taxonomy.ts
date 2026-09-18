@@ -1,10 +1,12 @@
-import type { Purpose } from "./spec";
+import type { Domain, Purpose } from "./spec";
 
 /**
  * 분류 체계 = "최소 품질 보장"의 실체.
- * 축은 개발 생애주기: 조사(investigate) → 계획(plan) → 개발(build) → 검토(review). 그 밖은 general.
- * 단계마다 (1) 세부 유형, (2) 반드시 물어야 할 것, (3) 성공 기준·방어 지침 씨앗, (4) 기본 과정,
- * (5) 다음 단계로 넘길 것(handoff)을 코드에 둔다. LLM은 이 씨앗을 목표에 맞게 구체화할 뿐 빠뜨릴 수 없다.
+ * 대분류 6종(개발·리서치·분석·기획·글쓰기·의사결정) › 중분류(Purpose) › 세부 유형(Subtype).
+ * 개발의 중분류는 생애주기: 조사(investigate) → 계획(plan) → 구현(build) → 검토(review).
+ * 중분류마다 (1) 세부 유형, (2) 반드시 물어야 할 것, (3) 성공 기준·방어 지침 씨앗, (4) 기본 과정,
+ * (5) 넘길 것(handoff: 다음 단계 또는 결과를 받는 사람이 바로 쓰려면 반드시 포함할 것)을 코드에 둔다.
+ * LLM은 이 씨앗을 목표에 맞게 구체화할 뿐 빠뜨릴 수 없다. 문구는 실사용으로 다듬는 초안이다.
  */
 export interface Subtype {
   id: string;
@@ -24,17 +26,25 @@ export interface Subtype {
 
 export interface PurposeDef {
   id: Purpose;
+  domain: Domain;
   label: string;
-  short: string;                  // 단계 한 줄 설명
-  order: number;                  // 생애주기 순서
-  next: Purpose | null;           // 다음 단계
+  short: string;                  // 한 줄 설명
+  order: number;                  // 대분류 안의 표시 순서
+  next: Purpose | null;           // 다음 단계(생애주기에만)
   principles: string[];
   subtypes: Subtype[];
 }
 
+export interface DomainDef {
+  id: Domain;
+  label: string;
+  short: string;
+  purposes: Purpose[];
+}
+
 // ─────────────────────────────── 1. 조사 ───────────────────────────────
 const investigate: PurposeDef = {
-  id: "investigate", label: "조사", order: 1, next: "plan",
+  id: "investigate", domain: "dev", label: "조사", order: 1, next: "plan",
   short: "코드·로직·구조를 확인해 계획에 필요한 맥락을 확보한다",
   principles: [
     "무엇을 알면 다음 행동(계획)이 바뀌는지, 즉 '결정 질문'을 먼저 쓴다.",
@@ -114,7 +124,7 @@ const investigate: PurposeDef = {
 
 // ─────────────────────────────── 2. 계획 ───────────────────────────────
 const plan: PurposeDef = {
-  id: "plan", label: "계획", order: 2, next: "build",
+  id: "plan", domain: "dev", label: "계획", order: 2, next: "build",
   short: "조사 결과를 바탕으로 스펙·설계·작업 순서를 정한다",
   principles: [
     "계획의 입력은 조사 결과(현재 구조·제약·미결 질문)다. 없으면 가정을 명시하거나 조사 단계로 돌려보낸다.",
@@ -181,7 +191,7 @@ const plan: PurposeDef = {
 
 // ─────────────────────────────── 3. 개발 ───────────────────────────────
 const build: PurposeDef = {
-  id: "build", label: "개발", order: 3, next: "review",
+  id: "build", domain: "dev", label: "구현", order: 3, next: "review",
   short: "계획을 코드와 테스트로 구현한다",
   principles: [
     "개발의 입력은 계획 결과(변경 범위·수용 기준·검증 방법)다. 없으면 가정을 명시하거나 계획 단계로 돌려보낸다.",
@@ -249,7 +259,7 @@ const build: PurposeDef = {
 
 // ─────────────────────────────── 4. 검토 ───────────────────────────────
 const review: PurposeDef = {
-  id: "review", label: "검토", order: 4, next: null,
+  id: "review", domain: "dev", label: "검토", order: 4, next: null,
   short: "구현 결과를 검토하고 다음 사이클에 넘길 것을 정리한다",
   principles: [
     "검토의 입력은 개발 결과(변경 파일·의도·검증 결과)다.",
@@ -298,32 +308,370 @@ const review: PurposeDef = {
   ],
 };
 
-// ─────────────────────────────── 일반 ───────────────────────────────
-const general: PurposeDef = {
-  id: "general", label: "일반", order: 9, next: null,
-  short: "개발 생애주기 밖의 목적(분석·글쓰기·의사결정 등)",
-  principles: [
-    "독자·목적·형식을 먼저 고정한다.",
-    "가정과 사실을 구분한다.",
-    "결론에는 근거를, 주장에는 반대 근거를 최소 하나 붙인다.",
+// ─────────────────────────────── 리서치 ───────────────────────────────
+const RESEARCH_PRINCIPLES = [
+  "무엇을 알면 어떤 결정이 바뀌는지, 즉 '결정 질문'을 먼저 쓴다.",
+  "출처가 있는 사실과 추론을 구분한다. 출처 없는 주장은 '확인 필요'로 남긴다.",
+  "확신도를 표기한다(확실 / 유력 / 불확실). 최신성이 중요한 사실은 시점을 붙인다.",
+  "반대 근거·예외를 최소 하나 찾는다. 한쪽 결론만 모으지 않는다.",
+];
+const research_survey: PurposeDef = {
+  id: "research_survey", domain: "research", label: "자료 조사", order: 1, next: null,
+  short: "주제의 현황·개념·선택지를 파악해 개요를 만든다",
+  principles: RESEARCH_PRINCIPLES,
+  subtypes: [
+    { id: "overview", label: "개요 파악", hint: "낯선 주제의 핵심 개념·현황·주요 플레이어를 정리한다",
+      inputs: [{ name: "topic", label: "주제", required: true, multiline: false }, { name: "materials", label: "참고 자료(있으면)", required: false, multiline: true }, { name: "decision", label: "이 조사로 내릴 결정", required: false, multiline: true }],
+      mustKnow: [
+        { id: "depth", question: "어느 수준까지?", options: ["핵심 개념만", "현황·선택지까지", "세부 사양·수치까지"] },
+        { id: "reader", question: "누가 읽나요?", options: ["나 자신", "팀", "의사결정자"] },
+      ],
+      seeds: {
+        success: ["핵심 개념이 정의와 함께 5개 이내로 정리된다", "현재 선택지·플레이어가 표로 비교된다", "각 주장에 출처 또는 '확인 필요' 표시가 있다", "결정 질문에 대한 답 또는 답하려면 더 알아야 할 것이 끝에 있다"],
+        guards: ["출처 없는 수치·날짜를 쓰지 않는다", "가장 유명한 것만 나열하지 않는다(왜 그것들인지 선정 기준을 쓴다)", "오래된 정보를 현재형으로 쓰지 않는다"],
+        process: ["결정 질문 확인", "핵심 개념", "현황·선택지", "출처와 확신도 표시", "미확인 목록"],
+        outputFormat: "markdown",
+        handoff: ["핵심 개념 목록", "선택지 비교표", "출처·확신도", "미확인 질문"],
+      } },
+    { id: "deep", label: "심층 조사", hint: "한 가지 주제·기술·사례를 깊이 파고든다",
+      inputs: [{ name: "topic", label: "주제", required: true, multiline: false }, { name: "questions", label: "답을 원하는 질문", required: true, multiline: true }, { name: "materials", label: "자료", required: false, multiline: true }],
+      mustKnow: [{ id: "use", question: "결과를 어디에 쓰나요?", options: ["도입 여부 판단", "구현 참고", "발표·공유", "학습"] }],
+      seeds: {
+        success: ["질문마다 답 + 근거 + 확신도가 있다", "작동 원리 또는 구조가 그림·단계로 설명된다", "한계·알려진 문제가 별도 항목이다", "실제 적용 사례 또는 수치가 있다"],
+        guards: ["질문에 답이 없으면 없다고 쓴다(비슷한 내용으로 채우지 않는다)", "마케팅 문구를 사실로 옮기지 않는다"],
+        process: ["질문 재진술", "자료 수집·선별", "질문별 답과 근거", "한계와 반대 근거", "요약"],
+        outputFormat: "markdown",
+        handoff: ["질문별 답·근거·확신도", "한계", "추가 조사 필요 항목"],
+      } },
   ],
-  subtypes: [{ id: "general", label: "일반", hint: "목적이 위 단계에 맞지 않을 때",
-    inputs: [{ name: "input", label: "입력 자료", required: true, multiline: true }, { name: "reader", label: "결과를 보는 사람", required: false, multiline: false }],
-    mustKnow: [
-      { id: "reader", question: "결과를 누가 보나요?", options: ["나 자신", "팀", "상급자", "외부"] },
-      { id: "depth", question: "얼마나 자세히?", options: ["핵심만", "표준", "상세"] },
-    ],
-    seeds: {
-      success: ["첫 문단에 핵심이 있다", "요청한 형식·분량에 맞는다", "근거 없는 주장이 없다"],
-      guards: ["사실을 지어내지 않는다", "독자에게 맞지 않는 수준으로 쓰지 않는다"],
-      process: null,
-      outputFormat: "markdown",
-      handoff: [],
-    } }],
+};
+const research_compare: PurposeDef = {
+  id: "research_compare", domain: "research", label: "비교·선정", order: 2, next: null,
+  short: "도구·서비스·방식 여러 개를 같은 기준으로 비교해 추천한다",
+  principles: RESEARCH_PRINCIPLES,
+  subtypes: [
+    { id: "options", label: "선택지 비교", hint: "후보 2~5개를 기준표로 비교하고 추천한다",
+      inputs: [{ name: "candidates", label: "후보 목록", required: true, multiline: true }, { name: "constraints", label: "제약(예산·기간·기술·조직)", required: true, multiline: true }, { name: "criteria", label: "중요한 기준(있으면)", required: false, multiline: true }],
+      mustKnow: [
+        { id: "weight", question: "가장 중요한 기준은?", options: ["비용", "도입·운영 난이도", "성능·기능", "생태계·지원", "잘 모르겠다(제안해 달라)"] },
+        { id: "output", question: "원하는 결과는?", options: ["추천 하나 + 이유", "상위 2개 + 조건별 선택", "표만"] },
+      ],
+      seeds: {
+        success: ["같은 기준으로 모든 후보가 채워진 표가 있다(빈칸은 '미확인')", "기준별 가중치 또는 우선순위가 명시된다", "추천과 그 추천이 뒤집히는 조건이 있다", "탈락 이유가 후보별로 한 줄씩 있다"],
+        guards: ["후보마다 다른 기준으로 평가하지 않는다", "제약을 위반하는 후보를 추천하지 않는다", "장점만 나열하지 않는다(치명적 단점 먼저)"],
+        process: ["기준과 가중치 확정", "후보별 조사", "표 작성", "추천과 뒤집힘 조건", "탈락 사유"],
+        outputFormat: "table",
+        handoff: ["기준표", "추천과 조건", "탈락 사유", "미확인 항목"],
+      } },
+  ],
+};
+const research_verify: PurposeDef = {
+  id: "research_verify", domain: "research", label: "사실 확인", order: 3, next: null,
+  short: "주장·수치·인용이 맞는지 근거로 검증한다",
+  principles: RESEARCH_PRINCIPLES,
+  subtypes: [
+    { id: "claims", label: "주장 검증", hint: "문서·발언 속 주장을 하나씩 참/거짓/불확실로 판정한다",
+      inputs: [{ name: "claims", label: "검증할 주장·문서", required: true, multiline: true }, { name: "sources", label: "참고 가능한 자료", required: false, multiline: true }],
+      mustKnow: [{ id: "strict", question: "판정 기준은?", options: ["1차 출처가 있어야 참", "신뢰할 만한 2차 출처면 참", "논리적 일관성만"] }],
+      seeds: {
+        success: ["주장별로 판정(참/거짓/부분/불확실) + 근거 + 출처가 표로 있다", "가장 영향이 큰 오류가 먼저 온다", "판정 불가 항목은 무엇이 있으면 판정 가능한지 적힌다"],
+        guards: ["출처 없이 '일반적으로 알려진'으로 판정하지 않는다", "주장 전체를 하나로 뭉뚱그려 판정하지 않는다", "원문 맥락을 잘라 판정하지 않는다"],
+        process: ["주장 분리·번호", "각 주장 검증", "영향 순 정렬", "요약"],
+        outputFormat: "table",
+        handoff: ["주장별 판정표", "수정 제안 문구", "판정 불가 목록"],
+      } },
+  ],
 };
 
-export const PURPOSES: Record<Purpose, PurposeDef> = { investigate, plan, build, review, general };
+// ─────────────────────────────── 분석 ───────────────────────────────
+const ANALYSIS_PRINCIPLES = [
+  "가정을 먼저 모두 적고, 결론이 어느 가정에 민감한지 밝힌다.",
+  "수치에는 단위·기간·출처를 붙인다. 계산은 검산 가능하게 식을 남긴다.",
+  "상관과 인과를 구분한다. 인과를 주장하면 메커니즘을 쓴다.",
+  "결론은 '그래서 무엇을 해야 하나'까지 이어진다.",
+];
+const analyze_data: PurposeDef = {
+  id: "analyze_data", domain: "analysis", label: "데이터·수치 분석", order: 1, next: null,
+  short: "표·로그·지표에서 패턴과 의미를 찾는다",
+  principles: ANALYSIS_PRINCIPLES,
+  subtypes: [
+    { id: "metrics", label: "지표 해석", hint: "수치 변화의 의미와 원인 후보를 설명한다",
+      inputs: [{ name: "data", label: "데이터(표·CSV·요약)", required: true, multiline: true }, { name: "question", label: "알고 싶은 것", required: true, multiline: true }, { name: "context", label: "배경(이벤트·변경·계절성)", required: false, multiline: true }],
+      mustKnow: [
+        { id: "period", question: "비교 기준은?", options: ["전기 대비", "전년 동기 대비", "목표 대비", "절대값만"] },
+        { id: "audience", question: "결과를 누가 보나요?", options: ["나 자신", "팀", "경영진"] },
+      ],
+      seeds: {
+        success: ["핵심 발견 3개 이내가 수치와 함께 첫 화면에 있다", "각 발견에 원인 후보와 확인 방법이 있다", "데이터 한계(표본·결측·기간)가 명시된다", "다음 행동 제안이 있다"],
+        guards: ["데이터에 없는 수치를 만들지 않는다", "단일 기간의 변동을 추세라 부르지 않는다", "원인을 단정하지 않는다(후보와 검증 방법)"],
+        process: ["데이터 범위·한계 확인", "기술 통계", "패턴·이상치", "원인 후보", "행동 제안"],
+        outputFormat: "markdown",
+        handoff: ["핵심 발견(수치 포함)", "원인 후보와 검증 방법", "데이터 한계", "다음 행동"],
+      } },
+    { id: "calc", label: "계산·추정", hint: "비용·규모·기대값을 가정과 함께 계산한다",
+      inputs: [{ name: "inputs", label: "입력 값·조건", required: true, multiline: true }, { name: "target", label: "구하려는 것", required: true, multiline: false }],
+      mustKnow: [{ id: "precision", question: "정밀도는?", options: ["자릿수만(개략)", "±20%", "가능한 정확히"] }],
+      seeds: {
+        success: ["모든 가정이 값과 함께 표로 있다", "계산식이 단계별로 남아 검산 가능하다", "결과에 범위(낙관/기준/비관)가 있다", "결과가 가장 민감한 가정이 표시된다"],
+        guards: ["단위를 섞지 않는다(변환을 명시)", "가정 없이 숫자를 제시하지 않는다", "정밀도 이상의 자릿수를 쓰지 않는다"],
+        process: ["가정 표", "계산", "범위", "민감도", "결론"],
+        outputFormat: "markdown",
+        handoff: ["가정 표", "결과 범위", "민감한 가정"],
+      } },
+  ],
+};
+const analyze_cause: PurposeDef = {
+  id: "analyze_cause", domain: "analysis", label: "원인·문제 분석", order: 2, next: null,
+  short: "문제의 근본 원인을 구조적으로 좁힌다",
+  principles: ANALYSIS_PRINCIPLES,
+  subtypes: [
+    { id: "rca", label: "근본 원인", hint: "증상에서 출발해 원인 가설을 세우고 배제한다",
+      inputs: [{ name: "symptom", label: "문제·증상", required: true, multiline: true }, { name: "facts", label: "알려진 사실·타임라인", required: true, multiline: true }],
+      mustKnow: [{ id: "scope", question: "어디까지 다루나요?", options: ["원인만", "원인 + 즉시 조치", "원인 + 재발 방지까지"] }],
+      seeds: {
+        success: ["원인 가설이 가능성 순으로 있고 각각 지지·반대 근거가 있다", "가장 유력한 원인의 메커니즘이 단계로 설명된다", "확정과 추정이 구분된다", "확인 방법(무엇을 보면 확정되는지)이 있다"],
+        guards: ["첫 번째 그럴듯한 원인에서 멈추지 않는다", "사람 탓으로 끝내지 않는다(시스템·프로세스 요인)", "타임라인에 없는 사건을 가정하지 않는다"],
+        process: ["증상 재진술", "타임라인 정리", "가설 목록", "근거로 배제·확정", "조치 제안"],
+        outputFormat: "markdown",
+        handoff: ["원인(확정/추정)", "메커니즘", "확인 방법", "조치 제안"],
+      } },
+  ],
+};
+const analyze_impact: PurposeDef = {
+  id: "analyze_impact", domain: "analysis", label: "영향·리스크 평가", order: 3, next: null,
+  short: "변경·사건이 미칠 영향과 위험을 평가한다",
+  principles: ANALYSIS_PRINCIPLES,
+  subtypes: [
+    { id: "risk", label: "리스크 평가", hint: "무엇이 잘못될 수 있고 얼마나 심각한지 표로 만든다",
+      inputs: [{ name: "change", label: "평가 대상(변경·계획·사건)", required: true, multiline: true }, { name: "context", label: "관련 시스템·이해관계자", required: false, multiline: true }],
+      mustKnow: [{ id: "frame", question: "평가 틀은?", options: ["가능성×영향 매트릭스", "이해관계자별 영향", "시간축(즉시/단기/장기)"] }],
+      seeds: {
+        success: ["리스크마다 가능성·영향·근거·완화책이 표로 있다", "가장 심각한 것 3개가 먼저 온다", "되돌릴 수 있는 것과 없는 것이 구분된다", "모니터링 신호(무엇을 보면 현실화를 아는지)가 있다"],
+        guards: ["리스크를 나열만 하지 않는다(우선순위와 완화책)", "가능성 낮은 극단 시나리오로 채우지 않는다", "긍정 영향을 빼지 않는다"],
+        process: ["대상·범위 확정", "영향 경로", "리스크 표", "우선순위", "완화·모니터링"],
+        outputFormat: "table",
+        handoff: ["리스크 표", "상위 3개와 완화책", "모니터링 신호"],
+      } },
+  ],
+};
+
+// ─────────────────────────────── 기획 ───────────────────────────────
+const PLANNING_PRINCIPLES = [
+  "문제와 목표를 해결책보다 먼저 쓴다. 해결책이 먼저 나오면 문제를 거꾸로 맞추게 된다.",
+  "대안을 최소 2개 두고 트레이드오프를 적는다. 하나뿐인 안은 기획이 아니라 결정이다.",
+  "성공을 측정할 지표와 시점을 정한다.",
+  "범위 밖(하지 않을 것)을 명시한다.",
+];
+const plan_proposal: PurposeDef = {
+  id: "plan_proposal", domain: "planning", label: "제안·기획서", order: 1, next: null,
+  short: "문제→목표→안→효과→계획 구조의 제안 문서를 만든다",
+  principles: PLANNING_PRINCIPLES,
+  subtypes: [
+    { id: "proposal", label: "기획서", hint: "의사결정자를 설득하는 제안 문서",
+      inputs: [{ name: "problem", label: "문제·배경", required: true, multiline: true }, { name: "idea", label: "제안 내용(초안)", required: true, multiline: true }, { name: "audience", label: "결정권자·독자", required: false, multiline: false }],
+      mustKnow: [
+        { id: "ask", question: "결정권자에게 무엇을 요청하나요?", options: ["승인", "예산·인력", "우선순위 조정", "의견"] },
+        { id: "len", question: "분량은?", options: ["한 페이지", "2~3 페이지", "제한 없음"] },
+      ],
+      seeds: {
+        success: ["첫 문단에 문제·제안·요청이 3문장으로 있다", "기대 효과가 측정 가능한 지표로 있다", "대안 최소 2개와 채택하지 않은 이유가 있다", "비용·일정·리스크가 각각 한 항목씩 있다", "범위 밖이 명시된다"],
+        guards: ["효과를 근거 없는 수치로 부풀리지 않는다", "문제 없이 해결책부터 쓰지 않는다", "결정권자가 답해야 할 질문을 빼지 않는다"],
+        process: ["문제와 목표", "제안과 대안", "효과와 지표", "비용·일정·리스크", "요청 사항"],
+        outputFormat: "markdown",
+        handoff: ["요약(문제·제안·요청)", "지표", "대안 비교", "요청 사항"],
+      } },
+  ],
+};
+const plan_options: PurposeDef = {
+  id: "plan_options", domain: "planning", label: "대안 설계", order: 2, next: null,
+  short: "문제를 푸는 방식 여러 개를 설계하고 트레이드오프를 정리한다",
+  principles: PLANNING_PRINCIPLES,
+  subtypes: [
+    { id: "alternatives", label: "대안 비교", hint: "실행 가능한 안 2~4개를 같은 틀로 설계한다",
+      inputs: [{ name: "problem", label: "문제·목표", required: true, multiline: true }, { name: "constraints", label: "제약", required: true, multiline: true }],
+      mustKnow: [{ id: "criteria", question: "안을 고르는 기준은?", options: ["속도", "비용", "품질·완성도", "되돌리기 쉬움", "제안해 달라"] }],
+      seeds: {
+        success: ["각 안이 같은 항목(방식·비용·기간·리스크·되돌림)으로 기술된다", "안마다 '이 안이 맞는 조건'이 있다", "추천 하나와 그 이유, 뒤집히는 조건이 있다", "아무것도 안 하는 안이 비교에 포함된다"],
+        guards: ["추천안만 자세히 쓰고 나머지를 허수아비로 만들지 않는다", "제약을 위반하는 안을 넣지 않는다"],
+        process: ["문제·제약·기준", "안 설계", "같은 틀로 비교", "추천과 조건"],
+        outputFormat: "table",
+        handoff: ["안 비교표", "추천과 뒤집힘 조건"],
+      } },
+  ],
+};
+const plan_roadmap: PurposeDef = {
+  id: "plan_roadmap", domain: "planning", label: "로드맵·일정", order: 3, next: null,
+  short: "목표를 단계와 일정으로 쪼개고 의존·리스크를 붙인다",
+  principles: PLANNING_PRINCIPLES,
+  subtypes: [
+    { id: "roadmap", label: "로드맵", hint: "분기·월 단위 단계와 마일스톤",
+      inputs: [{ name: "goal", label: "목표·기간", required: true, multiline: true }, { name: "resources", label: "가용 인력·제약", required: true, multiline: true }, { name: "known", label: "이미 정해진 일정·의존", required: false, multiline: true }],
+      mustKnow: [{ id: "grain", question: "단위는?", options: ["주", "월", "분기"] }],
+      seeds: {
+        success: ["단계마다 산출물·완료 기준·담당 역할이 있다", "의존 관계와 임계 경로가 표시된다", "버퍼와 가장 큰 일정 리스크가 있다", "첫 2주의 할 일이 구체적이다"],
+        guards: ["모든 단계를 같은 크기로 가정하지 않는다", "의존 없이 병렬 가능하다고 단정하지 않는다", "버퍼 없는 일정을 만들지 않는다"],
+        process: ["목표·제약", "단계 분해", "의존과 순서", "일정과 버퍼", "리스크"],
+        outputFormat: "table",
+        handoff: ["단계표(산출물·완료 기준)", "임계 경로", "첫 2주 계획"],
+      } },
+  ],
+};
+
+// ─────────────────────────────── 글쓰기 ───────────────────────────────
+const WRITING_PRINCIPLES = [
+  "독자·목적·형식·분량을 먼저 고정한다. 독자가 첫 문장에서 '왜 읽어야 하는지'를 알아야 한다.",
+  "결론 먼저, 근거 다음. 요청·질문은 문서 끝이 아니라 앞에 둔다.",
+  "사실·수치·약속은 입력에 있는 것만 쓴다. 지어내지 않는다.",
+  "한 문단 한 메시지. 형용사보다 수치와 사실.",
+];
+const write_business: PurposeDef = {
+  id: "write_business", domain: "writing", label: "업무 문서", order: 1, next: null,
+  short: "보고·메일·공지·회의록처럼 조직 안에서 오가는 글",
+  principles: WRITING_PRINCIPLES,
+  subtypes: [
+    { id: "report", label: "보고·메일", hint: "상급자·팀·외부에 보내는 보고, 요청, 공지",
+      inputs: [{ name: "facts", label: "전달할 사실·내용", required: true, multiline: true }, { name: "reader", label: "받는 사람·관계", required: true, multiline: false }, { name: "ask", label: "받는 사람이 해 줘야 할 것", required: false, multiline: true }],
+      mustKnow: [
+        { id: "channel", question: "어디로 보내나요?", options: ["메신저", "이메일", "문서·보고서", "공지"] },
+        { id: "tone", question: "어투는?", options: ["격식(하십시오체)", "정중(해요체)", "간결·개조식"] },
+      ],
+      seeds: {
+        success: ["첫 1~2문장에 결론과 요청이 있다", "받는 사람이 해야 할 행동과 기한이 명확하다", "입력에 없는 사실·수치·약속이 없다", "채널·관계에 맞는 어투와 분량이다"],
+        guards: ["배경 설명으로 시작하지 않는다", "완곡 표현으로 요청을 흐리지 않는다", "한 메시지에 요청을 세 개 이상 넣지 않는다"],
+        process: null,
+        outputFormat: "prose",
+        handoff: ["본문", "제목·첫 줄(메신저 미리보기용)"],
+      } },
+    { id: "minutes", label: "회의록·기록", hint: "논의를 결정·할 일·미결로 정리한다",
+      inputs: [{ name: "notes", label: "메모·녹취·대화", required: true, multiline: true }, { name: "attendees", label: "참석자(있으면)", required: false, multiline: false }],
+      mustKnow: [{ id: "share", question: "누구와 공유하나요?", options: ["참석자만", "팀 전체", "상급자·외부"] }],
+      seeds: {
+        success: ["결정 / 할 일(담당·기한) / 미결 질문이 분리된다", "논의 순서가 아니라 주제별로 묶인다", "메모에 없는 결정을 만들지 않는다", "할 일마다 담당이 있다(없으면 '미정' 표시)"],
+        guards: ["발언을 그대로 옮기지 않는다(결과 중심)", "누가 말했는지로 갈등을 기록하지 않는다", "불명확한 것을 결정으로 굳히지 않는다"],
+        process: ["주제 묶기", "결정 추출", "할 일 추출", "미결 정리"],
+        outputFormat: "markdown",
+        handoff: ["결정 목록", "할 일(담당·기한)", "미결 질문"],
+      } },
+  ],
+};
+const write_explain: PurposeDef = {
+  id: "write_explain", domain: "writing", label: "설명·안내", order: 2, next: null,
+  short: "개념·절차·제품을 독자 수준에 맞게 설명하는 글",
+  principles: WRITING_PRINCIPLES,
+  subtypes: [
+    { id: "guide", label: "가이드·안내문", hint: "따라 하면 되는 절차 또는 개념 설명",
+      inputs: [{ name: "subject", label: "설명 대상(자료·코드·정책)", required: true, multiline: true }, { name: "reader", label: "독자와 사전 지식", required: true, multiline: false }],
+      mustKnow: [
+        { id: "kind", question: "어떤 글인가요?", options: ["따라 하기(절차)", "개념 설명", "FAQ", "변경 안내"] },
+        { id: "level", question: "독자 수준은?", options: ["비전문가", "실무자", "전문가"] },
+      ],
+      seeds: {
+        success: ["첫 문단에 '누구를 위한, 무엇을 할 수 있게 하는' 글인지 있다", "절차는 번호와 예상 결과가 있다", "독자 수준에 없는 용어는 처음 나올 때 정의된다", "흔한 실수·문제 해결이 한 항목 있다"],
+        guards: ["자료에 없는 동작·화면을 지어내지 않는다", "모든 것을 설명하려 하지 않는다(독자가 할 일 기준으로)", "전제 조건을 빼먹지 않는다"],
+        process: ["독자와 목표", "전제 조건", "본문", "문제 해결", "다음 단계"],
+        outputFormat: "markdown",
+        handoff: ["본문", "용어 정의", "갱신이 필요한 기존 문서"],
+      } },
+  ],
+};
+const write_transform: PurposeDef = {
+  id: "write_transform", domain: "writing", label: "요약·변환", order: 3, next: null,
+  short: "긴 글을 줄이거나 형식·어투·언어를 바꾼다",
+  principles: WRITING_PRINCIPLES,
+  subtypes: [
+    { id: "summary", label: "요약", hint: "긴 자료를 목적에 맞게 압축한다",
+      inputs: [{ name: "source", label: "원문", required: true, multiline: true }, { name: "purpose", label: "요약 용도·독자", required: true, multiline: false }],
+      mustKnow: [
+        { id: "len", question: "분량은?", options: ["3줄", "한 문단", "한 페이지"] },
+        { id: "focus", question: "무엇을 남기나요?", options: ["결정·행동 항목", "핵심 주장과 근거", "수치·사실", "전체 균형"] },
+      ],
+      seeds: {
+        success: ["지정 분량 안이다", "원문에 없는 내용이 없다", "용도에 맞는 것이 먼저 온다(결정·행동 → 근거)", "원문에서 생략한 큰 항목이 있으면 한 줄로 표시된다"],
+        guards: ["원문의 강조를 요약의 강조로 착각하지 않는다(용도 기준)", "수치를 반올림·변형하지 않는다", "원문의 모호함을 확정으로 바꾸지 않는다"],
+        process: null,
+        outputFormat: "prose",
+        handoff: ["요약본", "생략 항목"],
+      } },
+    { id: "rewrite", label: "다듬기·변환", hint: "어투·형식·언어를 바꾸되 사실은 유지한다",
+      inputs: [{ name: "source", label: "원문", required: true, multiline: true }, { name: "target", label: "바꿀 방향(어투·형식·언어)", required: true, multiline: true }],
+      mustKnow: [{ id: "keep", question: "원문 구조는?", options: ["유지", "자유롭게 재구성"] }],
+      seeds: {
+        success: ["사실·수치·약속이 원문과 동일하다", "지정한 어투·형식·언어를 일관되게 따른다", "바꾼 곳이 많으면 변경 요약이 있다"],
+        guards: ["의미를 바꾸지 않는다", "원문에 없는 문장을 보태지 않는다", "고유명사·코드 식별자를 번역하지 않는다"],
+        process: null,
+        outputFormat: "prose",
+        handoff: ["결과문", "변경 요약"],
+      } },
+  ],
+};
+
+// ─────────────────────────────── 의사결정 ───────────────────────────────
+const DECISION_PRINCIPLES = [
+  "결정 문장을 먼저 쓴다: '무엇을, 언제까지, 누가 결정하는가'.",
+  "선택지에는 항상 '아무것도 안 한다'와 '미룬다'를 포함한다.",
+  "기준과 가중치를 결과보다 먼저 정한다. 결과를 보고 기준을 바꾸지 않는다.",
+  "되돌릴 수 있는 결정은 빨리, 되돌릴 수 없는 결정은 근거를 더 요구한다.",
+];
+const decide_choose: PurposeDef = {
+  id: "decide_choose", domain: "decision", label: "선택지 결정", order: 1, next: null,
+  short: "여러 선택지 중 하나를 기준에 따라 고른다",
+  principles: DECISION_PRINCIPLES,
+  subtypes: [
+    { id: "matrix", label: "기준 매트릭스", hint: "기준·가중치·점수로 선택지를 비교해 결정한다",
+      inputs: [{ name: "decision", label: "결정할 것", required: true, multiline: true }, { name: "options", label: "선택지", required: true, multiline: true }, { name: "constraints", label: "제약·기한", required: false, multiline: true }],
+      mustKnow: [
+        { id: "reversible", question: "되돌릴 수 있는 결정인가요?", options: ["쉽게", "비용이 들지만 가능", "사실상 불가"] },
+        { id: "who", question: "누가 결정하나요?", options: ["나", "팀 합의", "상급자(내가 추천)"] },
+      ],
+      seeds: {
+        success: ["기준·가중치가 점수 전에 표로 확정된다", "선택지마다 최악의 경우가 한 줄 있다", "추천과 '이 조건이면 다른 선택'이 있다", "결정을 미루면 잃는 것이 명시된다"],
+        guards: ["결과에 맞춰 가중치를 조정하지 않는다", "정보 부족을 결정 회피의 이유로 쓰지 않는다(무엇이 있으면 결정 가능한지)", "선택지를 두 개로 좁혀 이분법으로 만들지 않는다"],
+        process: ["결정 문장", "기준·가중치", "선택지 평가", "최악 시나리오", "추천"],
+        outputFormat: "table",
+        handoff: ["기준표", "추천과 조건", "결정 기한과 미룰 때 비용"],
+      } },
+  ],
+};
+const decide_premortem: PurposeDef = {
+  id: "decide_premortem", domain: "decision", label: "결정 검토", order: 2, next: null,
+  short: "이미 기운 결정을 반대 관점과 실패 시나리오로 점검한다",
+  principles: DECISION_PRINCIPLES,
+  subtypes: [
+    { id: "premortem", label: "프리모템", hint: "'1년 뒤 실패했다'고 가정하고 이유를 역산한다",
+      inputs: [{ name: "decision", label: "결정 내용과 이유", required: true, multiline: true }, { name: "context", label: "배경·제약", required: false, multiline: true }],
+      mustKnow: [{ id: "stage", question: "결정은 어느 단계인가요?", options: ["검토 중", "거의 확정", "이미 실행 중"] }],
+      seeds: {
+        success: ["실패 시나리오가 가능성·심각도와 함께 5개 이내로 있다", "각 시나리오에 조기 신호와 대응이 있다", "결정을 뒤집어야 할 조건이 명시된다", "가장 강한 반대 논거가 공정하게 서술된다"],
+        guards: ["결정을 정당화하는 방향으로 시나리오를 고르지 않는다", "실행 불가능한 대응을 쓰지 않는다", "모든 시나리오를 같은 심각도로 두지 않는다"],
+        process: ["결정 재진술", "실패 가정과 역산", "신호와 대응", "뒤집을 조건", "반대 논거"],
+        outputFormat: "markdown",
+        handoff: ["실패 시나리오 표", "조기 신호", "뒤집을 조건"],
+      } },
+  ],
+};
+
+export const PURPOSES: Record<Purpose, PurposeDef> = {
+  investigate, plan, build, review,
+  research_survey, research_compare, research_verify,
+  analyze_data, analyze_cause, analyze_impact,
+  plan_proposal, plan_options, plan_roadmap,
+  write_business, write_explain, write_transform,
+  decide_choose, decide_premortem,
+};
+
+export const DOMAINS: Record<Domain, DomainDef> = {
+  dev: { id: "dev", label: "개발", short: "조사 → 계획 → 구현 → 검토. 각 단계의 출력이 다음 단계의 입력", purposes: ["investigate", "plan", "build", "review"] },
+  research: { id: "research", label: "리서치", short: "모르는 것을 근거와 확신도로 정리한다", purposes: ["research_survey", "research_compare", "research_verify"] },
+  analysis: { id: "analysis", label: "분석", short: "가정을 밝히고 수치·원인·영향을 따진다", purposes: ["analyze_data", "analyze_cause", "analyze_impact"] },
+  planning: { id: "planning", label: "기획", short: "문제→목표→대안→계획. 하나뿐인 안은 기획이 아니다", purposes: ["plan_proposal", "plan_options", "plan_roadmap"] },
+  writing: { id: "writing", label: "글쓰기", short: "독자·목적·형식을 먼저 고정하고 결론부터", purposes: ["write_business", "write_explain", "write_transform"] },
+  decision: { id: "decision", label: "의사결정", short: "기준을 먼저, 되돌릴 수 없는 결정엔 근거를 더", purposes: ["decide_choose", "decide_premortem"] },
+};
+export const DOMAIN_LIST: Domain[] = ["dev", "research", "analysis", "planning", "writing", "decision"];
+/** 개발 생애주기 순서 */
 export const LIFECYCLE: Purpose[] = ["investigate", "plan", "build", "review"];
+
+export const domainOf = (purpose: Purpose): Domain => PURPOSES[purpose].domain;
 
 export function findSubtype(purpose: Purpose, subtypeId: string | null | undefined): Subtype {
   const p = PURPOSES[purpose];
@@ -341,5 +689,5 @@ export const UNIVERSAL_PRINCIPLES = [
   "모호할 때의 행동(묻기 / 가정을 밝히고 진행)을 지정한다.",
   "예시는 형식이 특이하거나 판단 기준이 미묘할 때만 넣는다. 그렇지 않으면 길이만 늘린다.",
   "출력 형식은 구조·길이까지 지정한다. '마크다운으로'는 형식이 아니다.",
-  "단계의 출력은 다음 단계의 입력이다. 넘김(handoff) 항목이 출력 형식에 포함되어야 한다.",
+  "결과물은 받는 쪽(다음 단계 또는 사람)이 바로 쓸 수 있어야 한다. 넘김(handoff) 항목이 출력 형식에 포함되어야 한다.",
 ];

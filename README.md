@@ -13,6 +13,7 @@
 - [디자인 토큰 v1 — 팔레트](docs/07-design-tokens.md)
 - [학습 데이터 수집과 기록 그래프](docs/08-learning-data.md)
 - [프롬프트 스튜디오 설계·구현](docs/09-prompt-studio-design.md)
+- [프롬프트 스튜디오 근거 자료](docs/10-prompt-engineering-references.md)
 
 ## 구조
 ```

@@ -4,7 +4,7 @@ import { PartialSlotParser } from "../partial";
 import { runChecks } from "../checks";
 import { fillVariables, renderClaude } from "../render/claude";
 import { generatePrompt, planPrompt, regenerateSlot } from "../pipeline";
-import { LIFECYCLE, PURPOSES, findSubtype } from "../taxonomy";
+import { DOMAINS, DOMAIN_LIST, LIFECYCLE, PURPOSES, domainOf, findSubtype } from "../taxonomy";
 import { PromptSpec, SLOT_KEYS, type StudioRequest } from "../spec";
 import { buildGeneratePrompt, studioStableSystem, type StudioContext } from "../meta-prompt";
 
@@ -28,12 +28,24 @@ describe("taxonomy", () => {
     expect(PURPOSES.investigate.next).toBe("plan");
     expect(PURPOSES.review.next).toBeNull();
   });
-  it("every subtype has seeds and handoff (except general)", () => {
-    for (const p of LIFECYCLE.map((id) => PURPOSES[id])) for (const s of p.subtypes) {
-      expect(s.seeds.success.length, `${p.id}/${s.id}`).toBeGreaterThanOrEqual(2);
-      expect(s.seeds.guards.length, `${p.id}/${s.id}`).toBeGreaterThanOrEqual(1);
-      expect(s.seeds.handoff.length, `${p.id}/${s.id}`).toBeGreaterThanOrEqual(1);
+  it("every purpose belongs to exactly one domain and every subtype has seeds, must-know and handoff", () => {
+    const seen = new Set<string>();
+    for (const d of DOMAIN_LIST) for (const pid of DOMAINS[d].purposes) {
+      expect(seen.has(pid), `${pid} listed twice`).toBe(false); seen.add(pid);
+      const p = PURPOSES[pid];
+      expect(p.domain).toBe(d);
+      expect(domainOf(pid)).toBe(d);
+      expect(p.principles.length).toBeGreaterThanOrEqual(3);
+      expect(p.subtypes.length).toBeGreaterThanOrEqual(1);
+      for (const s of p.subtypes) {
+        expect(s.seeds.success.length, `${p.id}/${s.id}`).toBeGreaterThanOrEqual(2);
+        expect(s.seeds.guards.length, `${p.id}/${s.id}`).toBeGreaterThanOrEqual(1);
+        expect(s.seeds.handoff.length, `${p.id}/${s.id}`).toBeGreaterThanOrEqual(1);
+        expect(s.mustKnow.length, `${p.id}/${s.id}`).toBeGreaterThanOrEqual(1);
+        expect(s.inputs.some((i) => i.required), `${p.id}/${s.id} needs a required input`).toBe(true);
+      }
     }
+    expect(seen.size).toBe(Object.keys(PURPOSES).length);
   });
   it("unknown subtype falls back to the first", () => {
     expect(findSubtype("build", "nope").id).toBe(PURPOSES.build.subtypes[0]!.id);
@@ -145,7 +157,7 @@ describe("pipeline with fake provider", () => {
   });
   it("masks PII in the goal and restores it", async () => {
     const goal = "홍길동(010-1234-5678) 고객 문의 응대 스크립트 초안을 만든다. 정중하고 간결하게.";
-    const gen = generatePrompt(provider, ctx({ purpose: "general", subtype: null, goal }));
+    const gen = generatePrompt(provider, ctx({ purpose: "write_business", subtype: null, goal }));
     let r = await gen.next();
     while (!r.done) r = await gen.next();
     expect(r.value.spec?.goal).toContain("010-1234-5678");

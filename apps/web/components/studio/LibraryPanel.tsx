@@ -2,20 +2,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { App, Button, Drawer, Empty, Input, List, Popconfirm, Segmented, Skeleton, Space, Tag, Tooltip, Typography } from "antd";
 import { CopyOutlined, DeleteOutlined, InboxOutlined } from "@ant-design/icons";
-import { PURPOSES, SLOT_KEYS, SLOT_KO, fillVariables, type PromptSpec, type Purpose } from "@grammer-hub/core";
+import { DOMAINS, DOMAIN_LIST, PURPOSES, SLOT_KEYS, SLOT_KO, fillVariables, type Domain, type PromptSpec } from "@grammer-hub/core";
 import { api, type PromptStats, type PromptSummary, type PromptVersion } from "@/lib/api";
 import { errMsg } from "@/components/pages/_shared";
-import { PURPOSE_COLOR, fmtDate } from "./labels";
+import { DOMAIN_COLOR, fmtDate } from "./labels";
 import { ChecksView, RenderedView } from "./ResultPanel";
 import { SlotValue } from "./SlotCard";
 
-function purposeLabel(p: string) { return (PURPOSES as Record<string, { label: string }>)[p]?.label ?? p; }
+/** 저장된 purpose id → "대분류 › 중분류". 옛 id(general 등)는 그대로 표시. */
+function purposeOf(p: string) { return (PURPOSES as Record<string, { label: string; domain: Domain } | undefined>)[p]; }
+function purposeLabel(p: string) { const d = purposeOf(p); return d ? `${DOMAINS[d.domain].label} › ${d.label}` : p; }
+function domainColor(p: string) { const d = purposeOf(p); return d ? DOMAIN_COLOR[d.domain] : "default"; }
 
 export function LibraryPanel({ refreshKey, openId, onOpened }: { refreshKey: number; openId?: string | null; onOpened?: () => void }) {
   const { message } = App.useApp();
   const [items, setItems] = useState<PromptSummary[] | null>(null);
   const [stats, setStats] = useState<PromptStats | null>(null);
-  const [filter, setFilter] = useState<Purpose | "all">("all");
+  const [filter, setFilter] = useState<Domain | "all">("all");
   const [active, setActive] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -25,19 +28,20 @@ export function LibraryPanel({ refreshKey, openId, onOpened }: { refreshKey: num
   useEffect(() => { void reload(); }, [reload, refreshKey]);
   useEffect(() => { if (openId) { setActive(openId); onOpened?.(); } }, [openId, onOpened]);
 
-  const shown = (items ?? []).filter((i) => filter === "all" || i.purpose === filter);
+  const countBy = (d: Domain) => Object.entries(stats?.byPurpose ?? {}).filter(([p]) => purposeOf(p)?.domain === d).reduce((a, [, n]) => a + n, 0);
+  const shown = (items ?? []).filter((i) => filter === "all" || purposeOf(i.purpose)?.domain === filter);
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Segmented size="small" value={filter} onChange={(v) => setFilter(v as Purpose | "all")}
-          options={[{ value: "all", label: `전체 ${items?.length ?? 0}` }, ...(Object.keys(PURPOSES) as Purpose[]).map((p) => ({ value: p, label: `${PURPOSES[p].label} ${stats?.byPurpose[p] ?? 0}` }))]} />
+        <Segmented size="small" value={filter} onChange={(v) => setFilter(v as Domain | "all")}
+          options={[{ value: "all", label: `전체 ${items?.length ?? 0}` }, ...DOMAIN_LIST.map((d) => ({ value: d, label: `${DOMAINS[d].label} ${countBy(d)}` }))]} />
         {stats && <Typography.Text type="secondary" style={{ fontSize: 12 }} className="ml-auto">복사·채움 {stats.copies}회</Typography.Text>}
       </div>
       {items === null ? <Skeleton active /> : shown.length === 0 ? <Empty description="보관한 프롬프트가 없습니다. 만들기에서 생성 후 '보관'을 누르세요." /> : (
         <List data-testid="prompt-list" size="small" bordered dataSource={shown} renderItem={(p) => (
           <List.Item className="cursor-pointer" onClick={() => setActive(p.id)} data-prompt-item>
             <div className="flex w-full flex-wrap items-center gap-2">
-              <Tag color={PURPOSE_COLOR[p.purpose as Purpose] ?? "default"} style={{ marginInlineEnd: 0 }}>{purposeLabel(p.purpose)}</Tag>
+              <Tag color={domainColor(p.purpose)} style={{ marginInlineEnd: 0 }}>{purposeLabel(p.purpose)}</Tag>
               {p.language === "en" && <Tag color="geekblue" style={{ marginInlineEnd: 0, fontSize: 11 }}>EN</Tag>}
               <Typography.Text strong>{p.title}</Typography.Text>
               <Typography.Text type="secondary" style={{ fontSize: 12 }} ellipsis className="min-w-0 flex-1">{p.goal}</Typography.Text>
@@ -89,7 +93,7 @@ function PromptDrawer({ id, onClose, onChanged }: { id: string | null; onClose: 
   return (
     <Drawer open={Boolean(id)} onClose={onClose} width={720} title={data ? (
       <div className="flex flex-wrap items-center gap-2">
-        <Tag color={PURPOSE_COLOR[data.prompt.purpose as Purpose] ?? "default"}>{purposeLabel(data.prompt.purpose)}</Tag>
+        <Tag color={domainColor(data.prompt.purpose)}>{purposeLabel(data.prompt.purpose)}</Tag>
         <span>{data.prompt.title}</span>
         {data.prompt.language === "en" && <Tag color="geekblue" style={{ fontSize: 11 }}>EN</Tag>}
       </div>) : "불러오는 중"} extra={data && (

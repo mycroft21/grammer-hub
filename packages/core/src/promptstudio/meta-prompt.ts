@@ -1,4 +1,4 @@
-import { PURPOSES, UNIVERSAL_PRINCIPLES, findSubtype } from "./taxonomy";
+import { DOMAINS, PURPOSES, UNIVERSAL_PRINCIPLES, findSubtype } from "./taxonomy";
 import type { PromptLanguage, PromptLength, PromptSpec, Purpose, SlotKey } from "./spec";
 import { SLOT_KEYS } from "./spec";
 import type { SystemBlock } from "../prompt/build";
@@ -51,10 +51,11 @@ export function studioPurposeBlock(purpose: Purpose, subtypeId: string | null | 
   const p = PURPOSES[purpose];
   const s = findSubtype(purpose, subtypeId);
   const next = p.next ? PURPOSES[p.next] : null;
+  const d = DOMAINS[p.domain];
   return [
-    `## 단계: ${p.label} › ${s.label}`,
+    `## 목적: ${d.label} › ${p.label} › ${s.label}`,
     p.short + ".",
-    next ? `이 결과물은 다음 단계 "${next.label}"의 입력이 된다.` : "",
+    next ? `이 결과물은 다음 단계 "${next.label}"의 입력이 된다.` : "이 결과물은 받는 사람이 다른 가공 없이 바로 쓸 수 있어야 한다.",
     "",
     "### 이 목적의 원칙",
     ...p.principles.map((x) => `- ${x}`),
@@ -65,7 +66,7 @@ export function studioPurposeBlock(purpose: Purpose, subtypeId: string | null | 
     `- 기본 과정: ${s.seeds.process ? s.seeds.process.join(" → ") : "단일 패스"}`,
     `- 기본 출력 형식: ${s.seeds.outputFormat}`,
     `- 보통 필요한 입력 변수: ${s.inputs.map((i) => `${i.name}(${i.label}${i.required ? ", 필수" : ""})`).join(", ")}`,
-    s.seeds.handoff.length ? `- 다음 단계로 넘길 것(출력 형식에 반드시 포함): ${s.seeds.handoff.join(" / ")}` : "",
+    s.seeds.handoff.length ? `- ${next ? "다음 단계로 넘길 것" : "결과에 반드시 포함할 것"}(출력 형식에 반드시 포함): ${s.seeds.handoff.join(" / ")}` : "",
   ].filter((l) => l !== "").join("\n");
 }
 

@@ -1,10 +1,26 @@
 import { z } from "zod";
 
 /**
- * 상위 축 = 개발 생애주기 단계. 조사 → 계획 → 개발 → 검토. 그 밖은 general.
- * 각 단계의 출력은 다음 단계의 입력이 되도록 규격(handoff)을 갖는다.
+ * 대분류(Domain) = 범용 목적 6종. 중분류(Purpose) = 대분류 안의 작업 종류.
+ * 개발 대분류의 중분류는 생애주기 단계(조사 → 계획 → 구현 → 검토)이며 각 단계의 출력이 다음 단계의 입력(handoff)이 된다.
  */
-export const Purpose = z.enum(["investigate", "plan", "build", "review", "general"]);
+export const Domain = z.enum(["dev", "research", "analysis", "planning", "writing", "decision"]);
+export type Domain = z.infer<typeof Domain>;
+
+export const Purpose = z.enum([
+  // 개발 생애주기
+  "investigate", "plan", "build", "review",
+  // 리서치
+  "research_survey", "research_compare", "research_verify",
+  // 분석
+  "analyze_data", "analyze_cause", "analyze_impact",
+  // 기획
+  "plan_proposal", "plan_options", "plan_roadmap",
+  // 글쓰기
+  "write_business", "write_explain", "write_transform",
+  // 의사결정
+  "decide_choose", "decide_premortem",
+]);
 export type Purpose = z.infer<typeof Purpose>;
 
 export const PromptLength = z.enum(["short", "standard", "detailed"]);
