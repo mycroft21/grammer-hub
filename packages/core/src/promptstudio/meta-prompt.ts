@@ -3,7 +3,7 @@ import type { PromptLanguage, PromptLength, PromptSpec, Purpose, SlotKey } from 
 import { SLOT_KEYS } from "./spec";
 import type { SystemBlock } from "../prompt/build";
 
-export const STUDIO_PROMPT_VERSION = "0.2.0";
+export const STUDIO_PROMPT_VERSION = "0.3.0";
 
 /** 고정 블록(캐시 대상). 날짜·ID 같은 가변 값 금지. */
 export function studioStableSystem(): string {
@@ -24,12 +24,12 @@ export function studioStableSystem(): string {
     "- success_criteria: 2~7개. 각각 검증 가능해야 한다.",
     "- inputs: 프롬프트를 쓸 때마다 달라지는 것만 변수로. name은 영문 snake_case, label은 한국어. 목표 문장에 이미 고정된 내용은 변수가 아니라 context에 쓴다.",
     "- context: 목표 문장·답변에서 확정된 사실(스택, 범위, 독자 등). 없으면 null.",
-    "- hard_rules: 최대 5개. '하지 말 것'을 포함.",
+    "- hard_rules: 최대 5개. 금지가 필요하면 'X 하지 않는다'로 끝내지 말고 'X 대신 Y 한다'처럼 대신 할 행동을 붙인다(모델은 '할 것'을 더 잘 따른다).",
     "- process: 단계가 품질을 올리는 작업만. 단일 패스면 null.",
     "- output_contract: format + structure(섹션·표 구성) + length(분량 기준).",
     "- self_check: 답하기 전에 모델이 스스로 확인할 항목 2~8개. success_criteria와 겹쳐도 되지만 '확인 동작'으로 쓴다.",
-    "- failure_guards: 이 종류의 작업에서 흔한 실패를 막는 지침. 목적별 씨앗을 반드시 반영하고 목표에 맞게 구체화한다.",
-    "- examples: 형식이 특이하거나 판단이 미묘할 때만. 아니면 null.",
+    "- failure_guards: 이 종류의 작업에서 흔한 실패를 막는 지침. 목적별 씨앗을 반드시 반영하고 목표에 맞게 구체화한다. 씨앗이 '~하지 않는다'로 적혀 있어도 결과는 '~하지 않고 대신 …한다' 또는 '…를 먼저 확인한다'처럼 행동으로 쓴다.",
+    "- examples: 형식이 특이하거나 판단이 미묘할 때 권장(1~2개, 입력·출력 짝). 단, 실제 입력과 같은 형태로 자신 있게 만들 수 있을 때만 넣는다. 억지로 만든 예시는 없느니만 못하므로 확신이 없으면 null. 예시 안의 이름·수치는 명백한 자리표시자로 쓰고 사실처럼 보이는 값을 지어내지 않는다.",
     "- rationale: 각 슬롯을 왜 그렇게 썼는지 한 문장씩. 사용자가 배우는 용도.",
     "- language: 요청의 <language> 값을 그대로 넣는다.",
     "",
@@ -42,7 +42,7 @@ export function studioStableSystem(): string {
     "## 길이 모드",
     "- short: role, goal, success_criteria(2~3), inputs, output_contract, hard_rules(≤3)만 채우고 process·examples는 null, self_check 2개, failure_guards 1~2개.",
     "- standard: 모든 슬롯을 적정 수준으로. examples는 필요할 때만.",
-    "- detailed: process를 반드시 채우고, failure_guards 3개 이상, self_check 4개 이상, 유용하면 examples 1개.",
+    "- detailed: process를 반드시 채우고, failure_guards 3개 이상, self_check 4개 이상. examples는 권장하되 확신이 없으면 null.",
   ].join("\n");
 }
 

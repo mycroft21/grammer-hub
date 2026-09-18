@@ -240,7 +240,7 @@ Phase 2 증류와 같은 방식으로 "프롬프트 구조 선호 규칙"을 뽑
 
 | 층 | 경로 |
 |---|---|
-| 코어 | `packages/core/src/promptstudio/` — `spec.ts`(PromptSpec·PlanResult·StudioRequest), `taxonomy.ts`, `meta-prompt.ts`(고정 블록 캐시 + 단계 블록), `render/claude.ts`, `checks.ts`(8개), `partial.ts`(슬롯 스트리밍), `pipeline.ts`(plan/generate/regenerate, PII 마스킹) |
+| 코어 | `packages/core/src/promptstudio/` — `spec.ts`(PromptSpec·PlanResult·StudioRequest), `taxonomy.ts`, `meta-prompt.ts`(고정 블록 캐시 + 단계 블록), `render/claude.ts`, `checks.ts`(9개), `partial.ts`(슬롯 스트리밍), `pipeline.ts`(plan/generate/regenerate, PII 마스킹) |
 | 테스트 | `packages/core/src/promptstudio/__tests__/studio.test.ts` (분류 무결성, 렌더 ko/en, 점검, 파서, fake provider 파이프라인, PII 왕복) |
 | DB | `prompts`, `prompt_versions`(스펙·렌더·점검 스냅샷, 생성/재생성/직접 수정 출처), `prompt_events`(view/copy/fill/regenerate/edit/archive) — 마이그레이션 `0002` |
 | API | `POST /api/prompts/plan` · `POST /api/prompts/generate`(SSE: meta/slot/spec/rendered/checks/usage/done) · `POST /api/prompts/regenerate` · `GET/POST /api/prompts` · `GET/PATCH/DELETE /api/prompts/[id]` · `POST /api/prompts/[id]/versions` · `POST /api/prompts/events` |

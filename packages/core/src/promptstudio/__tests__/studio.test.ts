@@ -16,9 +16,9 @@ const baseSpec = (): PromptSpec => ({
   language: "ko", title: "테스트", role: "당신은 코드를 직접 확인한 사실만으로 답하는 엔지니어다.",
   goal: "재시도 로직의 흐름을 정리한 문서를 만든다", success_criteria: ["파일·심볼 인용이 있다", "미확인 목록이 있다", "다음 단계가 쓸 수 있다"],
   inputs: [{ name: "code", label: "코드", description: "소스", required: true, multiline: true, placeholder: "" }],
-  context: null, hard_rules: ["추측하지 않는다"], process: null,
+  context: null, hard_rules: ["읽지 않은 파일은 추측하는 대신 '미확인'으로 표시한다"], process: null,
   output_contract: { format: "markdown", structure: "요약/흐름/미확인", length: "800자 이내" },
-  self_check: ["인용 확인", "미확인 확인"], failure_guards: ["이름만 보고 단정하지 않는다"], clarify_policy: "ask_first", examples: null,
+  self_check: ["인용 확인", "미확인 확인"], failure_guards: ["역할은 이름으로 단정하는 대신 호출 지점을 먼저 확인한다"], clarify_policy: "ask_first", examples: null,
   rationale: { role: "", goal: "", success_criteria: "", inputs: "", hard_rules: "", process: "", output_contract: "", self_check: "", failure_guards: "" },
 });
 
@@ -81,6 +81,14 @@ describe("checks", () => {
   it("passes a lean spec", () => {
     const c = runChecks(baseSpec());
     expect(c.filter((x) => !x.ok).map((x) => x.id)).toEqual([]);
+  });
+  it("flags rule sets that are only prohibitions, passes 'X instead of Y' forms", () => {
+    const neg = { ...baseSpec(), hard_rules: ["추측하지 않는다", "코드를 쓰지 않는다"], failure_guards: ["단정하지 않는다"] };
+    expect(runChecks(neg).find((c) => c.id === "rules_actionable")?.ok).toBe(false);
+    const en = { ...baseSpec(), language: "en" as const, hard_rules: ["Do not guess", "Never invent APIs"], failure_guards: ["Check call sites first instead of trusting names"] };
+    expect(runChecks(en).find((c) => c.id === "rules_actionable")?.ok).toBe(false);
+    const mixed = { ...baseSpec(), hard_rules: ["추측하지 않는다"], failure_guards: ["이름 대신 호출 지점을 먼저 본다", "수정 코드는 쓰지 않고 방향만 제안한다"] };
+    expect(runChecks(mixed).find((c) => c.id === "rules_actionable")?.ok).toBe(true);
   });
   it("flags vague criteria, too many rules, bad var names — in ko and en", () => {
     const bad = { ...baseSpec(), success_criteria: ["좋은 문서", "a", "b"], hard_rules: ["1", "2", "3", "4", "5", "6"], inputs: [{ ...baseSpec().inputs[0]!, name: "Code Block" }] };
