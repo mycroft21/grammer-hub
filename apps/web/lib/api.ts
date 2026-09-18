@@ -1,4 +1,4 @@
-import type { DictionaryEntry, SituationProfile, StyleRule } from "@grammer-hub/core";
+import type { CheckResult, DictionaryEntry, PlanResult, PromptSpec, RenderedPrompt, SituationProfile, SlotKey, StudioRequest, StyleRule } from "@grammer-hub/core";
 
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -31,6 +31,22 @@ export const api = {
   final: (runId: string, finalText: string) => fetch(`/api/runs/${runId}/final`, json("POST", { finalText })).then(j<{ ok: true }>),
   runs: () => fetch("/api/runs").then(j<RunSummary[]>),
   stats: () => fetch("/api/stats").then(j<Stats>),
+  prompts: {
+    plan: (req: StudioRequest, signal?: AbortSignal) => fetch("/api/prompts/plan", { ...json("POST", req), signal: signal ?? null }).then(j<{ plan: PlanResult; usage: StudioUsage }>),
+    /** SSE 응답. 파싱은 호출자가 readSseRaw로. */
+    generate: (req: StudioRequest, signal?: AbortSignal) => fetch("/api/prompts/generate", { ...json("POST", req), signal: signal ?? null }),
+    regenerate: (body: { request: StudioRequest; spec: PromptSpec; slot: SlotKey; instruction?: string | null }) => fetch("/api/prompts/regenerate", json("POST", body)).then(j<{ spec: PromptSpec; rendered: RenderedPrompt; checks: CheckResult[] }>),
+    list: (archived = false) => fetch(`/api/prompts${archived ? "?archived=1" : ""}`).then(j<{ items: PromptSummary[]; stats: PromptStats }>),
+    get: (id: string) => fetch(`/api/prompts/${id}`).then(j<{ prompt: PromptRow; versions: PromptVersion[] }>),
+    save: (body: { purpose: StudioRequest["purpose"]; subtype: string | null; language: "ko" | "en"; goal: string; spec: PromptSpec; studioVersion: string; provider: string | null; model: string | null; usage: StudioUsage | null }) =>
+      fetch("/api/prompts", json("POST", body)).then(j<{ prompt: PromptRow; version: PromptVersion }>),
+    addVersion: (id: string, body: { spec: PromptSpec; source: "regenerate" | "edit"; slot?: SlotKey | null; provider?: string | null; model?: string | null }) =>
+      fetch(`/api/prompts/${id}/versions`, json("POST", body)).then(j<PromptVersion>),
+    patch: (id: string, body: { title?: string; archived?: boolean }) => fetch(`/api/prompts/${id}`, json("PATCH", body)).then(j<PromptRow>),
+    remove: (id: string) => fetch(`/api/prompts/${id}`, { method: "DELETE" }).then(j<{ ok: true }>),
+    event: (body: { promptId: string; versionId?: string | null; action: "copy" | "fill" | "view"; slot?: string | null; payload?: Record<string, unknown> | null }) =>
+      fetch("/api/prompts/events", json("POST", body)).then(j<{ ok: true }>).catch(() => ({ ok: true as const })),
+  },
   samples: {
     list: () => fetch("/api/samples").then(j<WritingSample[]>),
     add: (body: { text: string; channel?: string; audience?: string; note?: string }) => fetch("/api/samples", json("POST", body)).then(j<WritingSample>),
@@ -49,3 +65,9 @@ export interface CategoryPoint { category: string; accepted: number; rejected: n
 export interface RecentRunPoint { id: string; createdAt: number; latencyMs: number | null; costUsd: number; level: string; cachedTokens: number; inputTokens: number }
 export interface Collection { samples: number; sampleChars: number; feedback: Record<string, number>; finals: number; editPairs: number; runsOk: number }
 export interface Stats { weekly: WeeklyPoint[]; byCategory: CategoryPoint[]; recent: RecentRunPoint[]; collection: Collection }
+
+export interface StudioUsage { inputTokens: number; cachedTokens: number; cacheWriteTokens: number; outputTokens: number; costUsd: number; latencyMs: number }
+export interface PromptRow { id: string; userId: string; title: string; purpose: string; subtype: string | null; language: string; goal: string; currentVersionId: string | null; archived: boolean; createdAt: number; updatedAt: number }
+export interface PromptSummary extends PromptRow { versionCount: number; passed: number; total: number; variables: string[] }
+export interface PromptVersion { id: string; promptId: string; versionNo: number; spec: PromptSpec; rendered: RenderedPrompt; checks: CheckResult[]; source: string; slot: string | null; studioVersion: string; provider: string | null; model: string | null; inputTokens: number; cachedTokens: number; outputTokens: number; costUsd: number; latencyMs: number | null; createdAt: number }
+export interface PromptStats { byPurpose: Record<string, number>; copies: number; slotEdits: Record<string, number> }

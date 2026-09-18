@@ -1,7 +1,7 @@
-# 프롬프트 스튜디오 설계안 (v0.1, 2026-09-18)
+# 프롬프트 스튜디오 설계안 (v0.2, 2026-09-18)
 
-> 목적: 교정 기능에서 정립한 프롬프트 구조를 뽑아, **어떤 소스나 개인 데이터도 조회하지 않고** 목적(개발·조사·분석·기획 등)에 맞는 프롬프트를 만들어 주는 중립 기능을 추가한다.
-> 상태: 설계 제안. 구현 전.
+> 목적: 교정 기능에서 정립한 프롬프트 구조를 뽑아, **어떤 소스나 개인 데이터도 조회하지 않고** 개발 생애주기(조사→계획→개발→검토)의 각 단계에 맞는 프롬프트를 만들어 주는 중립 기능을 추가한다. 개발 전후에 단순해지기 쉬운 프롬프트를 규격화해 **결과의 최소 품질을 보장**하는 것이 목표다.
+> 상태: **1차 구현 완료** (`/prompts`). 아래 §11에 확정 사항과 구현 위치를 적었다. §1~§10은 설계 당시 내용이며 결정 항목(§10)은 §11에서 답한다.
 
 ---
 
@@ -199,3 +199,56 @@ Phase 2 증류와 같은 방식으로 "프롬프트 구조 선호 규칙"을 뽑
 2. **대상 모델 렌더**를 Claude·ChatGPT 둘 다 처음부터 할지, Claude만 먼저 할지.
 3. **선택형 질문 단계**를 1차에 넣을지(공수 +1일).
 4. **보관함의 변수 채우기 폼**을 1차에 넣을지. 템플릿 재사용이 핵심이면 넣어야 한다.
+
+
+---
+
+## 11. 확정과 구현 (v0.2)
+
+### 11-1. 결정 (§10에 대한 답)
+
+| 항목 | 결정 |
+|---|---|
+| 분류 축 | 목적 6종 대신 **개발 생애주기 단계**: 조사(investigate) → 계획(plan) → 개발(build) → 검토(review) + 일반(general). 각 단계에 세부 유형, 반드시 물을 것, 성공 기준·방어 지침 씨앗, 기본 과정, **다음 단계로 넘길 것(handoff)** 을 코드로 둔다. |
+| 대상 모델 렌더 | Claude만. |
+| 질문 단계 | 1차 포함. 의도 정리(plan)가 `ready`면 가정을 명시하고 바로 생성, `ask`면 선택형 질문 최대 3개. "가정으로 진행" 버튼으로 답 없이도 생성 가능. |
+| 보관함 변수 채우기 | 1차 포함. `{{name}}`을 폼으로 채워 복사하며 `fill` 이벤트를 남긴다. |
+| 프롬프트 언어 | **한국어 / 영어 지시문** 선택. 영어일 때도 답변은 사용자 언어(한국어)로 하라는 규칙을 렌더가 항상 삽입한다. UI용 텍스트(제목·변수 라벨·rationale·질문)는 언제나 한국어. |
+| 어투 규칙 | 기본 꺼짐(중립). 글쓰기 목적에서 사용자가 켤 때만 `내 어투` 규칙 스냅샷을 넣는다. |
+
+### 11-2. 단계 분류 (taxonomy.ts)
+
+| 단계 | 세부 유형 | 다음 단계로 넘기는 것(예) |
+|---|---|---|
+| 조사 | 소스 확인 · 로직 조사 · 구조 확인(DB·모듈) · 구체화 · 비교 | 관련 파일·심볼, 현재 동작 요약, 제약·부작용, 미확인 질문 |
+| 계획 | 스펙 · 요구사항 · 설계 · 작업 분해 | 범위(in/out), 인터페이스·데이터 변경, 수용 기준, 순서와 의존 |
+| 개발 | 기능 구현 · 버그 수정 · 리팩터링 · 테스트 | 변경 파일 목록, 검증 방법, 남은 위험, 리뷰 포인트 |
+| 검토 | 코드 리뷰 · 검증 · 문서 | 차단/권고 구분, 근거 위치, 재검토 조건 |
+| 일반 | 자유 목적 | — |
+
+씨앗은 LLM이 목표에 맞게 구체화할 뿐 빠뜨릴 수 없다(메타 프롬프트에 "반드시 반영"으로 들어간다). 이것이 "최소 품질 보장"의 실체다.
+
+### 11-3. 영어 지시문 옵션
+
+- 요청 `promptLanguage: "ko" | "en"` → `StudioContext.language` → 메타 프롬프트 `<language>` 태그. 프롬프트 본문 슬롯(role, goal, success_criteria, inputs.description, context, hard_rules, process, output_contract, self_check, failure_guards, examples)만 그 언어로 쓴다.
+- `PromptSpec.language`는 LLM 출력값과 무관하게 코드가 요청값으로 덮어쓴다.
+- `renderClaude`는 언어별 제목·고정 문구 표를 쓰고, `en`일 때 출력 형식에 `Language: respond in Korean (the user's language) …` 한 줄을 항상 넣는다. 메타 프롬프트에는 "이 규칙은 프로그램이 넣으니 중복해 쓰지 말라"고 명시.
+- 점검(`checks.ts`)의 결과물 명사·모호어 정규식은 한/영 모두 본다.
+
+### 11-4. 구현 위치
+
+| 층 | 경로 |
+|---|---|
+| 코어 | `packages/core/src/promptstudio/` — `spec.ts`(PromptSpec·PlanResult·StudioRequest), `taxonomy.ts`, `meta-prompt.ts`(고정 블록 캐시 + 단계 블록), `render/claude.ts`, `checks.ts`(8개), `partial.ts`(슬롯 스트리밍), `pipeline.ts`(plan/generate/regenerate, PII 마스킹) |
+| 테스트 | `packages/core/src/promptstudio/__tests__/studio.test.ts` (분류 무결성, 렌더 ko/en, 점검, 파서, fake provider 파이프라인, PII 왕복) |
+| DB | `prompts`, `prompt_versions`(스펙·렌더·점검 스냅샷, 생성/재생성/직접 수정 출처), `prompt_events`(view/copy/fill/regenerate/edit/archive) — 마이그레이션 `0002` |
+| API | `POST /api/prompts/plan` · `POST /api/prompts/generate`(SSE: meta/slot/spec/rendered/checks/usage/done) · `POST /api/prompts/regenerate` · `GET/POST /api/prompts` · `GET/PATCH/DELETE /api/prompts/[id]` · `POST /api/prompts/[id]/versions` · `POST /api/prompts/events` |
+| UI | `/prompts` — `components/studio/{CreateForm,AskStep,SlotCard,ResultPanel,LibraryPanel,useStudio}` |
+| fake provider | `FAKE_PROVIDER=1`이면 스키마 모양으로 스튜디오 요청을 판별해 결정적 plan/spec을 돌려준다(E2E·키 없는 데모) |
+| E2E | `apps/web/e2e/smoke.mjs` 뒤쪽 7개 항목: 질문 → 답변 생성 → 13 블록 → 보관 → 보관함 변수 채워 복사 → 영어 지시문 렌더 확인 |
+
+### 11-5. 남은 것
+
+- 보관함 사용 신호(`prompt_events`)를 기록 페이지 그래프에 합치기(어떤 단계 프롬프트가 실제로 쓰이는지, 자주 고치는 슬롯).
+- ChatGPT/일반 텍스트 렌더(원하면 `render/` 아래 한 파일 추가로 끝난다. Spec은 동일).
+- 슬롯 직접 수정의 클라이언트 즉시 렌더(지금은 보관 시 서버가 다시 렌더한다).

@@ -137,3 +137,51 @@ export const writingSamples = sqliteTable("writing_samples", {
   note: text("note"),
   createdAt: integer("created_at").notNull().$defaultFn(now),
 });
+
+// ─────────────────────────── 프롬프트 스튜디오 ───────────────────────────
+/** 보관함의 프롬프트 한 건. 실제 내용은 버전에 있고, 여기엔 식별·분류·현재 버전만. */
+export const prompts = sqliteTable("prompts", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  title: text("title").notNull(),
+  purpose: text("purpose").notNull(),            // investigate | plan | build | review | general
+  subtype: text("subtype"),
+  language: text("language").notNull().default("ko"), // 프롬프트 본문 언어(ko | en)
+  goal: text("goal").notNull(),                  // 사용자가 입력한 목표 문장(마스킹 해제본)
+  currentVersionId: text("current_version_id"),
+  archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+}, (t) => [index("prompts_user_updated").on(t.userId, t.updatedAt)]);
+
+/** 스펙·렌더 결과의 불변 스냅샷. 블록 재생성·직접 수정마다 새 버전. */
+export const promptVersions = sqliteTable("prompt_versions", {
+  id: text("id").primaryKey(),
+  promptId: text("prompt_id").notNull().references(() => prompts.id),
+  versionNo: integer("version_no").notNull(),
+  spec: text("spec", { mode: "json" }).notNull().$type<Record<string, unknown>>(),
+  rendered: text("rendered", { mode: "json" }).notNull().$type<Record<string, unknown>>(),
+  checks: text("checks", { mode: "json" }).notNull().$type<unknown[]>(),
+  source: text("source").notNull(),              // generate | regenerate | edit
+  slot: text("slot"),                            // regenerate/edit 대상 슬롯
+  studioVersion: text("studio_version").notNull(),
+  provider: text("provider"),
+  model: text("model"),
+  inputTokens: integer("input_tokens").notNull().default(0),
+  cachedTokens: integer("cached_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  costUsd: real("cost_usd").notNull().default(0),
+  latencyMs: integer("latency_ms"),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+}, (t) => [index("prompt_versions_prompt").on(t.promptId, t.versionNo)]);
+
+/** 사용 신호. 어떤 프롬프트가 실제로 복사·채워 쓰이는지, 어느 슬롯을 자주 고치는지. */
+export const promptEvents = sqliteTable("prompt_events", {
+  id: text("id").primaryKey(),
+  promptId: text("prompt_id").notNull().references(() => prompts.id),
+  versionId: text("version_id"),
+  action: text("action").notNull(),              // copy | fill | regenerate | edit | archive
+  slot: text("slot"),
+  payload: text("payload", { mode: "json" }).$type<Record<string, unknown>>(),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+}, (t) => [index("prompt_events_prompt").on(t.promptId)]);

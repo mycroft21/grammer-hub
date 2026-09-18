@@ -1,7 +1,15 @@
 import { SseEvent } from "@grammer-hub/core";
 
-/** fetch 응답 본문(SSE)을 이벤트로 파싱한다. EventSource는 POST를 지원하지 않는다. */
+/** 교정 SSE: 스키마 검증을 통과한 이벤트만 */
 export async function* readSse(res: Response, signal?: AbortSignal): AsyncGenerator<SseEvent> {
+  for await (const raw of readSseRaw(res, signal)) {
+    const parsed = SseEvent.safeParse(raw);
+    if (parsed.success) yield parsed.data;
+  }
+}
+
+/** fetch 응답 본문(SSE)을 {event,data}로 파싱한다. EventSource는 POST를 지원하지 않는다. */
+export async function* readSseRaw(res: Response, signal?: AbortSignal): AsyncGenerator<{ event: string; data: unknown }> {
   if (!res.body) return;
   const reader = res.body.getReader();
   const dec = new TextDecoder();
@@ -21,8 +29,7 @@ export async function* readSse(res: Response, signal?: AbortSignal): AsyncGenera
           else if (line.startsWith("data: ")) data += line.slice(6);
         }
         if (!event) continue;
-        const parsed = SseEvent.safeParse({ event, data: JSON.parse(data || "{}") });
-        if (parsed.success) yield parsed.data;
+        yield { event, data: JSON.parse(data || "{}") };
       }
     }
   } finally { reader.releaseLock(); }

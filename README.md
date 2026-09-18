@@ -12,12 +12,12 @@
 - [UI · UX 검토와 디자인 방향](docs/06-ui-review.md)
 - [디자인 토큰 v1 — 팔레트](docs/07-design-tokens.md)
 - [학습 데이터 수집과 기록 그래프](docs/08-learning-data.md)
-- [프롬프트 스튜디오 설계안](docs/09-prompt-studio-design.md)
+- [프롬프트 스튜디오 설계·구현](docs/09-prompt-studio-design.md)
 
 ## 구조
 ```
 apps/web        Next.js 16 + Ant Design v6 에디터 + API 라우트 (SSE)
-packages/core   스키마 · 프롬프트 · 앵커 해소 · PII 마스킹 · provider(cloud/local/fake) · 파이프라인
+packages/core   스키마 · 프롬프트 · 앵커 해소 · PII 마스킹 · provider(cloud/local/fake) · 파이프라인 · 프롬프트 스튜디오(promptstudio)
 packages/db     Drizzle + SQLite 스키마 · 마이그레이션 · 리포지토리
 tools/          비용/지연 모델, 주간 리포트
 ```
