@@ -210,6 +210,7 @@ CLAUDE_CLI_MODEL=claude-sonnet-5
 - "claude CLI를 찾을 수 없습니다"가 나오면 `CLAUDE_CLI_PATH`에 `which claude`의 절대 경로를 넣으세요.
 - "Not logged in" 류 오류는 터미널에서 `claude`를 한 번 열어 `/login` 하면 풀립니다.
 - API 키로 돌아가려면 `CLOUD_BACKEND=api`(또는 줄 삭제) 후 재시작.
+- `claude 실패(error_max_turns)`: 사용량 한도가 아니라 **앱이 건 턴 제한**입니다. 구조화 출력이 스키마 검증에 걸리면 모델이 다시 시도하는데 그 횟수가 한도를 넘은 것. 앱은 한도를 6으로 두고, 한도를 넘었어도 JSON을 받았으면 성공으로 처리합니다. 반복되면 `.env`에 `CLAUDE_CLI_LOG=/tmp/claude-cli.log`를 넣고 재시작해 원문(stream-json)을 보세요. 사용량 한도는 오류 메시지에 `사용량 창 five_hour: …`로 따로 표시됩니다.
 - 설정이 먹었는지는 `pnpm health --probe` 또는 `curl localhost:3000/api/health?probe=1`에서 `"backend":"claude-cli"`, `"health":{"ok":true}`로 확인.
 - 실측(2026-09-21, Claude Code 2.1.278, 세 문장 L2): 0.9초에 "모델이 검토하는 중", 13초에 "작성 중", 20초에 첫 카드, 21.5초 완료. 검토(thinking) 구간이 대부분이라 `--effort low`를 넘겨도 API 직접 호출(첫 토큰 1~2초)보다 확실히 느리다. 진행 줄이 단계·경과·예상 소요를 보여준다.
 

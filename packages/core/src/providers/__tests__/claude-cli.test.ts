@@ -51,7 +51,7 @@ describe("ClaudeCliProvider", () => {
     expect(fin?.type).toBe("final");
     if (fin?.type !== "final") return;
     const j = JSON.parse(fin.raw);
-    expect(j).toMatchObject({ echo: "hello\nworld", system: "SYS-A\n\nSYS-B", model: "claude-sonnet-5", schema: "object", turns: "2", tools: "", persist: true, effort: "low", fmt: "stream-json" });
+    expect(j).toMatchObject({ echo: "hello\nworld", system: "SYS-A\n\nSYS-B", model: "claude-sonnet-5", schema: "object", turns: "6", tools: "", persist: true, effort: "low", fmt: "stream-json" });
     expect(fin.usage).toEqual({ inputTokens: 120, cachedTokens: 100, cacheWriteTokens: 0, outputTokens: 30 });
     expect(p.cost(fin.usage)).toBeGreaterThan(0);
     expect((await p.health()).ok).toBe(true);
@@ -77,6 +77,35 @@ describe("ClaudeCliProvider", () => {
     for await (const ev of failing.correct({ system: [], user: "x", level: "L1", schema: {} })) evs2.push(ev);
     expect(evs2[0]).toMatchObject({ type: "error", code: "provider_unavailable" });
     expect((evs2[0] as { message: string }).message).toContain("Not logged in");
+  });
+
+  it("treats error_max_turns as success when structured_output arrived, and explains it otherwise", async () => {
+    const okScript = fakeCli(`
+      emit({ type: "stream_event", event: { type: "content_block_start", content_block: { type: "tool_use", name: "StructuredOutput" } } });
+      emit({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "input_json_delta", partial_json: "{\\"a\\":1" } } });
+      emit({ type: "user", message: { content: [{ type: "tool_result", content: "Structured output validation failed: b is required" }] } });
+      emit({ type: "stream_event", event: { type: "content_block_start", content_block: { type: "tool_use", name: "StructuredOutput" } } });
+      emit({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "input_json_delta", partial_json: "{\\"a\\":1,\\"b\\":2}" } } });
+      emit({ type: "result", subtype: "error_max_turns", is_error: true, result: "Reached max turns (6)", structured_output: { a: 1, b: 2 }, usage: {} });
+    `);
+    const p = new ClaudeCliProvider({ bin: process.execPath, binArgs: [okScript] });
+    const evs = [];
+    for await (const ev of p.correct({ system: [], user: "x", level: "L1", schema: {} })) evs.push(ev);
+    const fin = evs.find((e) => e.type === "final");
+    expect(fin && fin.type === "final" ? JSON.parse(fin.raw) : null).toEqual({ a: 1, b: 2 });
+
+    const badScript = fakeCli(`
+      emit({ type: "rate_limit_event", rate_limit_info: { status: "allowed", rateLimitType: "five_hour" } });
+      emit({ type: "user", message: { content: [{ type: "tool_result", content: "Structured output validation failed: edits must be an array" }] } });
+      emit({ type: "result", subtype: "error_max_turns", is_error: true, result: "Reached max turns (6)", usage: {} });
+    `);
+    const q = new ClaudeCliProvider({ bin: process.execPath, binArgs: [badScript] });
+    const evs2 = [];
+    for await (const ev of q.correct({ system: [], user: "x", level: "L1", schema: {} })) evs2.push(ev);
+    const err = evs2.find((e) => e.type === "error") as { message: string } | undefined;
+    expect(err?.message).toContain("error_max_turns");
+    expect(err?.message).toContain("validation failed");
+    expect(err?.message).toContain("턴 제한");
   });
 
   it("works end-to-end through the studio pipeline", async () => {

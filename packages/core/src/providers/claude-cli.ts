@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { appendFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { costUsd } from "./pricing";
@@ -12,6 +12,7 @@ export interface ClaudeCliOptions {
   timeoutMs?: number;        // 기본 180s
   effort?: "low" | "medium" | "high"; // 기본 low(API provider와 동일). 교정은 low면 충분하고 지연이 크게 준다
   cwd?: string;              // 기본: 빈 임시 디렉터리(프로젝트 CLAUDE.md·훅이 섞이지 않게)
+  logPath?: string;          // 지정하면 stream-json 원문을 그대로 덧붙여 기록(진단용). 환경 변수 CLAUDE_CLI_LOG
 }
 
 /** `claude -p --output-format stream-json`의 마지막 `result` 줄 */
@@ -27,6 +28,8 @@ interface CliResult {
 interface StreamLine {
   type?: string;
   event?: { type?: string; content_block?: { type?: string }; delta?: { type?: string; partial_json?: string; text?: string } };
+  message?: { content?: Array<{ type?: string; text?: string; content?: unknown; name?: string }> };
+  rate_limit_info?: { status?: string; resetsAt?: number; rateLimitType?: string };
 }
 
 /**
@@ -34,7 +37,8 @@ interface StreamLine {
  * `--strict-mcp-config`로 MCP 서버를, `--disable-slash-commands`로 스킬을 막는다. 구조화 출력은 내부적으로 도구 한 번을 쓰므로 turns는 2.
  * `--no-session-persistence`: ~/.claude/projects에 세션 파일을 남기지 않는다.
  */
-const ISOLATION_ARGS = ["--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence", "--max-turns", "2", "--permission-mode", "dontAsk"];
+// max-turns: 정상은 2턴(도구 호출 → 결과)이지만 구조화 출력 검증 실패 시 모델이 재시도하므로 여유를 둔다. 한도 초과여도 JSON을 이미 받았으면 성공으로 처리한다.
+const ISOLATION_ARGS = ["--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence", "--max-turns", "6", "--permission-mode", "dontAsk"];
 
 /** 콜백(stdout data)에서 제너레이터로 이벤트를 넘기는 최소 채널. */
 class Channel<T> {
@@ -72,6 +76,7 @@ export class ClaudeCliProvider implements CorrectionProvider {
   private readonly timeoutMs: number;
   private readonly effort: "low" | "medium" | "high";
   private readonly cwd: string;
+  private readonly logPath: string | null;
 
   constructor(opts: ClaudeCliOptions = {}) {
     this.bin = opts.bin ?? "claude";
@@ -80,7 +85,9 @@ export class ClaudeCliProvider implements CorrectionProvider {
     this.timeoutMs = opts.timeoutMs ?? 180_000;
     this.effort = opts.effort ?? "low";
     this.cwd = opts.cwd ?? mkdtempSync(join(tmpdir(), "gh-claude-cli-"));
+    this.logPath = opts.logPath ?? process.env["CLAUDE_CLI_LOG"] ?? null;
   }
+  private log(line: string) { if (this.logPath) { try { appendFileSync(this.logPath, line + "\n"); } catch { /* 진단용, 실패 무시 */ } } }
 
   async *correct(input: ProviderInput): AsyncIterable<ProviderEvent> {
     const system = input.system.map((b) => b.text).filter(Boolean).join("\n\n");
@@ -95,7 +102,11 @@ export class ClaudeCliProvider implements CorrectionProvider {
     ];
     const ch = new Channel<ProviderEvent>();
     let raw = ""; let stage: "thinking" | "writing" | null = null; let result: CliResult | null = null;
+    // 콜백에서 갱신되는 값은 객체에 담는다(let이면 TS가 초기값 null로 좁혀 버린다)
+    const st: { lastNote: string; rateLimit: NonNullable<StreamLine["rate_limit_info"]> | null } = { lastNote: "", rateLimit: null };
+    this.log(`# ${new Date().toISOString()} ${args.filter((a) => a.length < 80).join(" ")}`);
     const onLine = (line: string) => {
+      this.log(line);
       let j: StreamLine; try { j = JSON.parse(line) as StreamLine; } catch { return; }
       if (j.type === "stream_event" && j.event) {
         const e = j.event;
@@ -103,8 +114,18 @@ export class ClaudeCliProvider implements CorrectionProvider {
         else if (e.type === "content_block_delta" && e.delta?.type === "input_json_delta" && e.delta.partial_json) {
           if (stage !== "writing") { stage = "writing"; ch.push({ type: "status", stage }); }
           raw += e.delta.partial_json; ch.push({ type: "delta", text: e.delta.partial_json });
+        } else if (e.type === "content_block_start" && e.content_block?.type === "tool_use") {
+          // 재시도(두 번째 도구 호출)면 앞서 흘린 부분 JSON은 버려진다 — 최종본은 result.structured_output이 대신한다
+          if (raw) { raw = ""; }
         }
       } else if (j.type === "result") result = j as CliResult;
+      else if (j.type === "rate_limit_event") st.rateLimit = j.rate_limit_info ?? null;
+      else if ((j.type === "user" || j.type === "assistant") && j.message?.content) {
+        for (const c of j.message.content) {
+          if (c.type === "tool_result" && typeof c.content === "string") st.lastNote = c.content;
+          else if (c.type === "text" && c.text) st.lastNote = c.text;
+        }
+      }
     };
     const outcome = this.run(args, input.user, input.signal, onLine, () => ch.close());
     for await (const ev of ch) yield ev;
@@ -112,12 +133,21 @@ export class ClaudeCliProvider implements CorrectionProvider {
     if (r.kind === "error") { yield { type: "error", code: r.code, message: r.message }; return; }
     const res = result as CliResult | null;
     if (!res) { yield { type: "error", code: "provider_unavailable", message: `claude가 result를 내지 않았습니다: ${r.stdout.trim().slice(-200)}` }; return; }
-    if (res.is_error) { yield { type: "error", code: "provider_unavailable", message: `claude 실패(${res.subtype ?? "error"}): ${(res.result ?? "").slice(0, 300)}` }; return; }
-
     // 델타가 없었으면(구버전·비스트리밍) 결과에서 JSON을 건진다. 구조화 출력이 우선.
     let finalRaw = raw;
     if (res.structured_output !== undefined && res.structured_output !== null) finalRaw = JSON.stringify(res.structured_output);
-    else if (!finalRaw) {
+    const hasJson = (() => { try { return Boolean(finalRaw) && typeof JSON.parse(finalRaw) === "object"; } catch { return false; } })();
+    // 턴 한도 초과 등으로 is_error여도 JSON을 이미 받았으면 성공으로 본다(스키마 검증은 파이프라인이 다시 한다)
+    if (res.is_error && !hasJson) {
+      const rl = st.rateLimit;
+      const limited = Boolean(rl?.status && rl.status !== "allowed");
+      const why = [res.result, st.lastNote && st.lastNote !== res.result ? `마지막 메시지: ${st.lastNote}` : "", limited ? `사용량 창 ${rl?.rateLimitType ?? ""}: ${rl?.status}` : ""]
+        .filter(Boolean).join(" · ").slice(0, 400);
+      const hint = res.subtype === "error_max_turns" ? " (구조화 출력이 정해진 턴 안에 완성되지 않았습니다. 사용량 한도가 아니라 앱이 건 턴 제한입니다. 다시 시도하거나 CLAUDE_CLI_LOG로 원문을 확인하세요)" : "";
+      yield { type: "error", code: "provider_unavailable", message: `claude 실패(${res.subtype ?? "error"}): ${why}${hint}` };
+      return;
+    }
+    else if (!hasJson) {
       const t = (res.result ?? "").trim().replace(/^```(?:json)?\s*|\s*```$/g, "");
       const a = t.indexOf("{"), b = t.lastIndexOf("}");
       finalRaw = a >= 0 && b > a ? t.slice(a, b + 1) : t;
