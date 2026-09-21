@@ -99,6 +99,17 @@ export async function* generatePrompt(provider: CorrectionProvider, ctxIn: Studi
   if (!spec) { yield { event: "error", data: { code: "schema_invalid", message: "생성 결과가 스키마와 맞지 않습니다." } }; return { spec: null, rendered: null, checks: [], usage: null }; }
   spec = unmaskDeep(spec, m);
   spec.language = ctxIn.language;
+  spec.runtime = ctxIn.runtime;
+  if (spec.runtime === "chat") spec.starting_points = [];
+  // short는 길이가 곧 품질이다. 모델이 넘치게 쓰면 앞쪽(중요도 순)만 남긴다.
+  if (ctxIn.length === "short") {
+    spec.success_criteria = spec.success_criteria.slice(0, 4);
+    spec.hard_rules = spec.hard_rules.slice(0, 3);
+    spec.process = spec.process && spec.process.length > 4 ? spec.process.slice(0, 4) : spec.process;
+    spec.self_check = spec.self_check.slice(0, 3);
+    spec.failure_guards = spec.failure_guards.slice(0, 2);
+    spec.examples = null;
+  }
   spec.inputs = spec.inputs.map((i) => ({ ...i, name: i.name.toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/^_+|_+$/g, "") || "input" }));
 
   const rendered = renderClaude(spec);

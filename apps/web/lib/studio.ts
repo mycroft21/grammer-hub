@@ -1,5 +1,5 @@
 import "server-only";
-import { PromptLanguage, Purpose, renderRulesSnapshot, type StudioContext, type StudioRequest } from "@grammer-hub/core";
+import { PromptLanguage, Purpose, defaultRuntime, renderRulesSnapshot, type StudioContext, type StudioRequest } from "@grammer-hub/core";
 import { listRules } from "@grammer-hub/db";
 import { z } from "zod";
 import { getDb, getUser } from "./db";
@@ -8,7 +8,7 @@ import { getProvider } from "./providers";
 
 /** 요청 → StudioContext. 어투 규칙은 사용자가 켰을 때만(기본 중립). */
 export function toStudioContext(req: StudioRequest): StudioContext {
-  const ctx: StudioContext = { purpose: req.purpose, subtype: req.subtype ?? null, goal: req.goal.normalize("NFC"), length: req.length, language: req.promptLanguage };
+  const ctx: StudioContext = { purpose: req.purpose, subtype: req.subtype ?? null, goal: req.goal.normalize("NFC"), length: req.length, language: req.promptLanguage, runtime: req.runtime ?? defaultRuntime(req.purpose) };
   if (req.answers) ctx.answers = req.answers;
   if (req.assumptions) ctx.assumptions = req.assumptions;
   if (req.includeStyleRules) {

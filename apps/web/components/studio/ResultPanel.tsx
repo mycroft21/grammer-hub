@@ -26,6 +26,7 @@ export function RenderedView({ rendered, onCopy }: { rendered: RenderedPrompt; o
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <Segmented size="small" value={tab} onChange={(v) => setTab(v as typeof tab)} options={[{ value: "combined", label: "한 덩어리" }, { value: "system", label: "System" }, { value: "user", label: "User" }]} />
+        {rendered.runtime === "claude_code" && <Tag color="green" style={{ fontSize: 11 }}>Claude Code용 · 붙여넣기 없이 실행</Tag>}
         {rendered.language === "en" && <Tag color="geekblue" style={{ fontSize: 11 }}>EN 지시문 · 답변 한국어</Tag>}
         {rendered.variables.length > 0 && <Typography.Text type="secondary" style={{ fontSize: 12 }}>변수 {rendered.variables.map((v) => `{{${v}}}`).join(" ")}</Typography.Text>}
         <Button data-testid="studio-copy" data-done={done ? "1" : "0"} className="ml-auto" size="small" type={done ? "primary" : "default"} icon={<CopyOutlined />} onClick={copy}>복사</Button>

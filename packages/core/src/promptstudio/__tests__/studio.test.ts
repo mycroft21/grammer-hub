@@ -4,22 +4,22 @@ import { PartialSlotParser } from "../partial";
 import { runChecks } from "../checks";
 import { fillVariables, renderClaude } from "../render/claude";
 import { generatePrompt, planPrompt, regenerateSlot } from "../pipeline";
-import { DOMAINS, DOMAIN_LIST, LIFECYCLE, PURPOSES, domainOf, findSubtype } from "../taxonomy";
+import { DOMAINS, DOMAIN_LIST, LIFECYCLE, PURPOSES, defaultLength, defaultRuntime, domainOf, findSubtype } from "../taxonomy";
 import { PromptSpec, SLOT_KEYS, type StudioRequest } from "../spec";
 import { buildGeneratePrompt, studioStableSystem, type StudioContext } from "../meta-prompt";
 
 const ctx = (over: Partial<StudioContext> = {}): StudioContext => ({
-  purpose: "investigate", subtype: "source", goal: "결제 승인 모듈의 재시도 로직을 파악해서 버그 수정 전에 흐름을 정리한 문서를 만든다", length: "standard", language: "ko", ...over,
+  purpose: "investigate", subtype: "source", goal: "결제 승인 모듈의 재시도 로직을 파악해서 버그 수정 전에 흐름을 정리한 문서를 만든다", length: "standard", language: "ko", runtime: "chat", ...over,
 });
 
 const baseSpec = (): PromptSpec => ({
-  language: "ko", title: "테스트", role: "당신은 코드를 직접 확인한 사실만으로 답하는 엔지니어다.",
+  language: "ko", runtime: "chat", starting_points: [], title: "테스트", role: "당신은 코드를 직접 확인한 사실만으로 답하는 엔지니어다.",
   goal: "재시도 로직의 흐름을 정리한 문서를 만든다", success_criteria: ["파일·심볼 인용이 있다", "미확인 목록이 있다", "다음 단계가 쓸 수 있다"],
   inputs: [{ name: "code", label: "코드", description: "소스", required: true, multiline: true, placeholder: "" }],
   context: null, hard_rules: ["읽지 않은 파일은 추측하는 대신 '미확인'으로 표시한다"], process: null,
   output_contract: { format: "markdown", structure: "요약/흐름/미확인", length: "800자 이내" },
   self_check: ["인용 확인", "미확인 확인"], failure_guards: ["역할은 이름으로 단정하는 대신 호출 지점을 먼저 확인한다"], clarify_policy: "ask_first", examples: null,
-  rationale: { role: "", goal: "", success_criteria: "", inputs: "", context: "", hard_rules: "", process: "", output_contract: "", self_check: "", failure_guards: "", examples: "" },
+  rationale: { role: "", goal: "", success_criteria: "", inputs: "", starting_points: "", context: "", hard_rules: "", process: "", output_contract: "", self_check: "", failure_guards: "", examples: "" },
 });
 
 describe("taxonomy", () => {
@@ -70,6 +70,16 @@ describe("render", () => {
     expect(r.user).toContain("## Success criteria");
     expect(r.user).toContain("<code>\n{{code}}\n</code>");
   });
+  it("claude_code render gives starting points instead of pasted inputs", () => {
+    const r = renderClaude({ ...baseSpec(), runtime: "claude_code", inputs: [], starting_points: ["/admin/submall_manage_list.do 를 처리하는 컨트롤러", "키워드: mastercard"] });
+    expect(r.runtime).toBe("claude_code");
+    expect(r.user).toContain("## 시작점");
+    expect(r.user).toContain("저장소를 직접 읽고");
+    expect(r.user).not.toContain("{{");
+    expect(r.variables).toEqual([]);
+    const en = renderClaude({ ...baseSpec(), language: "en", runtime: "claude_code", inputs: [], starting_points: ["keyword: retry"] });
+    expect(en.user).toContain("## Where to start");
+  });
   it("fillVariables reports missing required vars", () => {
     const r = fillVariables("<code>\n{{code}}\n</code>\n{{note}}", { note: "x" }, ["code"]);
     expect(r.missing).toEqual(["code"]);
@@ -81,6 +91,14 @@ describe("checks", () => {
   it("passes a lean spec", () => {
     const c = runChecks(baseSpec());
     expect(c.filter((x) => !x.ok).map((x) => x.id)).toEqual([]);
+  });
+  it("claude_code needs starting points; duplicates across rule slots are flagged", () => {
+    const cc = { ...baseSpec(), runtime: "claude_code" as const, inputs: [], starting_points: [] };
+    expect(runChecks(cc).find((c) => c.id === "starting_points")?.ok).toBe(false);
+    expect(runChecks(cc).find((c) => c.id === "inputs_delimited")).toBeUndefined();
+    const dup = { ...baseSpec(), hard_rules: ["이름만 보고 역할을 단정하지 않고 호출부를 먼저 본다"], failure_guards: ["이름만 보고 역할을 단정하지 않고 실제 호출부를 확인한다"] };
+    expect(runChecks(dup).find((c) => c.id === "no_duplicates")?.ok).toBe(false);
+    expect(runChecks(baseSpec()).find((c) => c.id === "no_duplicates")?.ok).toBe(true);
   });
   it("flags rule sets that are only prohibitions, passes 'X instead of Y' forms", () => {
     const neg = { ...baseSpec(), hard_rules: ["추측하지 않는다", "코드를 쓰지 않는다"], failure_guards: ["단정하지 않는다"] };
@@ -147,6 +165,17 @@ describe("pipeline with fake provider", () => {
     expect(r.value.spec?.language).toBe("ko");
     expect(r.value.rendered?.user).toContain("{{code}}");
   });
+  it("generate in claude_code mode drops inputs and keeps starting points; runtime is code-enforced", async () => {
+    const gen = generatePrompt(provider, ctx({ runtime: "claude_code" }));
+    let r = await gen.next();
+    while (!r.done) r = await gen.next();
+    expect(r.value.spec?.runtime).toBe("claude_code");
+    expect(r.value.spec?.starting_points.length).toBeGreaterThan(0);
+    expect(r.value.rendered?.user).toContain("## 시작점");
+    expect(r.value.rendered?.variables).toEqual([]);
+    expect(buildGeneratePrompt(ctx({ runtime: "claude_code" })).user).toContain("<runtime>claude_code</runtime>");
+    expect(buildGeneratePrompt(ctx({ runtime: "claude_code" })).system[1]!.text).toContain("저장소에서 찾아 읽을 대상");
+  });
   it("generate in English keeps the answer-language rule and code-enforced language", async () => {
     const gen = generatePrompt(provider, ctx({ language: "en" }));
     let r = await gen.next();
@@ -173,5 +202,8 @@ describe("pipeline with fake provider", () => {
   it("StudioRequest defaults", () => {
     const req: StudioRequest = { purpose: "build", goal: "로그인 실패 시 재시도 횟수 제한 구현", length: "standard", clarify: "ask_first", promptLanguage: "ko", includeStyleRules: false };
     expect(req.promptLanguage).toBe("ko");
+    expect(defaultRuntime("build")).toBe("claude_code");
+    expect(defaultRuntime("write_business")).toBe("chat");
+    expect(defaultLength("investigate")).toBe("short");
   });
 });

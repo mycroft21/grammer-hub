@@ -71,6 +71,7 @@ function fakeStudio(input: ProviderInput): unknown | null {
   const props = (input.schema as { properties?: Record<string, unknown> }).properties ?? {};
   const goal = /<goal>\n([\s\S]*?)\n<\/goal>/.exec(input.user)?.[1]?.trim() ?? "";
   const lang = /<language>(ko|en)<\/language>/.exec(input.user)?.[1] ?? "ko";
+  const runtime = /<runtime>(claude_code|chat)<\/runtime>/.exec(input.user)?.[1] ?? "chat";
   const answered = /<answers>|<assumptions>/.test(input.user);
   if ("mode" in props && "questions" in props) {
     if (!answered && goal.length < 30) {
@@ -83,13 +84,16 @@ function fakeStudio(input: ProviderInput): unknown | null {
   }
   if ("success_criteria" in props && "hard_rules" in props) {
     const en = lang === "en";
+    const cc = runtime === "claude_code";
     return {
       language: lang,
+      runtime,
+      starting_points: cc ? (en ? ["Controller that handles the URL in the goal", "search keyword: retry"] : ["목표에 적힌 URL을 처리하는 컨트롤러", "검색 키워드: retry"]) : [],
       title: "테스트 프롬프트",
       role: en ? "You are a senior engineer who verifies claims against the actual code before answering." : "당신은 코드를 직접 확인한 사실만으로 답하는 시니어 엔지니어다.",
       goal: en ? `Deliver a markdown report that accomplishes: ${goal}` : `다음 목표를 달성하는 마크다운 보고서를 작성한다: ${goal}`,
       success_criteria: en ? ["Every claim cites a file or symbol", "Unverified items are listed separately", "The result can be used as-is by the next step"] : ["모든 주장에 파일·심볼 인용이 있다", "확인하지 못한 항목이 따로 목록으로 남는다", "다음 단계가 그대로 쓸 수 있는 형식이다"],
-      inputs: [{ name: "code", label: "코드", description: en ? "Source files or excerpts to inspect" : "확인할 소스 파일·발췌", required: true, multiline: true, placeholder: en ? "Paste code here" : "코드를 붙여 넣으세요" }],
+      inputs: cc ? [] : [{ name: "code", label: "코드", description: en ? "Source files or excerpts to inspect" : "확인할 소스 파일·발췌", required: true, multiline: true, placeholder: en ? "Paste code here" : "코드를 붙여 넣으세요" }],
       context: null,
       hard_rules: en ? ["Read a file before describing its behavior; if you cannot, mark it unverified instead of guessing", "Keep refactoring ideas in a separate final section instead of mixing them into findings"] : ["파일의 동작은 읽은 뒤에만 설명하고, 못 읽었으면 추측 대신 '미확인'으로 표시한다", "리팩터링 제안은 조사 결과에 섞지 않고 마지막 별도 절에 둔다"],
       process: null,
@@ -98,7 +102,7 @@ function fakeStudio(input: ProviderInput): unknown | null {
       failure_guards: en ? ["Check the call sites first instead of inferring a function's role from its name"] : ["함수 역할은 이름으로 단정하는 대신 실제 호출 지점을 먼저 확인한다"],
       clarify_policy: "assume_and_state",
       examples: null,
-      rationale: { role: "판단 기준을 드러내는 역할", goal: "결과물을 명시", success_criteria: "검증 가능한 기준", inputs: "매번 달라지는 코드만 변수", context: "목표에 확정된 사실 없음", hard_rules: "흔한 실패 금지", process: "단일 패스", output_contract: "다음 단계 입력 형식", self_check: "확인 동작", failure_guards: "씨앗 반영", examples: "형식이 평범해 생략" },
+      rationale: { role: "판단 기준을 드러내는 역할", goal: "결과물을 명시", success_criteria: "검증 가능한 기준", inputs: "매번 달라지는 코드만 변수", starting_points: cc ? "URL에서 컨트롤러로" : "채팅이라 없음", context: "목표에 확정된 사실 없음", hard_rules: "흔한 실패 금지", process: "단일 패스", output_contract: "다음 단계 입력 형식", self_check: "확인 동작", failure_guards: "씨앗 반영", examples: "형식이 평범해 생략" },
     };
   }
   return null;

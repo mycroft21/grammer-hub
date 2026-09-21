@@ -114,15 +114,15 @@ describe("ClaudeCliProvider", () => {
 
   it("works end-to-end through the studio pipeline", async () => {
     const script = fakeCli(`
-      const spec = { language: "ko", title: "T", role: "판단 기준이 있는 역할 한 문장이다.", goal: "흐름을 정리한 문서를 만든다", success_criteria: ["a", "b", "c"],
+      const spec = { language: "ko", runtime: "chat", starting_points: [], title: "T", role: "판단 기준이 있는 역할 한 문장이다.", goal: "흐름을 정리한 문서를 만든다", success_criteria: ["a", "b", "c"],
         inputs: [{ name: "code", label: "코드", description: "소스", required: true, multiline: true, placeholder: "" }], context: null,
         hard_rules: ["추측 대신 미확인으로 표시한다"], process: null, output_contract: { format: "markdown", structure: "요약/흐름", length: "짧게" },
         self_check: ["x", "y"], failure_guards: ["이름 대신 호출을 먼저 본다"], clarify_policy: "ask_first", examples: null,
-        rationale: { role: "", goal: "", success_criteria: "", inputs: "", context: "", hard_rules: "", process: "", output_contract: "", self_check: "", failure_guards: "", examples: "" } };
+        rationale: { role: "", goal: "", success_criteria: "", inputs: "", starting_points: "", context: "", hard_rules: "", process: "", output_contract: "", self_check: "", failure_guards: "", examples: "" } };
       streamJson(spec, { usage: { input_tokens: 10, output_tokens: 5 } });
     `);
     const p = new ClaudeCliProvider({ bin: process.execPath, binArgs: [script] });
-    const gen = generatePrompt(p, { purpose: "investigate", subtype: "source", goal: "결제 재시도 로직 조사 문서", length: "short", language: "ko" });
+    const gen = generatePrompt(p, { purpose: "investigate", subtype: "source", goal: "결제 재시도 로직 조사 문서", length: "short", language: "ko", runtime: "chat" });
     const seen: string[] = [];
     let r = await gen.next();
     while (!r.done) { seen.push(r.value.event); r = await gen.next(); }

@@ -14,8 +14,13 @@ export function runChecks(spec: PromptSpec): CheckResult[] {
     "목표에 '무엇을 손에 쥐는지'가 드러나야 합니다.");
   add("criteria_verifiable", "성공 기준이 3개 이상이고 검증 가능하다", spec.success_criteria.length >= 3 && !spec.success_criteria.some((c) => VAGUE.test(c + " ")),
     `${spec.success_criteria.length}개. '좋은/적절한' 같은 말은 기준이 아닙니다.`);
-  add("inputs_delimited", "입력이 변수로 분리되어 구분자로 감싸진다", spec.inputs.length > 0 && spec.inputs.every((i) => /^[a-z][a-z0-9_]*$/.test(i.name)),
-    spec.inputs.length === 0 ? "입력 변수가 없습니다. 매번 달라지는 것이 정말 없는지 확인하세요." : "변수명은 영문 snake_case여야 렌더에서 태그로 쓸 수 있습니다.");
+  if (spec.runtime === "claude_code") {
+    add("starting_points", "저장소에서 어디부터 볼지 시작점이 있다", spec.starting_points.length > 0 && spec.inputs.every((i) => /^[a-z][a-z0-9_]*$/.test(i.name)),
+      spec.starting_points.length === 0 ? "URL·경로·클래스명·키워드 중 하나는 있어야 모델이 헤매지 않습니다." : "변수명은 영문 snake_case여야 합니다.");
+  } else {
+    add("inputs_delimited", "입력이 변수로 분리되어 구분자로 감싸진다", spec.inputs.length > 0 && spec.inputs.every((i) => /^[a-z][a-z0-9_]*$/.test(i.name)),
+      spec.inputs.length === 0 ? "입력 변수가 없습니다. 매번 달라지는 것이 정말 없는지 확인하세요." : "변수명은 영문 snake_case여야 렌더에서 태그로 쓸 수 있습니다.");
+  }
   add("rules_lean", "절대 규칙이 5개 이하다", spec.hard_rules.length <= 5, `${spec.hard_rules.length}개. 많으면 아무것도 지켜지지 않습니다.`);
   add("output_specified", "출력 형식에 구성과 분량이 있다", spec.output_contract.structure.trim().length >= 5 && spec.output_contract.length.trim().length >= 2,
     "'마크다운으로'는 형식이 아닙니다. 섹션·표 구성과 분량 기준이 필요합니다.");
@@ -26,6 +31,17 @@ export function runChecks(spec: PromptSpec): CheckResult[] {
   const bare = rules.filter((r) => BARE_NEG.test(r) && !ALT.test(r)).length;
   add("rules_actionable", "규칙이 '하지 말 것'만이 아니라 '대신 할 것'을 담는다", rules.length === 0 || bare * 2 <= rules.length,
     `${rules.length}개 중 ${bare}개가 금지만 있습니다. 'X 대신 Y', 'Y를 먼저 확인' 형태가 더 잘 지켜집니다.`);
+  // 같은 말이 규칙·방어·확인에 반복되면 길이만 늘고 무게는 준다
+  const norm = (x: string) => x.replace(/[\s.,·()'"’“”]/g, "").toLowerCase();
+  const pools: [string, string[]][] = [["hard_rules", spec.hard_rules], ["failure_guards", spec.failure_guards], ["self_check", spec.self_check]];
+  const dups: string[] = [];
+  for (let i = 0; i < pools.length; i++) for (let j = i + 1; j < pools.length; j++) {
+    for (const a of pools[i]![1]) for (const b of pools[j]![1]) {
+      const na = norm(a), nb = norm(b);
+      if (na.length >= 8 && nb.length >= 8 && (na.includes(nb.slice(0, 14)) || nb.includes(na.slice(0, 14)))) dups.push(`${pools[i]![0]}↔${pools[j]![0]}`);
+    }
+  }
+  add("no_duplicates", "규칙·방어·확인에 같은 말이 반복되지 않는다", dups.length === 0, dups.length ? `겹침: ${[...new Set(dups)].join(", ")}` : "한 아이디어는 한 곳에만.");
   add("examples_paired", "예시가 있다면 입력·출력이 짝을 이룬다", !spec.examples || spec.examples.every((e) => e.input.trim() && e.output.trim()),
     "입력만 있거나 출력만 있는 예시는 오히려 혼란을 줍니다.");
   return out;

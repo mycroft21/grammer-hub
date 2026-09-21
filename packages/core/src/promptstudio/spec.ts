@@ -38,6 +38,13 @@ export const OutputFormat = z.enum(["markdown", "json", "table", "code", "prose"
 export const PromptLanguage = z.enum(["ko", "en"]);
 export type PromptLanguage = z.infer<typeof PromptLanguage>;
 
+/**
+ * 실행 환경. claude_code = 대상 모델이 저장소·파일·셸에 직접 접근한다(코드 붙여넣기 없이 시작점만 준다).
+ * chat = 채팅창에 자료를 붙여넣어 쓴다(입력 변수로 받는다). 개발 대분류 기본은 claude_code.
+ */
+export const Runtime = z.enum(["claude_code", "chat"]);
+export type Runtime = z.infer<typeof Runtime>;
+
 /** 프롬프트가 받을 입력 변수. 렌더 결과에 `{{name}}`으로 들어가고 보관함에서 폼으로 채운다. */
 export const InputVar = z.object({
   name: z.string(),          // 영문 snake_case
@@ -55,11 +62,14 @@ export type InputVar = z.infer<typeof InputVar>;
  */
 export const PromptSpec = z.object({
   language: PromptLanguage,
+  runtime: Runtime,
   title: z.string(),
   role: z.string(),
   goal: z.string(),
   success_criteria: z.array(z.string()),
   inputs: z.array(InputVar),
+  /** claude_code일 때 탐색 시작점(URL·경로·심볼·키워드). chat이면 빈 배열. */
+  starting_points: z.array(z.string()),
   context: z.string().nullable(),
   hard_rules: z.array(z.string()),
   process: z.array(z.string()).nullable(),
@@ -73,7 +83,7 @@ export const PromptSpec = z.object({
   clarify_policy: ClarifyPolicy,
   examples: z.array(z.object({ input: z.string(), output: z.string() })).nullable(),
   rationale: z.object({
-    role: z.string(), goal: z.string(), success_criteria: z.string(), inputs: z.string(), context: z.string(),
+    role: z.string(), goal: z.string(), success_criteria: z.string(), inputs: z.string(), starting_points: z.string(), context: z.string(),
     hard_rules: z.string(), process: z.string(), output_contract: z.string(), self_check: z.string(), failure_guards: z.string(), examples: z.string(),
   }),
 });
@@ -85,6 +95,7 @@ export const PromptSpecStrict = PromptSpec.extend({
   goal: z.string().min(10).max(600),
   success_criteria: z.array(z.string().min(5).max(200)).min(2).max(7),
   inputs: z.array(InputVar).max(8),
+  starting_points: z.array(z.string().min(2).max(300)).max(8),
   hard_rules: z.array(z.string().min(3).max(200)).max(7),
   process: z.array(z.string().min(3).max(200)).max(8).nullable(),
   self_check: z.array(z.string().min(3).max(200)).min(2).max(8),
@@ -93,10 +104,10 @@ export const PromptSpecStrict = PromptSpec.extend({
 });
 
 /** 슬롯 이름(스트리밍 이벤트·블록 재생성 단위). rationale은 별도 취급. */
-export const SLOT_KEYS = ["title", "role", "goal", "success_criteria", "inputs", "context", "hard_rules", "process", "output_contract", "self_check", "failure_guards", "clarify_policy", "examples"] as const;
+export const SLOT_KEYS = ["title", "role", "goal", "success_criteria", "inputs", "starting_points", "context", "hard_rules", "process", "output_contract", "self_check", "failure_guards", "clarify_policy", "examples"] as const;
 export type SlotKey = (typeof SLOT_KEYS)[number];
 export const SLOT_KO: Record<SlotKey, string> = {
-  title: "제목", role: "역할", goal: "목표", success_criteria: "성공 기준", inputs: "입력", context: "맥락",
+  title: "제목", role: "역할", goal: "목표", success_criteria: "성공 기준", inputs: "입력", starting_points: "시작점", context: "맥락",
   hard_rules: "절대 규칙", process: "과정", output_contract: "출력 형식", self_check: "자기 점검",
   failure_guards: "방어 지침", clarify_policy: "모호할 때", examples: "예시",
 };
@@ -129,6 +140,7 @@ export const StudioRequest = z.object({
   length: PromptLength.default("standard"),
   clarify: ClarifyPolicy.default("ask_first"),
   promptLanguage: PromptLanguage.default("ko"),               // en = 지시문 영어, 답변은 한국어
+  runtime: Runtime.nullable().optional(),                      // 비우면 대분류 기본(개발=claude_code, 그 외=chat)
   answers: z.record(z.string(), z.string()).optional(),   // 질문 id → 선택값(또는 직접 입력)
   assumptions: z.array(z.string()).optional(),            // 사용자가 수정한 가정
   includeStyleRules: z.boolean().default(false),          // 기본 꺼짐 = 중립

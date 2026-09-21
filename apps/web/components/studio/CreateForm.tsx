@@ -2,11 +2,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Input, Segmented, Select, Space, Switch, Tooltip, Typography } from "antd";
 import { ArrowRightOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { DOMAINS, DOMAIN_LIST, PURPOSES, type ClarifyPolicy, type Domain, type PromptLanguage, type PromptLength, type Purpose, type StudioRequest } from "@grammer-hub/core";
+import { DOMAINS, DOMAIN_LIST, PURPOSES, defaultLength, defaultRuntime, type ClarifyPolicy, type Domain, type PromptLanguage, type PromptLength, type Purpose, type Runtime, type StudioRequest } from "@grammer-hub/core";
 import { CLARIFY_KO, LANG_LABEL, LENGTH_KO } from "./labels";
 
 const DRAFT_KEY = "gh:studio:draft";
-type Draft = Pick<StudioRequest, "purpose" | "subtype" | "goal" | "length" | "clarify" | "promptLanguage" | "includeStyleRules">;
+type Draft = Pick<StudioRequest, "purpose" | "subtype" | "goal" | "length" | "clarify" | "promptLanguage" | "includeStyleRules"> & { runtime?: Runtime | null | undefined };
+const RUNTIME_LABEL: Record<Runtime, string> = { claude_code: "Claude Code (저장소 직접 탐색)", chat: "채팅 (자료 붙여넣기)" };
 function loadDraft(): Draft | null {
   try { const raw = localStorage.getItem(DRAFT_KEY); return raw ? (JSON.parse(raw) as Draft) : null; } catch { return null; }
 }
@@ -21,7 +22,8 @@ export function CreateForm({ busy, error, initial, onSubmit }: { busy: boolean; 
   const [purpose, setPurpose] = useState<Purpose>(() => seed?.purpose ?? "investigate");
   const [subtype, setSubtype] = useState<string | null>(() => seed?.subtype ?? null);
   const [goal, setGoal] = useState(() => seed?.goal ?? "");
-  const [length, setLength] = useState<PromptLength>(() => seed?.length ?? "standard");
+  const [length, setLength] = useState<PromptLength>(() => seed?.length ?? defaultLength(seed?.purpose ?? "investigate"));
+  const [runtime, setRuntime] = useState<Runtime>(() => seed?.runtime ?? defaultRuntime(seed?.purpose ?? "investigate"));
   const [clarify, setClarify] = useState<ClarifyPolicy>(() => seed?.clarify ?? "ask_first");
   const [language, setLanguage] = useState<PromptLanguage>(() => seed?.promptLanguage ?? "ko");
   const [includeStyleRules, setIncludeStyleRules] = useState(() => seed?.includeStyleRules ?? false);
@@ -33,26 +35,28 @@ export function CreateForm({ busy, error, initial, onSubmit }: { busy: boolean; 
     const d = loadDraft();
     if (d && d.goal) {
       setDomain(PURPOSES[d.purpose]?.domain ?? "dev"); setPurpose(d.purpose); setSubtype(d.subtype ?? null); setGoal(d.goal);
-      setLength(d.length); setClarify(d.clarify); setLanguage(d.promptLanguage); setIncludeStyleRules(d.includeStyleRules); setRestored(true);
+      setLength(d.length); setClarify(d.clarify); setLanguage(d.promptLanguage); setIncludeStyleRules(d.includeStyleRules); setRuntime(d.runtime ?? defaultRuntime(d.purpose)); setRestored(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
-    try { if (goal.trim()) localStorage.setItem(DRAFT_KEY, JSON.stringify({ purpose, subtype, goal, length, clarify, promptLanguage: language, includeStyleRules } satisfies Draft)); } catch { /* noop */ }
-  }, [purpose, subtype, goal, length, clarify, language, includeStyleRules]);
+    try { if (goal.trim()) localStorage.setItem(DRAFT_KEY, JSON.stringify({ purpose, subtype, goal, length, clarify, promptLanguage: language, includeStyleRules, runtime } satisfies Draft)); } catch { /* noop */ }
+  }, [purpose, subtype, goal, length, clarify, language, includeStyleRules, runtime]);
 
   const def = PURPOSES[purpose];
   const sub = useMemo(() => def.subtypes.find((s) => s.id === subtype) ?? null, [def, subtype]);
   const canRun = goal.trim().length >= 4 && !busy;
 
-  const submit = () => onSubmit({ purpose, subtype, goal: goal.trim(), length, clarify, promptLanguage: language, includeStyleRules, provider: null });
+  const submit = () => onSubmit({ purpose, subtype, goal: goal.trim(), length, clarify, promptLanguage: language, includeStyleRules, runtime, provider: null });
+  // 대분류가 바뀌면 실행 환경·길이 기본값을 따라 바꾼다(개발 = Claude Code·짧게)
+  const pickDomain = (d: Domain) => { const p = DOMAINS[d].purposes[0]!; setDomain(d); setPurpose(p); setSubtype(null); setRuntime(defaultRuntime(p)); setLength(defaultLength(p)); };
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>목적</Typography.Text>
         <div className="mt-1 flex flex-wrap items-center gap-2">
-          <Segmented data-testid="studio-domain" value={domain} onChange={(v) => { const d = v as Domain; setDomain(d); setPurpose(DOMAINS[d].purposes[0]!); setSubtype(null); }}
+          <Segmented data-testid="studio-domain" value={domain} onChange={(v) => pickDomain(v as Domain)}
             options={DOMAIN_LIST.map((d) => ({ value: d, label: DOMAINS[d].label }))} />
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>{DOMAINS[domain].short}</Typography.Text>
         </div>
@@ -80,6 +84,13 @@ export function CreateForm({ busy, error, initial, onSubmit }: { busy: boolean; 
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>목표 — 프롬프트를 받은 모델이 끝냈을 때 무엇을 손에 쥐어야 하나</Typography.Text>
         <Input.TextArea data-testid="studio-goal" className="mt-1" autoSize={{ minRows: 3, maxRows: 8 }} maxLength={2000} showCount value={goal} onChange={(e) => setGoal(e.target.value)}
           placeholder={PLACEHOLDER[domain]} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && canRun) submit(); }} />
+      </div>
+
+      <div>
+        <Tooltip title="Claude Code: 대상 모델이 저장소를 직접 읽으므로 코드를 붙여넣지 않고 시작점(URL·경로·키워드)만 줍니다. 채팅: 자료를 붙여넣는 입력 변수를 만듭니다.">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }} className="block">실행 환경</Typography.Text>
+        </Tooltip>
+        <Segmented data-testid="studio-runtime" size="small" value={runtime} onChange={(v) => setRuntime(v as Runtime)} options={(Object.keys(RUNTIME_LABEL) as Runtime[]).map((k) => ({ value: k, label: RUNTIME_LABEL[k] }))} />
       </div>
 
       <div className="flex flex-wrap items-end gap-x-6 gap-y-3">

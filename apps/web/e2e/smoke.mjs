@@ -102,13 +102,14 @@ try {
   // ── 프롬프트 스튜디오: 질문 → 생성 → 보관 → 보관함에서 변수 채워 복사 ──
   await page.goto(`http://127.0.0.1:${PORT}/prompts`, { waitUntil: "load" });
   await fillUntil(page, "[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]", "재시도 로직 조사", "[data-testid=studio-run]:not([disabled])");
+  await page.click("[data-testid=studio-runtime] >> text=채팅");   // 변수 채우기 흐름을 보려고 붙여넣기 모드로
   await page.click("[data-testid=studio-run]");
   await page.waitForSelector("[data-testid=studio-ask]", { timeout: 15000 });
   check("studio asks a question for a short goal", (await page.locator("[data-testid=studio-option]").count()) >= 2);
   await page.locator("label.ant-radio-button-wrapper:has([data-testid=studio-option])").first().click();
   await page.click("[data-testid=studio-answer]");
   await page.waitForSelector("[data-testid=studio-save]:not([disabled])", { timeout: 20000 });
-  check("studio renders all slot cards", (await page.locator("[data-slot]").count()) === 13);
+  check("studio renders all slot cards", (await page.locator("[data-slot]").count()) === 14);
   const rendered = await page.textContent("[data-testid=studio-rendered]");
   check("rendered prompt has delimited variable", rendered.includes("<code>") && rendered.includes("{{code}}"));
   check("checks panel present", (await page.locator("[data-testid=studio-checks]").count()) === 1);
@@ -133,6 +134,7 @@ try {
   await page.waitForSelector("[data-testid=studio-save]:not([disabled])", { timeout: 20000 });
   const en = await page.textContent("[data-testid=studio-rendered]");
   check("english prompt forces korean answers", en.includes("## Hard rules") && en.includes("respond in Korean"));
+  check("dev domain defaults to Claude Code runtime (starting points, no variables)", en.includes("## Where to start") && !en.includes("{{"));
 
   check("no page errors", pageErrors.length === 0);
   if (pageErrors.length) console.log(pageErrors);

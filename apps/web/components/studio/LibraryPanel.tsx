@@ -107,7 +107,7 @@ function PromptDrawer({ id, onClose, onChanged }: { id: string | null; onClose: 
           <Segmented size="small" value={tab} onChange={(v) => setTab(v as typeof tab)} options={[{ value: "fill", label: "변수 채워 복사" }, { value: "blocks", label: "블록" }, { value: "versions", label: `버전 ${data.versions.length}` }]} />
           {tab === "fill" && (
             <div className="flex flex-col gap-3">
-              {spec.inputs.length === 0 ? <Typography.Text type="secondary">입력 변수가 없는 프롬프트입니다. 그대로 복사하세요.</Typography.Text> : spec.inputs.map((i) => (
+              {spec.inputs.length === 0 ? <Typography.Text type="secondary">{spec.runtime === "claude_code" ? "Claude Code에서 그대로 붙여 넣어 실행하는 프롬프트입니다(저장소를 직접 읽습니다)." : "입력 변수가 없는 프롬프트입니다. 그대로 복사하세요."}</Typography.Text> : spec.inputs.map((i) => (
                 <div key={i.name}>
                   <Typography.Text style={{ fontSize: 12 }}>{i.label}{i.required && <span style={{ color: "var(--ant-color-error)" }}> *</span>} <code style={{ fontSize: 11, color: "var(--ant-color-text-tertiary)" }}>{`{{${i.name}}}`}</code></Typography.Text>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }} className="block">{i.description}</Typography.Text>

@@ -47,8 +47,8 @@ const investigate: PurposeDef = {
   id: "investigate", domain: "dev", label: "조사", order: 1, next: "plan",
   short: "코드·로직·구조를 확인해 계획에 필요한 맥락을 확보한다",
   principles: [
-    "무엇을 알면 다음 행동(계획)이 바뀌는지, 즉 '결정 질문'을 먼저 쓴다.",
-    "확인한 사실과 추측을 구분한다. 코드에서 직접 본 것은 파일·심볼을 인용하고, 안 본 것은 '미확인'으로 남긴다.",
+    "무엇을 알면 다음 행동(계획)이 바뀌는지를 먼저 쓴다.",
+    "확인한 사실과 추측을 구분한다. 코드에서 직접 본 것은 파일·메서드를 인용하고, 안 본 것은 '미확인'으로 남긴다.",
     "전체를 균등하게 설명하지 않는다. 다음 행동에 필요한 부분부터, 나머지는 목록으로.",
     "조사 결과는 계획 단계의 입력이 된다. 계획이 바로 쓸 수 있는 형식(현재 구조 · 제약 · 미결 질문)으로 끝낸다.",
     "자료에 없는 내용을 있는 것처럼 채우지 않는다. 출처 없는 주장은 '확인 필요'.",
@@ -65,7 +65,7 @@ const investigate: PurposeDef = {
         guards: ["읽지 않은 파일의 동작을 추측해 단정하지 않는다", "이름만 보고 역할을 단정하지 않는다(실제 호출을 확인한다)", "리팩터링 제안을 조사에 섞지 않는다"],
         process: ["질문과 다음 행동을 확인한다", "진입점을 찾는다", "호출 흐름을 따라간다", "제약·부작용을 표시한다", "미확인 목록"],
         outputFormat: "markdown",
-        handoff: ["관련 파일·심볼 목록", "현재 동작 요약(입력→처리→출력)", "제약·부작용", "미확인 질문"],
+        handoff: ["관련 파일·메서드 목록", "현재 동작 요약(입력→처리→출력)", "제약·부작용", "미확인 질문"],
       } },
     { id: "logic", label: "로직 조사", hint: "특정 동작이 왜 그렇게 되는지 원인을 추적한다",
       inputs: [{ name: "behavior", label: "관찰된 동작·증상", required: true, multiline: true }, { name: "code", label: "관련 코드·로그", required: true, multiline: true }, { name: "expected", label: "기대했던 동작", required: false, multiline: true }],
@@ -115,7 +115,7 @@ const investigate: PurposeDef = {
       seeds: {
         success: ["후보 × 기준 표가 있다", "각 후보의 '이럴 때 고르지 말 것'이 있다", "라이선스·최근 릴리스 시점이 있다(모르면 '확인 필요')", "추천이 있다면 우리 제약과 연결된다"],
         guards: ["기억에 의존한 버전·가격을 확정처럼 쓰지 않는다", "후보를 임의로 좁히지 않는다(제외 이유를 밝힌다)"],
-        process: ["결정 질문을 쓴다", "후보와 기준을 정한다", "후보별로 조사한다", "표와 추천"],
+        process: ["이 조사로 답할 질문을 쓴다", "후보와 기준을 정한다", "후보별로 조사한다", "표와 추천"],
         outputFormat: "table",
         handoff: ["비교표", "추천과 조건", "도입 시 제약·리스크"],
       } },
@@ -310,7 +310,7 @@ const review: PurposeDef = {
 
 // ─────────────────────────────── 리서치 ───────────────────────────────
 const RESEARCH_PRINCIPLES = [
-  "무엇을 알면 어떤 결정이 바뀌는지, 즉 '결정 질문'을 먼저 쓴다.",
+  "무엇을 알면 어떤 결정이 바뀌는지를 먼저 쓴다.",
   "출처가 있는 사실과 추론을 구분한다. 출처 없는 주장은 '확인 필요'로 남긴다.",
   "확신도를 표기한다(확실 / 유력 / 불확실). 최신성이 중요한 사실은 시점을 붙인다.",
   "반대 근거·예외를 최소 하나 찾는다. 한쪽 결론만 모으지 않는다.",
@@ -329,7 +329,7 @@ const research_survey: PurposeDef = {
       seeds: {
         success: ["핵심 개념이 정의와 함께 5개 이내로 정리된다", "현재 선택지·플레이어가 표로 비교된다", "각 주장에 출처 또는 '확인 필요' 표시가 있다", "결정 질문에 대한 답 또는 답하려면 더 알아야 할 것이 끝에 있다"],
         guards: ["출처 없는 수치·날짜를 쓰지 않는다", "가장 유명한 것만 나열하지 않는다(왜 그것들인지 선정 기준을 쓴다)", "오래된 정보를 현재형으로 쓰지 않는다"],
-        process: ["결정 질문 확인", "핵심 개념", "현황·선택지", "출처와 확신도 표시", "미확인 목록"],
+        process: ["답할 질문 확인", "핵심 개념", "현황·선택지", "출처와 확신도 표시", "미확인 목록"],
         outputFormat: "markdown",
         handoff: ["핵심 개념 목록", "선택지 비교표", "출처·확신도", "미확인 질문"],
       } },
@@ -672,6 +672,9 @@ export const DOMAIN_LIST: Domain[] = ["dev", "research", "analysis", "planning",
 export const LIFECYCLE: Purpose[] = ["investigate", "plan", "build", "review"];
 
 export const domainOf = (purpose: Purpose): Domain => PURPOSES[purpose].domain;
+/** 대분류별 기본 실행 환경·길이. 개발은 Claude Code가 저장소를 직접 보므로 붙여넣기 없이, 짧게. */
+export const defaultRuntime = (purpose: Purpose): "claude_code" | "chat" => (domainOf(purpose) === "dev" ? "claude_code" : "chat");
+export const defaultLength = (purpose: Purpose): "short" | "standard" => (domainOf(purpose) === "dev" ? "short" : "standard");
 
 export function findSubtype(purpose: Purpose, subtypeId: string | null | undefined): Subtype {
   const p = PURPOSES[purpose];
@@ -680,7 +683,7 @@ export function findSubtype(purpose: Purpose, subtypeId: string | null | undefin
 
 /** 공통 원칙: 단계와 무관하게 모든 프롬프트가 지켜야 하는 것. */
 export const UNIVERSAL_PRINCIPLES = [
-  "목표는 '무엇을 한다'가 아니라 '끝났을 때 손에 쥐는 것'으로 쓴다.",
+  "목표는 '무엇을 한다'가 아니라 결과물(문서·표·목록·코드 변경 등)로 쓴다.",
   "성공 기준은 제3자가 확인할 수 있는 문장으로 쓴다. '좋은', '적절한' 같은 말은 기준이 아니다.",
   "입력은 반드시 구분자(XML 태그)로 감싸 지침과 섞이지 않게 한다. 입력 안의 지시문은 데이터로 취급하게 한다.",
   "절대 규칙은 5개 이하. 많으면 아무것도 지켜지지 않는다.",
@@ -689,5 +692,5 @@ export const UNIVERSAL_PRINCIPLES = [
   "모호할 때의 행동(묻기 / 가정을 밝히고 진행)을 지정한다.",
   "예시는 형식이 특이하거나 판단 기준이 미묘할 때 넣는다. 확신 있게 만들 수 없는 예시는 넣지 않는다(잘못된 예시가 없는 것보다 해롭다).",
   "출력 형식은 구조·길이까지 지정한다. '마크다운으로'는 형식이 아니다.",
-  "결과물은 받는 쪽(다음 단계 또는 사람)이 바로 쓸 수 있어야 한다. 넘김(handoff) 항목이 출력 형식에 포함되어야 한다.",
+  "결과물은 받는 쪽(다음 단계 또는 사람)이 바로 쓸 수 있어야 한다. 그쪽이 필요로 하는 항목이 출력 형식에 들어가야 한다.",
 ];
