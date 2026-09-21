@@ -2,9 +2,9 @@
 /**
  * 상태 진단 — "코드가 최신인가, .env가 읽히는가, 빌드가 최신인가, 백엔드가 살아 있는가"를 한 번에.
  *
- *   pnpm doctor              # 오프라인 점검(원격 비교는 git fetch 1회)
- *   pnpm doctor --probe      # 실행 중인 서버(localhost:3000)에 /api/health?probe=1 로 백엔드까지 확인
- *   pnpm doctor --port 3010
+ *   pnpm health              # 오프라인 점검(원격 비교는 git fetch 1회)
+ *   pnpm health --probe      # 실행 중인 서버(localhost:3000)에 /api/health?probe=1 로 백엔드까지 확인
+ *   pnpm health --port 3010
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";

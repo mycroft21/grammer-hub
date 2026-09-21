@@ -72,13 +72,15 @@ pnpm build && pnpm start    # http://localhost:3000
 
 첫 실행 때 `apps/web/data/grammer.db`가 만들어지고 프로필 6종이 자동으로 들어갑니다.
 
-### A-4′. 상태 진단 — `pnpm doctor`
+### A-4′. 상태 진단 — `pnpm health`
+
+(`doctor`가 아니라 `health`인 이유: `pnpm doctor`는 pnpm 자체 명령이라 겹칩니다.)
 
 무엇이 잘못됐는지 감이 안 올 때 먼저 돌립니다. 코드가 원격과 같은지, `.env`가 어떻게 읽히는지(어떤 백엔드로 도는지), 빌드가 마지막 커밋보다 새로운지, DB 마이그레이션, 그리고 서버가 떠 있으면 서버가 실제로 보는 설정까지 한 화면에 나옵니다.
 
 ```bash
-pnpm doctor            # 오프라인 점검
-pnpm doctor --probe    # 서버(localhost:3000)에 백엔드 실제 호출까지 확인 (claude --version / API 키 검증)
+pnpm health            # 오프라인 점검
+pnpm health --probe    # 서버(localhost:3000)에 백엔드 실제 호출까지 확인 (claude --version / API 키 검증)
 ```
 
 서버만 직접 보려면 `curl localhost:3000/api/health?probe=1` (비밀값은 안 나옵니다). `✘` 항목의 화살표 뒤가 해결 방법입니다.
@@ -208,7 +210,7 @@ CLAUDE_CLI_MODEL=claude-sonnet-5
 - "claude CLI를 찾을 수 없습니다"가 나오면 `CLAUDE_CLI_PATH`에 `which claude`의 절대 경로를 넣으세요.
 - "Not logged in" 류 오류는 터미널에서 `claude`를 한 번 열어 `/login` 하면 풀립니다.
 - API 키로 돌아가려면 `CLOUD_BACKEND=api`(또는 줄 삭제) 후 재시작.
-- 설정이 먹었는지는 `pnpm doctor --probe` 또는 `curl localhost:3000/api/health?probe=1`에서 `"backend":"claude-cli"`, `"health":{"ok":true}`로 확인.
+- 설정이 먹었는지는 `pnpm health --probe` 또는 `curl localhost:3000/api/health?probe=1`에서 `"backend":"claude-cli"`, `"health":{"ok":true}`로 확인.
 - 실측(2026-09-21, Claude Code 2.1.278): 두 문장 교정에 카드 3개, 22초, 출력 2.4K 토큰. 스트리밍이 없어 22초 동안 아무것도 안 뜨다가 한 번에 나온다. 앱이 `--effort low`를 넘기지만 API 직접 호출(1~2초 첫 토큰)보다는 확실히 느리다.
 
 ---
@@ -265,8 +267,8 @@ DB 스키마가 바뀌면 앱 시작 시 마이그레이션이 자동 적용됩�
 
 | 증상 | 원인 · 해결 |
 |---|---|
-| `better-sqlite3` 설치·로드 실패 | Node 메이저 버전이 바뀐 것. `pnpm rebuild better-sqlite3` 또는 `rm -rf node_modules && pnpm install` |
-| `ANTHROPIC_API_KEY가 설정되지 않았습니다` | `.env`에 키가 없거나 서버를 재시작 안 함. `CLOUD_BACKEND=claude-cli`를 넣었는데도 나오면 코드·빌드가 오래된 것 → `git pull && pnpm install && pnpm build` 후 재시작. `pnpm doctor`가 어느 쪽인지 알려준다 |
+| `better-sqlite3` 설치·로드 실패 / "Could not locate the bindings file" | pnpm 10이 네이티브 빌드 스크립트를 막았거나 Node 메이저 버전이 바뀐 것. `pnpm approve-builds`에서 better-sqlite3 선택 후 `pnpm rebuild better-sqlite3` (루트 package.json의 `pnpm.onlyBuiltDependencies`에 넣어 두어 새 설치에서는 자동 승인) |
+| `ANTHROPIC_API_KEY가 설정되지 않았습니다` | `.env`에 키가 없거나 서버를 재시작 안 함. `CLOUD_BACKEND=claude-cli`를 넣었는데도 나오면 코드·빌드가 오래된 것 → `git pull && pnpm install && pnpm build` 후 재시작. `pnpm health`가 어느 쪽인지 알려준다 |
 | 포트 3000 충돌 | `pnpm start -p 3010` |
 | 변경 카드가 안 뜸 | `/runs`에서 상태 확인. `schema_invalid`면 모델 출력 문제, `provider_unavailable`이면 키·네트워크 |
 | 로컬 provider가 느림 | `--cache-reuse`를 빠뜨렸을 가능성. `/runs`의 캐시 토큰이 0이면 캐시가 안 걸린 것 |
