@@ -11,7 +11,9 @@ export async function POST(req: Request): Promise<Response> {
   if (!body.ok) return body.res;
   const p = studioProvider(body.data.provider);
   if (!p.ok) return p.res;
-  const r = await planPrompt(p.provider, toStudioContext(body.data), req.signal);
+  const c = await toStudioContext(body.data);
+  if (!c.ok) return c.res;
+  const r = await planPrompt(p.provider, c.ctx, req.signal);
   if (r.error) return Response.json({ error: r.error }, { status: 502 });
   return Response.json({ plan: r.plan, usage: r.usage });
 }

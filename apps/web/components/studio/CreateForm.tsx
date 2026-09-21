@@ -16,7 +16,9 @@ function loadDraft(): Draft | null {
  * 만들기 폼. 실패해서 폼으로 돌아와도 입력이 남도록 (1) 마지막 요청(initial)에서 복원하고 (2) 입력값을 localStorage에 임시 저장한다.
  * 새로고침해도 마지막 목표가 살아 있다. 보관함에 저장한 뒤에는 임시 저장을 지운다.
  */
-export function CreateForm({ busy, error, initial, onSubmit }: { busy: boolean; error: string | null; initial?: StudioRequest | null; onSubmit: (req: StudioRequest) => void }) {
+export function CreateForm({ busy, error, initial, onSubmit, onTicket }: { busy: boolean; error: string | null; initial?: StudioRequest | null; onSubmit: (req: StudioRequest) => void; onTicket?: (input: string) => void }) {
+  const [mode, setMode] = useState<"manual" | "ticket">(() => (initial?.ticket ? "ticket" : "manual"));
+  const [ticketInput, setTicketInput] = useState(() => initial?.ticket ?? "");
   const seed: Draft | null = initial ?? null;
   const [domain, setDomain] = useState<Domain>(() => (seed ? PURPOSES[seed.purpose].domain : "dev"));
   const [purpose, setPurpose] = useState<Purpose>(() => seed?.purpose ?? "investigate");
@@ -51,8 +53,27 @@ export function CreateForm({ busy, error, initial, onSubmit }: { busy: boolean; 
   // 대분류가 바뀌면 실행 환경·길이 기본값을 따라 바꾼다(개발 = Claude Code·짧게)
   const pickDomain = (d: Domain) => { const p = DOMAINS[d].purposes[0]!; setDomain(d); setPurpose(p); setSubtype(null); setRuntime(defaultRuntime(p)); setLength(defaultLength(p)); };
 
+  if (mode === "ticket") {
+    return (
+      <div className="flex flex-col gap-4">
+        <Segmented data-testid="studio-mode" value={mode} onChange={(v) => setMode(v as typeof mode)} options={[{ value: "manual", label: "직접 입력" }, { value: "ticket", label: "Jira 티켓" }]} />
+        <div>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>Jira 이슈 URL 또는 키 — 가져와서 분류·목표·시작점을 정리한 뒤 확인하고 만듭니다</Typography.Text>
+          <Space.Compact className="mt-1 w-full">
+            <Input data-testid="ticket-input" placeholder="https://xxx.atlassian.net/browse/EP-1174 또는 EP-1174" value={ticketInput} onChange={(e) => setTicketInput(e.target.value)}
+              onPressEnter={() => { if (ticketInput.trim() && onTicket) onTicket(ticketInput.trim()); }} />
+            <Button data-testid="ticket-fetch" type="primary" loading={busy} disabled={!ticketInput.trim() || !onTicket} onClick={() => onTicket?.(ticketInput.trim())}>가져와서 정리</Button>
+          </Space.Compact>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }} className="mt-1 block">`.env`에 JIRA_BASE_URL · JIRA_EMAIL · JIRA_API_TOKEN 이 필요합니다. 토큰 없이 흐름만 보려면 <code>DEMO-1</code>.</Typography.Text>
+        </div>
+        {error && <Alert type="error" showIcon message="가져오기에 실패했습니다." description={error} />}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
+      <Segmented data-testid="studio-mode" value={mode} onChange={(v) => setMode(v as typeof mode)} options={[{ value: "manual", label: "직접 입력" }, { value: "ticket", label: "Jira 티켓" }]} />
       <div>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>목적</Typography.Text>
         <div className="mt-1 flex flex-wrap items-center gap-2">

@@ -1,0 +1,1 @@
+ALTER TABLE `prompts` ADD `ticket_key` text;

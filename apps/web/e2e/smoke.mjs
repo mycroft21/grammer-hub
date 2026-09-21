@@ -136,6 +136,24 @@ try {
   check("english prompt forces korean answers", en.includes("## Hard rules") && en.includes("respond in Korean"));
   check("dev domain defaults to Claude Code runtime (starting points, no variables)", en.includes("## Where to start") && !en.includes("{{"));
 
+  // Jira 티켓 → 프롬프트 (DEMO-1: 토큰 없이). 첨부 때문에 질문 1개 → 답변 → 생성 → 보관 → 보관함 태그
+  await page.goto(`http://127.0.0.1:${PORT}/prompts`, { waitUntil: "load" });
+  await page.click("[data-testid=studio-mode] >> text=Jira 티켓");
+  await fillUntil(page, "[data-testid=ticket-input]", "DEMO-1", "[data-testid=ticket-fetch]:not([disabled])");
+  await page.click("[data-testid=ticket-fetch]");
+  await page.waitForSelector("[data-testid=ticket-review]", { timeout: 15000 });
+  check("ticket review shows suggested goal", (await page.inputValue("[data-testid=ticket-goal]")).includes("DEMO-1"));
+  await page.locator("label.ant-radio-button-wrapper:has([data-testid=ticket-option])").first().click();
+  await page.click("[data-testid=ticket-generate]");
+  await page.waitForSelector("[data-testid=studio-save]:not([disabled])", { timeout: 20000 });
+  const fromTicket = await page.textContent("[data-testid=studio-rendered]");
+  check("ticket prompt is Claude Code style with starting points", fromTicket.includes("## 시작점") && !fromTicket.includes("{{"));
+  await page.click("[data-testid=studio-save]");
+  await page.waitForSelector("text=보관함에 저장했습니다", { timeout: 5000 });
+  await page.click("[data-testid=studio-tab] >> text=보관함");
+  await page.waitForSelector("[data-ticket-tag]", { timeout: 10000 });
+  check("library shows ticket tag", (await page.textContent("[data-ticket-tag]")) === "DEMO-1");
+
   check("no page errors", pageErrors.length === 0);
   if (pageErrors.length) console.log(pageErrors);
   await browser.close();

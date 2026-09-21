@@ -72,6 +72,22 @@ pnpm build && pnpm start    # http://localhost:3000
 
 첫 실행 때 `apps/web/data/grammer.db`가 만들어지고 프로필 6종이 자동으로 들어갑니다.
 
+### A-3′. Jira 티켓에서 프롬프트 만들기 (선택)
+
+프롬프트 페이지 › 만들기 › **Jira 티켓** 탭에 이슈 URL이나 키(`EP-1174`)를 넣으면, 앱이 Jira에서 제목·본문·댓글·첨부 이름을 가져와 분류(개발/리서치/…)·목표·시작점·맥락을 정리해 보여줍니다. 틀린 곳을 고치고 질문에 답한 뒤 만들면, 티켓 키가 붙은 프롬프트가 보관함에 들어갑니다.
+
+`.env`:
+```
+JIRA_BASE_URL=https://xxx.atlassian.net
+JIRA_EMAIL=you@company.com
+JIRA_API_TOKEN=…                  # https://id.atlassian.com/manage-profile/security/api-tokens
+```
+
+- 읽기 전용입니다(이슈 조회만). 티켓 본문은 개인정보 마스킹을 거쳐 모델에 전달됩니다.
+- 첨부(이미지·PDF)는 읽지 않습니다. 핵심 정보가 첨부에만 있으면 "티켓 밖에 있는 정보"로 표시되고 질문으로 물어봅니다 — 그때 요약을 직접 적어 주세요.
+- 토큰 없이 흐름만 보려면 키에 `DEMO-1`.
+- 실측(Claude Code 경유): 가져오기+분류 14초, 생성 26초.
+
 ### A-4″. 진행 로그
 
 교정·프롬프트 생성이 어디까지 갔는지 두 곳에서 볼 수 있습니다.

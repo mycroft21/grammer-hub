@@ -1,10 +1,10 @@
 "use client";
 import { useCallback, useRef, useState } from "react";
-import { SLOT_KO, type CheckResult, type PlanResult, type PromptSpec, type RenderedPrompt, type SlotKey, type StudioRequest } from "@grammer-hub/core";
+import { SLOT_KO, parseIssueKey, type CheckResult, type PlanResult, type PromptSpec, type RenderedPrompt, type SlotKey, type StudioRequest, type Ticket, type TicketPlanResult } from "@grammer-hub/core";
 import { api, type StudioUsage } from "@/lib/api";
 import { readSseRaw } from "@/lib/sse-client";
 
-export type Phase = "form" | "planning" | "ask" | "generating" | "result";
+export type Phase = "form" | "planning" | "ask" | "ticket_review" | "generating" | "result";
 
 export interface StudioState {
   phase: Phase;
@@ -21,11 +21,13 @@ export interface StudioState {
   error: string | null;
   progress: { stage: "requesting" | "thinking" | "writing"; startedAt: number; expectedMs: number | null };
   log: { t: number; msg: string }[];
+  /** 티켓 흐름: 가져온 티켓과 분류 결과 */
+  ticket: { ticket: Ticket; plan: TicketPlanResult } | null;
 }
 const STAGE_MSG: Record<StudioState["progress"]["stage"], string> = { requesting: "요청 보냄", thinking: "모델 검토 시작", writing: "슬롯 작성 시작(첫 토큰)" };
 const withLog = (s: StudioState, msg: string): StudioState => ({ ...s, log: [...s.log, { t: Date.now() - s.progress.startedAt, msg }] });
 
-const initial: StudioState = { phase: "form", request: null, plan: null, slots: {}, spec: null, rendered: null, checks: [], usage: null, meta: null, savedId: null, busySlot: null, error: null, progress: { stage: "requesting", startedAt: 0, expectedMs: null }, log: [] };
+const initial: StudioState = { phase: "form", request: null, plan: null, slots: {}, spec: null, rendered: null, checks: [], usage: null, meta: null, savedId: null, busySlot: null, error: null, progress: { stage: "requesting", startedAt: 0, expectedMs: null }, log: [], ticket: null };
 
 /** 만들기 흐름: plan(질문) → generate(스트리밍) → result(재생성·보관). */
 export function useStudio() {
@@ -97,6 +99,26 @@ export function useStudio() {
     await generate({ ...req, answers, assumptions, clarify: req.clarify === "ask_first" ? "assume_and_state" : req.clarify });
   }, [state.request, state.plan, generate]);
 
+  /** 티켓 흐름 1단계: 가져오기 + 분류. 결과는 검토 화면으로. */
+  const startFromTicket = useCallback(async (input: string) => {
+    cancel();
+    const ac = new AbortController(); abortRef.current = ac;
+    setState({ ...initial, phase: "planning", progress: { stage: "requesting", startedAt: Date.now(), expectedMs: null }, log: [{ t: 0, msg: `티켓 가져오기 · ${input.trim()}` }] });
+    try {
+      const r = await api.prompts.ticket(input, ac.signal);
+      if (ac.signal.aborted) return;
+      setState((s) => withLog({ ...s, phase: "ticket_review", ticket: { ticket: r.ticket, plan: r.plan } },
+        `${r.ticket.key} 분류 → ${r.plan.purpose}/${r.plan.subtype ?? "-"} · ${r.plan.mode === "ask" ? `질문 ${r.plan.questions.length}개` : "바로 생성 가능"} · ${(r.usage.latencyMs / 1000).toFixed(1)}초`));
+    } catch (e) {
+      if (!ac.signal.aborted) setState((s) => ({ ...s, phase: "form", error: e instanceof Error ? e.message : String(e) }));
+    }
+  }, [cancel]);
+
+  /** 티켓 검토 화면에서 확정 → 생성 */
+  const generateFromTicket = useCallback(async (req: StudioRequest) => {
+    await generate(req);
+  }, [generate]);
+
   const regenerate = useCallback(async (slot: SlotKey, instruction: string | null) => {
     const { request, spec } = state;
     if (!request || !spec) return;
@@ -128,14 +150,14 @@ export function useStudio() {
   const save = useCallback(async () => {
     const { request, spec, meta, usage } = state;
     if (!request || !spec) return null;
-    const r = await api.prompts.save({ purpose: request.purpose, subtype: request.subtype ?? null, language: request.promptLanguage, goal: request.goal, spec, studioVersion: meta?.promptVersion ?? "", provider: meta?.provider ?? null, model: meta?.model ?? null, usage });
+    const r = await api.prompts.save({ purpose: request.purpose, subtype: request.subtype ?? null, language: request.promptLanguage, goal: request.goal, ticketKey: request.ticket ? parseIssueKey(request.ticket) : null, spec, studioVersion: meta?.promptVersion ?? "", provider: meta?.provider ?? null, model: meta?.model ?? null, usage });
     setState((s) => ({ ...s, savedId: r.prompt.id, spec: r.version.spec, rendered: r.version.rendered, checks: r.version.checks }));
     try { localStorage.removeItem("gh:studio:draft"); } catch { /* noop */ }
     return r.prompt.id;
   }, [state]);
 
   const reset = useCallback(() => { cancel(); setState(initial); }, [cancel]);
-  const backToForm = useCallback(() => { cancel(); setState((s) => ({ ...s, phase: "form", plan: null, error: null })); }, [cancel]);
+  const backToForm = useCallback(() => { cancel(); setState((s) => ({ ...s, phase: "form", plan: null, ticket: null, error: null })); }, [cancel]);
 
-  return { state, start, answer, generate, regenerate, editSlot, save, reset, backToForm, cancel };
+  return { state, start, startFromTicket, generateFromTicket, answer, generate, regenerate, editSlot, save, reset, backToForm, cancel };
 }

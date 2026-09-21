@@ -141,6 +141,9 @@ export const StudioRequest = z.object({
   clarify: ClarifyPolicy.default("ask_first"),
   promptLanguage: PromptLanguage.default("ko"),               // en = 지시문 영어, 답변은 한국어
   runtime: Runtime.nullable().optional(),                      // 비우면 대분류 기본(개발=claude_code, 그 외=chat)
+  ticket: z.string().max(200).nullable().optional(),           // 이슈 키(EP-1174) 또는 URL. 서버가 가져와 <ticket>으로 넣는다
+  /** 사용자가 검토 화면에서 확정한 시작점·맥락(티켓 흐름). 그대로 반영된다 */
+  hints: z.object({ startingPoints: z.array(z.string().max(300)).max(10).optional(), context: z.string().max(3000).optional() }).nullable().optional(),
   answers: z.record(z.string(), z.string()).optional(),   // 질문 id → 선택값(또는 직접 입력)
   assumptions: z.array(z.string()).optional(),            // 사용자가 수정한 가정
   includeStyleRules: z.boolean().default(false),          // 기본 꺼짐 = 중립

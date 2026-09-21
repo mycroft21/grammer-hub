@@ -19,6 +19,7 @@ export function LibraryPanel({ refreshKey, openId, onOpened }: { refreshKey: num
   const [items, setItems] = useState<PromptSummary[] | null>(null);
   const [stats, setStats] = useState<PromptStats | null>(null);
   const [filter, setFilter] = useState<Domain | "all">("all");
+  const [q, setQ] = useState("");
   const [active, setActive] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -29,12 +30,14 @@ export function LibraryPanel({ refreshKey, openId, onOpened }: { refreshKey: num
   useEffect(() => { if (openId) { setActive(openId); onOpened?.(); } }, [openId, onOpened]);
 
   const countBy = (d: Domain) => Object.entries(stats?.byPurpose ?? {}).filter(([p]) => purposeOf(p)?.domain === d).reduce((a, [, n]) => a + n, 0);
-  const shown = (items ?? []).filter((i) => filter === "all" || purposeOf(i.purpose)?.domain === filter);
+  const needle = q.trim().toLowerCase();
+  const shown = (items ?? []).filter((i) => (filter === "all" || purposeOf(i.purpose)?.domain === filter) && (!needle || [i.title, i.goal, i.ticketKey ?? ""].some((s) => s.toLowerCase().includes(needle))));
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <Segmented size="small" value={filter} onChange={(v) => setFilter(v as Domain | "all")}
           options={[{ value: "all", label: `전체 ${items?.length ?? 0}` }, ...DOMAIN_LIST.map((d) => ({ value: d, label: `${DOMAINS[d].label} ${countBy(d)}` }))]} />
+        <Input.Search size="small" allowClear placeholder="제목·목표·티켓 키" style={{ width: 200 }} value={q} onChange={(e) => setQ(e.target.value)} />
         {stats && <Typography.Text type="secondary" style={{ fontSize: 12 }} className="ml-auto">복사·채움 {stats.copies}회</Typography.Text>}
       </div>
       {items === null ? <Skeleton active /> : shown.length === 0 ? <Empty description="보관한 프롬프트가 없습니다. 만들기에서 생성 후 '보관'을 누르세요." /> : (
@@ -43,6 +46,7 @@ export function LibraryPanel({ refreshKey, openId, onOpened }: { refreshKey: num
             <div className="flex w-full flex-wrap items-center gap-2">
               <Tag color={domainColor(p.purpose)} style={{ marginInlineEnd: 0 }}>{purposeLabel(p.purpose)}</Tag>
               {p.language === "en" && <Tag color="geekblue" style={{ marginInlineEnd: 0, fontSize: 11 }}>EN</Tag>}
+              {p.ticketKey && <Tag data-ticket-tag color="blue" style={{ marginInlineEnd: 0, fontSize: 11 }}>{p.ticketKey}</Tag>}
               <Typography.Text strong>{p.title}</Typography.Text>
               <Typography.Text type="secondary" style={{ fontSize: 12 }} ellipsis className="min-w-0 flex-1">{p.goal}</Typography.Text>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>{p.variables.length > 0 ? `변수 ${p.variables.length}` : "변수 없음"} · 점검 {p.passed}/{p.total} · v{p.versionCount} · {fmtDate(p.updatedAt)}</Typography.Text>
@@ -58,7 +62,7 @@ export function LibraryPanel({ refreshKey, openId, onOpened }: { refreshKey: num
 /** 상세: 변수 채우기 → 복사 / 블록 보기 / 버전 / 보관 해제·삭제 */
 function PromptDrawer({ id, onClose, onChanged }: { id: string | null; onClose: () => void; onChanged: () => void }) {
   const { message } = App.useApp();
-  const [data, setData] = useState<{ prompt: { id: string; title: string; purpose: string; goal: string; language: string; archived: boolean }; versions: PromptVersion[] } | null>(null);
+  const [data, setData] = useState<{ prompt: { id: string; title: string; purpose: string; goal: string; language: string; archived: boolean; ticketKey?: string | null }; versions: PromptVersion[] } | null>(null);
   const [verId, setVerId] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [tab, setTab] = useState<"fill" | "blocks" | "versions">("fill");
@@ -96,6 +100,7 @@ function PromptDrawer({ id, onClose, onChanged }: { id: string | null; onClose: 
         <Tag color={domainColor(data.prompt.purpose)}>{purposeLabel(data.prompt.purpose)}</Tag>
         <span>{data.prompt.title}</span>
         {data.prompt.language === "en" && <Tag color="geekblue" style={{ fontSize: 11 }}>EN</Tag>}
+        {data.prompt.ticketKey && <Tag color="blue" style={{ fontSize: 11 }}>{data.prompt.ticketKey}</Tag>}
       </div>) : "불러오는 중"} extra={data && (
       <Space size="small">
         <Tooltip title="목록에서 숨김"><Button size="small" icon={<InboxOutlined />} onClick={archive}>보관 해제</Button></Tooltip>

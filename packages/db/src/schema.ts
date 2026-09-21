@@ -148,6 +148,7 @@ export const prompts = sqliteTable("prompts", {
   subtype: text("subtype"),
   language: text("language").notNull().default("ko"), // 프롬프트 본문 언어(ko | en)
   goal: text("goal").notNull(),                  // 사용자가 입력한 목표 문장(마스킹 해제본)
+  ticketKey: text("ticket_key"),                 // 티켓에서 만들었으면 이슈 키(EP-1174)
   currentVersionId: text("current_version_id"),
   archived: integer("archived", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at").notNull().$defaultFn(now),

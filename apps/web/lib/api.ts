@@ -1,4 +1,4 @@
-import type { CheckResult, DictionaryEntry, PlanResult, PromptSpec, RenderedPrompt, SituationProfile, SlotKey, StudioRequest, StyleRule } from "@grammer-hub/core";
+import type { CheckResult, DictionaryEntry, PlanResult, PromptSpec, RenderedPrompt, SituationProfile, SlotKey, StudioRequest, StyleRule, Ticket, TicketPlanResult } from "@grammer-hub/core";
 
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -32,13 +32,15 @@ export const api = {
   runs: () => fetch("/api/runs").then(j<RunSummary[]>),
   stats: () => fetch("/api/stats").then(j<Stats>),
   prompts: {
+    ticket: (ticket: string, signal?: AbortSignal) => fetch("/api/prompts/ticket", { ...json("POST", { ticket }), signal: signal ?? null }).then(j<{ ticket: Ticket; plan: TicketPlanResult; usage: StudioUsage; configured: boolean }>),
+    ticketConfigured: () => fetch("/api/prompts/ticket").then(j<{ configured: boolean }>),
     plan: (req: StudioRequest, signal?: AbortSignal) => fetch("/api/prompts/plan", { ...json("POST", req), signal: signal ?? null }).then(j<{ plan: PlanResult; usage: StudioUsage }>),
     /** SSE 응답. 파싱은 호출자가 readSseRaw로. */
     generate: (req: StudioRequest, signal?: AbortSignal) => fetch("/api/prompts/generate", { ...json("POST", req), signal: signal ?? null }),
     regenerate: (body: { request: StudioRequest; spec: PromptSpec; slot: SlotKey; instruction?: string | null }) => fetch("/api/prompts/regenerate", json("POST", body)).then(j<{ spec: PromptSpec; rendered: RenderedPrompt; checks: CheckResult[] }>),
     list: (archived = false) => fetch(`/api/prompts${archived ? "?archived=1" : ""}`).then(j<{ items: PromptSummary[]; stats: PromptStats }>),
     get: (id: string) => fetch(`/api/prompts/${id}`).then(j<{ prompt: PromptRow; versions: PromptVersion[] }>),
-    save: (body: { purpose: StudioRequest["purpose"]; subtype: string | null; language: "ko" | "en"; goal: string; spec: PromptSpec; studioVersion: string; provider: string | null; model: string | null; usage: StudioUsage | null }) =>
+    save: (body: { purpose: StudioRequest["purpose"]; subtype: string | null; language: "ko" | "en"; goal: string; ticketKey?: string | null; spec: PromptSpec; studioVersion: string; provider: string | null; model: string | null; usage: StudioUsage | null }) =>
       fetch("/api/prompts", json("POST", body)).then(j<{ prompt: PromptRow; version: PromptVersion }>),
     addVersion: (id: string, body: { spec: PromptSpec; source: "regenerate" | "edit"; slot?: SlotKey | null; provider?: string | null; model?: string | null }) =>
       fetch(`/api/prompts/${id}/versions`, json("POST", body)).then(j<PromptVersion>),
@@ -67,7 +69,7 @@ export interface Collection { samples: number; sampleChars: number; feedback: Re
 export interface Stats { weekly: WeeklyPoint[]; byCategory: CategoryPoint[]; recent: RecentRunPoint[]; collection: Collection }
 
 export interface StudioUsage { inputTokens: number; cachedTokens: number; cacheWriteTokens: number; outputTokens: number; costUsd: number; latencyMs: number }
-export interface PromptRow { id: string; userId: string; title: string; purpose: string; subtype: string | null; language: string; goal: string; currentVersionId: string | null; archived: boolean; createdAt: number; updatedAt: number }
+export interface PromptRow { id: string; userId: string; title: string; purpose: string; subtype: string | null; language: string; goal: string; ticketKey: string | null; currentVersionId: string | null; archived: boolean; createdAt: number; updatedAt: number }
 export interface PromptSummary extends PromptRow { versionCount: number; passed: number; total: number; variables: string[] }
 export interface PromptVersion { id: string; promptId: string; versionNo: number; spec: PromptSpec; rendered: RenderedPrompt; checks: CheckResult[]; source: string; slot: string | null; studioVersion: string; provider: string | null; model: string | null; inputTokens: number; cachedTokens: number; outputTokens: number; costUsd: number; latencyMs: number | null; createdAt: number }
 export interface PromptStats { byPurpose: Record<string, number>; copies: number; slotEdits: Record<string, number> }

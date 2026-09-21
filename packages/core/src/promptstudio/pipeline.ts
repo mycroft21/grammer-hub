@@ -7,8 +7,10 @@ import { PartialSlotParser } from "./partial";
 import { renderClaude, type RenderedPrompt } from "./render/claude";
 import { runChecks } from "./checks";
 import { findSubtype } from "./taxonomy";
+import { TicketPlanResult, buildTicketPlanPrompt } from "./ticket";
 
 const PLAN_SCHEMA = toOutputJsonSchema(PlanResult);
+const TICKET_PLAN_SCHEMA = toOutputJsonSchema(TicketPlanResult);
 const SPEC_SCHEMA = toOutputJsonSchema(PromptSpec);
 
 export interface StudioUsage extends ProviderUsage { costUsd: number; latencyMs: number }
@@ -26,9 +28,12 @@ async function collect(provider: CorrectionProvider, system: ReturnType<typeof b
 }
 
 /** 목표 문장의 PII를 마스킹해 보내고, 결과 텍스트에서 복원한다. */
+const SEP = "\n\u241E\n"; // 목표와 티켓을 한 번에 마스킹해 대체어 사전을 공유한다
 function maskCtx(ctx: StudioContext): { ctx: StudioContext; m: MaskResult } {
-  const m = mask(ctx.goal.normalize("NFC"), { style: "natural" });
-  return { ctx: { ...ctx, goal: m.masked }, m };
+  const joined = ctx.goal.normalize("NFC") + (ctx.ticket ? SEP + ctx.ticket.normalize("NFC") : "");
+  const m = mask(joined, { style: "natural" });
+  const [goal, ticket] = m.masked.split(SEP);
+  return { ctx: { ...ctx, goal: goal ?? m.masked, ...(ctx.ticket ? { ticket: ticket ?? "" } : {}) }, m };
 }
 function unmaskDeep<T>(v: T, m: MaskResult): T {
   if (typeof v === "string") return unmask(v, m).text as T;
@@ -53,6 +58,22 @@ export async function planPrompt(provider: CorrectionProvider, ctxIn: StudioCont
   if (!plan) return { plan: null, usage: null, error: { code: "schema_invalid", message: "의도 정리 결과가 스키마와 맞지 않습니다." } };
   // 세부 유형 검증: 목록에 없으면 기본으로
   plan.subtype = findSubtype(ctxIn.purpose, plan.subtype).id;
+  const u = r.usage ?? { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
+  return { plan: unmaskDeep(plan, m), usage: { ...u, costUsd: provider.cost(u), latencyMs: Date.now() - t0 }, error: null };
+}
+
+/** 티켓에서 바로 만들기 1단계: 분류·목표·시작점·질문. */
+export async function planFromTicket(provider: CorrectionProvider, ticketText: string, signal?: AbortSignal): Promise<{ plan: TicketPlanResult | null; usage: StudioUsage | null; error: { code: string; message: string } | null }> {
+  const t0 = Date.now();
+  const m = mask(ticketText.normalize("NFC"), { style: "natural" });
+  const p = buildTicketPlanPrompt(m.masked);
+  const r = await collect(provider, p.system, p.user, TICKET_PLAN_SCHEMA, undefined, signal);
+  if (r.error) return { plan: null, usage: null, error: r.error };
+  let plan: TicketPlanResult | null = null;
+  try { const j = TicketPlanResult.safeParse(JSON.parse(r.raw)); plan = j.success ? j.data : null; } catch { plan = null; }
+  if (!plan) return { plan: null, usage: null, error: { code: "schema_invalid", message: "티켓 분류 결과가 스키마와 맞지 않습니다." } };
+  plan.subtype = findSubtype(plan.purpose, plan.subtype).id;
+  plan.questions = plan.questions.slice(0, 3);
   const u = r.usage ?? { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
   return { plan: unmaskDeep(plan, m), usage: { ...u, costUsd: provider.cost(u), latencyMs: Date.now() - t0 }, error: null };
 }

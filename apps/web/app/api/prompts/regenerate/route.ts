@@ -19,7 +19,9 @@ export async function POST(req: Request): Promise<Response> {
   if (!body.ok) return body.res;
   const p = studioProvider(body.data.request.provider);
   if (!p.ok) return p.res;
-  const r = await regenerateSlot(p.provider, toStudioContext(body.data.request), body.data.spec, body.data.slot, body.data.instruction ?? null, req.signal);
+  const c = await toStudioContext(body.data.request);
+  if (!c.ok) return c.res;
+  const r = await regenerateSlot(p.provider, c.ctx, body.data.spec, body.data.slot, body.data.instruction ?? null, req.signal);
   if (r.error) return Response.json({ error: r.error }, { status: 502 });
   return Response.json({ spec: r.spec, rendered: r.rendered, checks: r.checks });
 }

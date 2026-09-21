@@ -75,6 +75,9 @@ if (backend === "claude-cli") {
   }
 }
 
+const jiraOn = Boolean(get("JIRA_BASE_URL") && get("JIRA_EMAIL") && get("JIRA_API_TOKEN"));
+console.log(`  Jira 연동: ${jiraOn ? `켜짐 (${get("JIRA_BASE_URL")})` : "꺼짐 — JIRA_BASE_URL/JIRA_EMAIL/JIRA_API_TOKEN 세 개가 다 있어야 함. DEMO-1 키는 없이도 됨"}`);
+
 // ── 3. 빌드 ──
 console.log("\n# 빌드");
 const buildId = resolve(WEB, ".next/BUILD_ID");

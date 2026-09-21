@@ -21,7 +21,7 @@ export async function POST(req: Request): Promise<Response> {
   if (!spec.success) return bad("spec이 스키마와 맞지 않습니다");
   const db = getDb(); const user = getUser();
   const r = createPrompt(db, {
-    userId: user.id, purpose: body.data.purpose, subtype: body.data.subtype ?? null, language: body.data.language, goal: body.data.goal,
+    userId: user.id, purpose: body.data.purpose, subtype: body.data.subtype ?? null, language: body.data.language, goal: body.data.goal, ticketKey: body.data.ticketKey ?? null,
     spec: spec.data, rendered: renderClaude(spec.data), checks: runChecks(spec.data), source: "generate",
     studioVersion: body.data.studioVersion || STUDIO_PROMPT_VERSION, provider: body.data.provider ?? null, model: body.data.model ?? null, usage: body.data.usage ?? null,
   });

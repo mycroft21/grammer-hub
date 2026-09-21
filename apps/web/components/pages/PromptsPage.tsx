@@ -7,6 +7,7 @@ import { CreateForm } from "@/components/studio/CreateForm";
 import { AskStep } from "@/components/studio/AskStep";
 import { ResultPanel } from "@/components/studio/ResultPanel";
 import { LibraryPanel } from "@/components/studio/LibraryPanel";
+import { TicketReview } from "@/components/studio/TicketReview";
 import { ProgressLine } from "@/components/ProgressLine";
 import { RunLog } from "@/components/RunLog";
 
@@ -30,10 +31,13 @@ export function PromptsPage() {
         extra={<Segmented data-testid="studio-tab" value={tab} onChange={(v) => setTab(v as typeof tab)} options={[{ value: "create", label: "만들기" }, { value: "library", label: "보관함" }]} />} />
       {tab === "create" ? (
         <div className="flex flex-col gap-4">
-          {state.phase === "form" && <CreateForm busy={false} error={state.error} initial={state.request} onSubmit={(req) => void studio.start(req)} />}
+          {state.phase === "form" && <CreateForm busy={false} error={state.error} initial={state.request} onSubmit={(req) => void studio.start(req)} onTicket={(input) => void studio.startFromTicket(input)} />}
+          {state.phase === "ticket_review" && state.ticket && (
+            <TicketReview ticket={state.ticket.ticket} plan={state.ticket.plan} busy={busy} onGenerate={(req) => void studio.generateFromTicket(req)} onBack={studio.backToForm} />
+          )}
           {state.phase === "planning" && (
             <div className="flex flex-col gap-2 py-6">
-              <div className="flex items-center gap-3"><Spin /><Typography.Text type="secondary">의도를 정리하는 중… 필요한 것만 묻습니다.</Typography.Text></div>
+              <div className="flex items-center gap-3"><Spin /><Typography.Text type="secondary">{state.log[0]?.msg.startsWith("티켓") ? "티켓을 가져와 분류하는 중…" : "의도를 정리하는 중… 필요한 것만 묻습니다."}</Typography.Text></div>
               <ProgressLine compact stage="requesting" startedAt={state.progress.startedAt} expectedMs={null} />
               <RunLog entries={state.log} running compact />
             </div>

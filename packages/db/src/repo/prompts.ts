@@ -5,7 +5,7 @@ import { promptEvents, promptVersions, prompts } from "../schema";
 import { newId } from "../ids";
 
 export interface PromptRow {
-  id: string; userId: string; title: string; purpose: string; subtype: string | null; language: string; goal: string;
+  id: string; userId: string; title: string; purpose: string; subtype: string | null; language: string; goal: string; ticketKey: string | null;
   currentVersionId: string | null; archived: boolean; createdAt: number; updatedAt: number;
 }
 export interface PromptVersionRow {
@@ -26,10 +26,10 @@ const toVersion = (r: typeof promptVersions.$inferSelect): PromptVersionRow => (
 });
 
 /** 새 프롬프트 + 첫 버전. */
-export function createPrompt(db: Db, i: { userId: string; purpose: string; subtype: string | null; language: string; goal: string } & SaveVersionInput): { prompt: PromptRow; version: PromptVersionRow } {
+export function createPrompt(db: Db, i: { userId: string; purpose: string; subtype: string | null; language: string; goal: string; ticketKey?: string | null } & SaveVersionInput): { prompt: PromptRow; version: PromptVersionRow } {
   const id = newId();
   const t = Date.now();
-  db.insert(prompts).values({ id, userId: i.userId, title: i.spec.title, purpose: i.purpose, subtype: i.subtype, language: i.language, goal: i.goal, currentVersionId: null, archived: false, createdAt: t, updatedAt: t }).run();
+  db.insert(prompts).values({ id, userId: i.userId, title: i.spec.title, purpose: i.purpose, subtype: i.subtype, language: i.language, goal: i.goal, ticketKey: i.ticketKey ?? null, currentVersionId: null, archived: false, createdAt: t, updatedAt: t }).run();
   const version = addVersion(db, id, i);
   const prompt = getPrompt(db, i.userId, id)!;
   return { prompt, version };

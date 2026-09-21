@@ -3,6 +3,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { getProvider } from "@/lib/providers";
 import { env, cloudReady } from "@/lib/env";
+import { jiraConfigured } from "@/lib/jira";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,6 +41,7 @@ export async function GET(req: Request): Promise<Response> {
       health,
     },
     defaultProvider: env.defaultProvider,
+    jira: { configured: jiraConfigured(), baseUrl: env.jiraBaseUrl || null },
     local: { url: env.localLlmUrl, model: env.localLlmModel },
     storeDrafts: env.storeDrafts, piiBlock: env.piiBlock, databaseUrl: env.databaseUrl,
     code: { branch, head, committedAt: headTime, dirtyFiles: dirty === null ? null : dirty.split("\n").filter(Boolean).length },

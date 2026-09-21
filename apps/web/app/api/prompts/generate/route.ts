@@ -15,11 +15,13 @@ export async function POST(req: Request): Promise<Response> {
   if (!body.ok) return body.res;
   const p = studioProvider(body.data.provider);
   if (!p.ok) return p.res;
+  const c = await toStudioContext(body.data);
+  if (!c.ok) return c.res;
   const ac = new AbortController();
-  const gen = generatePrompt(p.provider, toStudioContext(body.data), ac.signal);
+  const gen = generatePrompt(p.provider, c.ctx, ac.signal);
   const expectedMs = expectedStudioLatencyMs(getDb(), p.provider.id);
   const log = runLogger("studio", `${body.data.purpose}:${Date.now().toString(36)}`);
-  log("생성 시작", { purpose: body.data.purpose, subtype: body.data.subtype ?? "auto", lang: body.data.promptLanguage, length: body.data.length, provider: p.provider.id, goalChars: body.data.goal.length, expectedMs });
+  log("생성 시작", { purpose: body.data.purpose, subtype: body.data.subtype ?? "auto", lang: body.data.promptLanguage, length: body.data.length, runtime: c.ctx.runtime, ticket: body.data.ticket ?? undefined, provider: p.provider.id, goalChars: body.data.goal.length, expectedMs });
   const wrapped = (async function* (): AsyncGenerator<StudioEvent, void> {
     yield { event: "progress", data: { stage: "requesting", expectedMs } };
     let slots = 0;

@@ -14,6 +14,10 @@ export const env = {
   cloudBackend: (process.env["CLOUD_BACKEND"] === "claude-cli" ? "claude-cli" : "api") as "api" | "claude-cli",
   claudeCliPath: process.env["CLAUDE_CLI_PATH"] ?? "claude",
   claudeCliModel: process.env["CLAUDE_CLI_MODEL"] ?? "claude-sonnet-5",
+  /** Jira 티켓 → 프롬프트. 셋 다 있어야 켜진다. DEMO-* 키는 없이도 동작. */
+  jiraBaseUrl: process.env["JIRA_BASE_URL"] ?? "",
+  jiraEmail: process.env["JIRA_EMAIL"] ?? "",
+  jiraApiToken: process.env["JIRA_API_TOKEN"] ?? "",
   /** 진행 로그를 파일에도 남길 경로(선택). 터미널에는 항상 찍힌다. */
   logFile: process.env["LOG_FILE"] || null,
 };

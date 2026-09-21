@@ -73,6 +73,21 @@ function fakeStudio(input: ProviderInput): unknown | null {
   const lang = /<language>(ko|en)<\/language>/.exec(input.user)?.[1] ?? "ko";
   const runtime = /<runtime>(claude_code|chat)<\/runtime>/.exec(input.user)?.[1] ?? "chat";
   const answered = /<answers>|<assumptions>/.test(input.user);
+  if ("purpose" in props && "starting_points" in props && "missing_inputs" in props) {
+    const t = /<ticket>\n([\s\S]*?)\n<\/ticket>/.exec(input.user)?.[1] ?? "";
+    const key = /키: ([A-Z][A-Z0-9_]+-\d+)/.exec(t)?.[1] ?? "DEMO-1";
+    const hasAttachment = /첨부\(/.test(t);
+    return {
+      purpose: "plan", subtype: "spec", summary: `${key}: Visa 상태전환 로직 추가 요청`,
+      goal: `${key}: 서브몰 등록 완료 시 마스터카드에만 있는 '정지→정상' 상태전환을 Visa에도 적용하는 설계안을 정한다`,
+      starting_points: ["reporter-api AcquirerSubmallCommandService.updateAcquirerSubmallStatus", "MerchantServiceCommandService.updateMasterCardStatus()", "CardCode enum"],
+      context: "마스터카드는 CardCode.MASTERCARD(\"C001\") 하드코딩. activation() 내부와 VISA 코드값은 미확인.",
+      missing_inputs: hasAttachment ? ["첨부 screen.png의 내용"] : [],
+      mode: hasAttachment ? "ask" : "ready",
+      assumptions: ["reporter-api 저장소에서 작업한다"],
+      questions: hasAttachment ? [{ id: "attachment", question: "첨부 이미지(screen.png)에 무엇이 있나요?", options: [{ value: "screen", label: "화면 캡처(참고용)" }, { value: "spec", label: "양식·스펙(필수 정보)" }], allow_other: true, why: "첨부는 읽을 수 없어 핵심 정보면 직접 적어 주셔야 합니다." }] : [],
+    };
+  }
   if ("mode" in props && "questions" in props) {
     if (!answered && goal.length < 30) {
       return {

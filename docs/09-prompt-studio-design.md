@@ -216,6 +216,7 @@ Phase 2 증류와 같은 방식으로 "프롬프트 구조 선호 규칙"을 뽑
 | 프롬프트 언어 | **한국어 / 영어 지시문** 선택. 영어일 때도 답변은 사용자 언어(한국어)로 하라는 규칙을 렌더가 항상 삽입한다. UI용 텍스트(제목·변수 라벨·rationale·질문)는 언제나 한국어. |
 | 어투 규칙 | 기본 꺼짐(중립). 글쓰기 목적에서 사용자가 켤 때만 `내 어투` 규칙 스냅샷을 넣는다. |
 | 실행 환경 (v0.4) | `claude_code`(저장소 직접 탐색) / `chat`(자료 붙여넣기). **개발 대분류 기본 = claude_code, 길이 기본 = short.** claude_code면 `{{변수}}` 대신 `starting_points`(URL·경로·메서드·키워드)를 주고 "저장소를 직접 읽어라"로 렌더한다. 첫 실사용에서 1,500자짜리 붙여넣기형 프롬프트가 나온 것을 보고 바꿈. |
+| Jira 티켓 입력 (v0.4) | `POST /api/prompts/ticket`: Jira REST v3로 이슈를 가져와(`packages/core/src/promptstudio/ticket.ts`: ADF→텍스트, 정규화, 축약) LLM 1회로 `TicketPlanResult`(purpose/subtype/goal/starting_points/context/missing_inputs/questions)를 만들고, 검토 화면에서 사용자가 고친 뒤 기존 generate에 `ticket`(키)과 `hints`(확정 시작점·맥락)를 실어 보낸다. 서버가 티켓을 다시 가져와 `<ticket>` 블록(데이터, PII 마스킹)으로 넣는다. 보관함에 `ticket_key`. 첨부는 이름만. |
 | 중복·어휘 (v0.4) | 한 아이디어는 한 슬롯에만(점검 `no_duplicates`), 설계 용어(결정 질문·심볼·handoff) 본문 사용 금지, '대신 Y'는 금지문에만. short는 코드가 개수 상한을 강제한다. |
 
 ### 11-2. 분류 (taxonomy.ts)
