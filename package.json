@@ -11,7 +11,8 @@
     "start": "pnpm --filter @grammer-hub/web start",
     "report": "node tools/report-week.mjs",
     "seed:demo": "node tools/seed-demo.mjs",
-    "seed:clear": "node tools/seed-demo.mjs --clear"
+    "seed:clear": "node tools/seed-demo.mjs --clear",
+    "doctor": "node tools/doctor.mjs"
   },
   "devDependencies": {
     "better-sqlite3": "^13.0.3",

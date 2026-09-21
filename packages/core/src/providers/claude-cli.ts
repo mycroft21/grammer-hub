@@ -10,6 +10,7 @@ export interface ClaudeCliOptions {
   binArgs?: string[];        // bin 앞에 붙는 인자(테스트용: node <script>)
   model?: string;            // 기본 claude-sonnet-5
   timeoutMs?: number;        // 기본 180s
+  effort?: "low" | "medium" | "high"; // 기본 low(API provider와 동일). 교정은 low면 충분하고 지연이 크게 준다
   cwd?: string;              // 기본: 빈 임시 디렉터리(프로젝트 CLAUDE.md·훅이 섞이지 않게)
 }
 
@@ -42,6 +43,7 @@ export class ClaudeCliProvider implements CorrectionProvider {
   private readonly bin: string;
   private readonly binArgs: string[];
   private readonly timeoutMs: number;
+  private readonly effort: "low" | "medium" | "high";
   private readonly cwd: string;
 
   constructor(opts: ClaudeCliOptions = {}) {
@@ -49,6 +51,7 @@ export class ClaudeCliProvider implements CorrectionProvider {
     this.binArgs = opts.binArgs ?? [];
     this.model = opts.model ?? "claude-sonnet-5";
     this.timeoutMs = opts.timeoutMs ?? 180_000;
+    this.effort = opts.effort ?? "low";
     this.cwd = opts.cwd ?? mkdtempSync(join(tmpdir(), "gh-claude-cli-"));
   }
 
@@ -60,6 +63,7 @@ export class ClaudeCliProvider implements CorrectionProvider {
       "--json-schema", JSON.stringify(input.schema),
       "--system-prompt", system,
       "--model", this.model,
+      "--effort", this.effort,
       ...ISOLATION_ARGS,
     ];
     const r = await this.run(args, input.user, input.signal);

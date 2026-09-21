@@ -32,6 +32,7 @@ pnpm build && pnpm start        # http://localhost:3000  (개발 중엔 pnpm dev
 ```
 ⚠️ 인증이 없습니다. 외부에 노출하지 말고 로컬에서만 쓰세요.
 - 키 없이 UI만 보려면 `.env`에 `FAKE_PROVIDER=1` (결정적 가짜 교정, 품질 무관).
+- 뭔가 이상하면 `pnpm doctor --probe` — 코드·.env·빌드·DB·서버 백엔드 상태를 한 번에 진단.
 - 로컬 LLM: `llama-server -m gemma-4-26B-A4B-it-qat-q4_0.gguf -c 8192 --cache-reuse 256 --slot-save-path ./slots --swa-full --port 8080` 후 에디터의 provider 배지를 `local`로 전환.
 - DB는 `apps/web/data/grammer.db`(SQLite). 원문 저장을 끄려면 `STORE_DRAFTS=false`.
 

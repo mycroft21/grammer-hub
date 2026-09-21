@@ -27,7 +27,7 @@ describe("ClaudeCliProvider", () => {
     const script = fakeCli(`
       const get = (k) => args[args.indexOf(k) + 1];
       const out = { type: "result", subtype: "success", is_error: false, result: "ok",
-        structured_output: { echo: stdin.trim(), system: get("--system-prompt"), model: get("--model"), schema: JSON.parse(get("--json-schema")).type, turns: get("--max-turns"), tools: get("--tools"), persist: args.includes("--no-session-persistence") },
+        structured_output: { echo: stdin.trim(), system: get("--system-prompt"), model: get("--model"), schema: JSON.parse(get("--json-schema")).type, turns: get("--max-turns"), tools: get("--tools"), persist: args.includes("--no-session-persistence"), effort: get("--effort") },
         usage: { input_tokens: 120, output_tokens: 30, cache_read_input_tokens: 100, cache_creation_input_tokens: 0 }, total_cost_usd: 0.001 };
       console.log(JSON.stringify(out));
     `);
@@ -38,7 +38,7 @@ describe("ClaudeCliProvider", () => {
     expect(fin?.type).toBe("final");
     if (fin?.type !== "final") return;
     const j = JSON.parse(fin.raw);
-    expect(j).toMatchObject({ echo: "hello\nworld", system: "SYS-A\n\nSYS-B", model: "claude-sonnet-5", schema: "object", turns: "2", tools: "", persist: true });
+    expect(j).toMatchObject({ echo: "hello\nworld", system: "SYS-A\n\nSYS-B", model: "claude-sonnet-5", schema: "object", turns: "2", tools: "", persist: true, effort: "low" });
     expect(fin.usage).toEqual({ inputTokens: 120, cachedTokens: 100, cacheWriteTokens: 0, outputTokens: 30 });
     expect(p.cost(fin.usage)).toBeGreaterThan(0);
     expect((await p.health()).ok).toBe(true);

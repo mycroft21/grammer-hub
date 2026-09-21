@@ -23,6 +23,7 @@
     "zod": "^4.1.0"
   },
   "devDependencies": {
+    "@next/env": "16.3.5",
     "@tailwindcss/postcss": "^4.3.0",
     "@types/node": "^22.20.0",
     "@types/react": "^19.3.0",
