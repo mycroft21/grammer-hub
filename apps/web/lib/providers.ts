@@ -2,6 +2,7 @@ import "server-only";
 import { CloudProvider, FakeProvider, LocalProvider, type CorrectionProvider, type ProviderId } from "@grammer-hub/core";
 import { ClaudeCliProvider } from "@grammer-hub/core/node";
 import { env } from "./env";
+import { serverLog } from "./log";
 
 const cache = new Map<ProviderId, CorrectionProvider>();
 
@@ -15,7 +16,7 @@ export function getProvider(id: ProviderId | null | undefined): CorrectionProvid
   const p: CorrectionProvider =
     pid === "local" ? new LocalProvider({ baseUrl: env.localLlmUrl, model: env.localLlmModel })
     : env.fakeProvider ? new FakeProvider()
-    : env.cloudBackend === "claude-cli" ? new ClaudeCliProvider({ bin: env.claudeCliPath, model: env.claudeCliModel })
+    : env.cloudBackend === "claude-cli" ? new ClaudeCliProvider({ bin: env.claudeCliPath, model: env.claudeCliModel, onLog: (m) => serverLog("claude-cli", m) })
     : new CloudProvider();
   cache.set(pid, p);
   return p;

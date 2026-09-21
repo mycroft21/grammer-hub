@@ -17,6 +17,7 @@ async function collect(provider: CorrectionProvider, system: ReturnType<typeof b
   let raw = ""; let usage: ProviderUsage | null = null; let error: { code: string; message: string } | null = null;
   for await (const ev of provider.correct({ system, user, level: "L2", schema, ...(signal ? { signal } : {}) })) {
     if (ev.type === "status") continue;
+    if (ev.type === "restart") { raw = ""; continue; }
     if (ev.type === "delta") { raw += ev.text; onDelta?.(ev.text); }
     else if (ev.type === "final") { raw = ev.raw || raw; usage = ev.usage; }
     else if (ev.type === "error") { error = { code: ev.code, message: ev.message }; break; }
@@ -75,10 +76,11 @@ export async function* generatePrompt(provider: CorrectionProvider, ctxIn: Studi
   yield { event: "meta", data: { promptVersion: STUDIO_PROMPT_VERSION, provider: provider.id, model: provider.model } };
 
   // provider 스트림을 직접 돌며 슬롯이 닫힐 때마다 즉시 흘린다(모아서 보내면 진행 표시가 안 된다).
-  const parser = new PartialSlotParser(SLOT_KEYS);
+  let parser = new PartialSlotParser(SLOT_KEYS);
   const r = { raw: "", usage: null as ProviderUsage | null, error: null as { code: string; message: string } | null };
   for await (const ev of provider.correct({ system: p.system, user: p.user, level: "L2", schema: SPEC_SCHEMA, ...(signal ? { signal } : {}) })) {
     if (ev.type === "status") yield { event: "progress", data: { stage: ev.stage } };
+    else if (ev.type === "restart") { parser = new PartialSlotParser(SLOT_KEYS); r.raw = ""; yield { event: "progress", data: { stage: "writing" } }; }
     else if (ev.type === "delta") {
       r.raw += ev.text;
       for (const s of parser.push(ev.text)) yield { event: "slot", data: { key: s.key as SlotKey, value: unmaskDeep(s.value, m) } };

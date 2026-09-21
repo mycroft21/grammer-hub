@@ -73,8 +73,8 @@ export const PromptSpec = z.object({
   clarify_policy: ClarifyPolicy,
   examples: z.array(z.object({ input: z.string(), output: z.string() })).nullable(),
   rationale: z.object({
-    role: z.string(), goal: z.string(), success_criteria: z.string(), inputs: z.string(),
-    hard_rules: z.string(), process: z.string(), output_contract: z.string(), self_check: z.string(), failure_guards: z.string(),
+    role: z.string(), goal: z.string(), success_criteria: z.string(), inputs: z.string(), context: z.string(),
+    hard_rules: z.string(), process: z.string(), output_contract: z.string(), self_check: z.string(), failure_guards: z.string(), examples: z.string(),
   }),
 });
 export type PromptSpec = z.infer<typeof PromptSpec>;

@@ -4,6 +4,7 @@ import { Alert, App, Button, Segmented, Select, Splitter, Tooltip } from "antd";
 import { CopyOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { applyEdits, type Level, type ProviderId, type SituationProfile } from "@grammer-hub/core";
 import { ProgressLine } from "@/components/ProgressLine";
+import { RunLog } from "@/components/RunLog";
 import { api } from "@/lib/api";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { HighlightView } from "./HighlightView";
@@ -150,10 +151,11 @@ export function Editor({ profiles, defaultProvider, initialProfileId }: { profil
               disabled={!state.sourceText || running} onClick={copyFinal}>최종본 복사</Button>
           </Tooltip>
         </div>
-        {running && (
+        {(running || state.log.length > 0) && (
           <div className="border-b" style={divider}>
-            <ProgressLine stage={state.progress.stage} startedAt={state.progress.startedAt} expectedMs={state.progress.expectedMs}
-              detail={state.edits.length > 0 ? `카드 ${state.edits.length}` : undefined} />
+            {running && <ProgressLine stage={state.progress.stage} startedAt={state.progress.startedAt} expectedMs={state.progress.expectedMs}
+              detail={state.edits.length > 0 ? `카드 ${state.edits.length}` : undefined} />}
+            <RunLog entries={state.log} running={running} />
           </div>
         )}
         <div className="min-h-[220px] p-3">

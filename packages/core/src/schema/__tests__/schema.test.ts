@@ -29,6 +29,14 @@ describe("schema", () => {
     // zod 4의 z.int()는 safe-integer 범위를 minimum/maximum으로 내보낸다 → 헬퍼가 제거해야 한다
     expect(JSON.stringify(z.toJSONSchema(CorrectionOutput))).toContain("minimum");
     const out = toOutputJsonSchema(CorrectionOutput);
+    // 속성 이름이 키워드와 겹쳐도(format, pattern) 지워지지 않고 required와 일치해야 한다
+    const tricky = toOutputJsonSchema(z.object({ format: z.enum(["a", "b"]), pattern: z.string().min(2), inner: z.object({ maxLength: z.number().int().min(0) }) }));
+    const props = tricky["properties"] as Record<string, Record<string, unknown>>;
+    expect(Object.keys(props)).toEqual(["format", "pattern", "inner"]);
+    expect(tricky["required"]).toEqual(["format", "pattern", "inner"]);
+    expect(props["pattern"]).toEqual({ type: "string" });
+    expect(Object.keys((props["inner"]!["properties"] as Record<string, unknown>))).toEqual(["maxLength"]);
+    for (const r of tricky["required"] as string[]) expect(props[r]).toBeDefined();
     const json = JSON.stringify(out);
     for (const k of ["minLength", "maxLength", "pattern", "minimum", "maximum", "$schema"]) expect(json).not.toContain(`"${k}"`);
     expect(out["additionalProperties"]).toBe(false);

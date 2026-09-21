@@ -72,6 +72,13 @@ pnpm build && pnpm start    # http://localhost:3000
 
 첫 실행 때 `apps/web/data/grammer.db`가 만들어지고 프로필 6종이 자동으로 들어갑니다.
 
+### A-4″. 진행 로그
+
+교정·프롬프트 생성이 어디까지 갔는지 두 곳에서 볼 수 있습니다.
+
+- **화면**: 진행 줄 아래 `로그 n` 을 누르면 `+0.0s 요청 보냄 → +0.9s 모델 검토 시작 → +13.2s 교정 작성 시작 → +19.9s 카드 1 · 보내드릴께요 → 보내드릴게요 → +21.5s 완료 · 21.5초 · 출력 1928토큰` 식으로 시각별 이벤트가 남습니다. 실행 중엔 자동으로 펼쳐지고, 끝나도 남아 있습니다.
+- **서버 터미널(`pnpm start`)**: 실행마다 `HH:MM:SS.mmm correct    첫 카드 도착  id=79b61f87 t=+19.9s category=SPELLING` 형태로 찍힙니다. claude-cli 백엔드면 프로세스 기동·검토 시작·작성 시작·재시도·result 턴 수까지 나옵니다. `.env`에 `LOG_FILE=/tmp/grammer-hub.log`를 주면 같은 줄이 파일에도 쌓여서 `tail -f`로 볼 수 있습니다. 원문·개인정보는 로그에 넣지 않습니다(글자 수·건수만).
+
 ### A-4′. 상태 진단 — `pnpm health`
 
 (`doctor`가 아니라 `health`인 이유: `pnpm doctor`는 pnpm 자체 명령이라 겹칩니다.)
@@ -210,6 +217,7 @@ CLAUDE_CLI_MODEL=claude-sonnet-5
 - "claude CLI를 찾을 수 없습니다"가 나오면 `CLAUDE_CLI_PATH`에 `which claude`의 절대 경로를 넣으세요.
 - "Not logged in" 류 오류는 터미널에서 `claude`를 한 번 열어 `/login` 하면 풀립니다.
 - API 키로 돌아가려면 `CLOUD_BACKEND=api`(또는 줄 삭제) 후 재시작.
+- 생성이 평소보다 20~30초 더 걸리고 로그에 `구조화 출력 재시도`가 찍히면: 모델의 첫 도구 호출이 비정상(빈 인자)이어서 Claude Code가 스키마 검증에 걸린 뒤 다시 쓴 것. 앱은 재시도를 감지해 파서를 초기화하고 두 번째 출력을 쓴다. 결과 품질과 무관.
 - `claude 실패(error_max_turns)`: 사용량 한도가 아니라 **앱이 건 턴 제한**입니다. 구조화 출력이 스키마 검증에 걸리면 모델이 다시 시도하는데 그 횟수가 한도를 넘은 것. 앱은 한도를 6으로 두고, 한도를 넘었어도 JSON을 받았으면 성공으로 처리합니다. 반복되면 `.env`에 `CLAUDE_CLI_LOG=/tmp/claude-cli.log`를 넣고 재시작해 원문(stream-json)을 보세요. 사용량 한도는 오류 메시지에 `사용량 창 five_hour: …`로 따로 표시됩니다.
 - 설정이 먹었는지는 `pnpm health --probe` 또는 `curl localhost:3000/api/health?probe=1`에서 `"backend":"claude-cli"`, `"health":{"ok":true}`로 확인.
 - 실측(2026-09-21, Claude Code 2.1.278, 세 문장 L2): 0.9초에 "모델이 검토하는 중", 13초에 "작성 중", 20초에 첫 카드, 21.5초 완료. 검토(thinking) 구간이 대부분이라 `--effort low`를 넘겨도 API 직접 호출(첫 토큰 1~2초)보다 확실히 느리다. 진행 줄이 단계·경과·예상 소요를 보여준다.

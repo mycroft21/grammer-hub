@@ -93,6 +93,10 @@ describe("ClaudeCliProvider", () => {
     for await (const ev of p.correct({ system: [], user: "x", level: "L1", schema: {} })) evs.push(ev);
     const fin = evs.find((e) => e.type === "final");
     expect(fin && fin.type === "final" ? JSON.parse(fin.raw) : null).toEqual({ a: 1, b: 2 });
+    // 재시도 시 restart가 앞선 델타와 새 델타 사이에 온다
+    const types = evs.map((e) => e.type);
+    expect(types.indexOf("restart")).toBeGreaterThan(types.indexOf("delta"));
+    expect(types.lastIndexOf("delta")).toBeGreaterThan(types.indexOf("restart"));
 
     const badScript = fakeCli(`
       emit({ type: "rate_limit_event", rate_limit_info: { status: "allowed", rateLimitType: "five_hour" } });
@@ -114,7 +118,7 @@ describe("ClaudeCliProvider", () => {
         inputs: [{ name: "code", label: "코드", description: "소스", required: true, multiline: true, placeholder: "" }], context: null,
         hard_rules: ["추측 대신 미확인으로 표시한다"], process: null, output_contract: { format: "markdown", structure: "요약/흐름", length: "짧게" },
         self_check: ["x", "y"], failure_guards: ["이름 대신 호출을 먼저 본다"], clarify_policy: "ask_first", examples: null,
-        rationale: { role: "", goal: "", success_criteria: "", inputs: "", hard_rules: "", process: "", output_contract: "", self_check: "", failure_guards: "" } };
+        rationale: { role: "", goal: "", success_criteria: "", inputs: "", context: "", hard_rules: "", process: "", output_contract: "", self_check: "", failure_guards: "", examples: "" } };
       streamJson(spec, { usage: { input_tokens: 10, output_tokens: 5 } });
     `);
     const p = new ClaudeCliProvider({ bin: process.execPath, binArgs: [script] });

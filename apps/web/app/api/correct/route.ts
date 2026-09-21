@@ -5,6 +5,7 @@ import { env, cloudReady } from "@/lib/env";
 import { bad, parseBody } from "@/lib/json";
 import { getProvider } from "@/lib/providers";
 import { sseResponse } from "@/lib/sse";
+import { runLogger } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,12 +44,25 @@ export async function POST(req: Request): Promise<Response> {
   });
 
   // 결과 저장을 위해 제너레이터를 감싼다
+  const log = runLogger("correct", runId);
+  log("시작", { level, provider: provider.id, model: provider.model, chars: text.length, profile: profile.name });
   const wrapped = (async function* (): AsyncGenerator<SseEvent, void> {
     // 진행 표시: 같은 provider·강도의 최근 중앙값을 먼저 알려 준다(없으면 null → 시간 기반 추정만)
-    yield { event: "progress", data: { stage: "requesting", expectedMs: expectedLatencyMs(db, provider.id, level) } };
+    const expectedMs = expectedLatencyMs(db, provider.id, level);
+    yield { event: "progress", data: { stage: "requesting", expectedMs } };
+    let edits = 0; let rewrites = 0;
     let r = await gen.next();
-    while (!r.done) { yield r.value; r = await gen.next(); }
+    while (!r.done) {
+      const ev = r.value;
+      if (ev.event === "progress") log(`단계 ${ev.data.stage}`);
+      else if (ev.event === "meta") log("마스킹·프롬프트 준비", { masked: ev.data.maskedSpans.length, expectedMs });
+      else if (ev.event === "edit") { edits++; if (edits === 1) log("첫 카드 도착", { category: ev.data.category }); }
+      else if (ev.event === "rewrite") rewrites++;
+      else if (ev.event === "error") log(`오류 ${ev.data.code}: ${ev.data.message.slice(0, 160)}`);
+      yield ev; r = await gen.next();
+    }
     const result = r.value;
+    log(result.error ? "실패" : "완료", { edits, rewrites, dropped: result.dropped.length, latencyMs: result.usage?.latencyMs, ttfbMs: result.usage?.ttfbMs, costUsd: result.usage?.costUsd, cached: result.usage?.cachedTokens, out: result.usage?.outputTokens });
     const usage: Usage = result.usage ?? { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0, costUsd: 0, latencyMs: 0, ttfbMs: 0 };
     if (result.error) finishRun(db, runId, usage, "error", result.error.code);
     else {

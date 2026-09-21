@@ -15,12 +15,19 @@ export function toOutputJsonSchema(schema: z.ZodType): Record<string, unknown> {
   return strip(raw) as Record<string, unknown>;
 }
 
+/** 값이 "이름 → 스키마" 맵인 키워드. 여기 안의 키는 속성 이름이라 제거 대상이 아니다(예: 속성 이름이 `format`인 경우). */
+const NAME_MAPS = new Set(["properties", "patternProperties", "$defs", "definitions"]);
+
 function strip(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(strip);
   if (node && typeof node === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
       if (UNSUPPORTED_KEYS.has(k)) continue;
+      if (NAME_MAPS.has(k) && v && typeof v === "object" && !Array.isArray(v)) {
+        out[k] = Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([name, sub]) => [name, strip(sub)]));
+        continue;
+      }
       out[k] = strip(v);
     }
     if (out["type"] === "object" && out["properties"] && out["additionalProperties"] === undefined) {

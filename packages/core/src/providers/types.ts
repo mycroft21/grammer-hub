@@ -13,6 +13,8 @@ export type ProviderStage = "thinking" | "writing";
 
 export type ProviderEvent =
   | { type: "status"; stage: ProviderStage }
+  /** provider가 출력을 처음부터 다시 만든다(구조화 출력 재시도). 앞서 받은 delta는 버리고 부분 파서를 초기화할 것. */
+  | { type: "restart" }
   | { type: "delta"; text: string }
   | { type: "final"; raw: string; usage: ProviderUsage; stopReason: string }
   | { type: "error"; code: "provider_unavailable" | "refusal" | "timeout" | "max_tokens"; message: string };

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useRef, useState } from "react";
-import type { CheckResult, PlanResult, PromptSpec, RenderedPrompt, SlotKey, StudioRequest } from "@grammer-hub/core";
+import { SLOT_KO, type CheckResult, type PlanResult, type PromptSpec, type RenderedPrompt, type SlotKey, type StudioRequest } from "@grammer-hub/core";
 import { api, type StudioUsage } from "@/lib/api";
 import { readSseRaw } from "@/lib/sse-client";
 
@@ -20,9 +20,12 @@ export interface StudioState {
   busySlot: SlotKey | null;              // 재생성 중인 슬롯
   error: string | null;
   progress: { stage: "requesting" | "thinking" | "writing"; startedAt: number; expectedMs: number | null };
+  log: { t: number; msg: string }[];
 }
+const STAGE_MSG: Record<StudioState["progress"]["stage"], string> = { requesting: "요청 보냄", thinking: "모델 검토 시작", writing: "슬롯 작성 시작(첫 토큰)" };
+const withLog = (s: StudioState, msg: string): StudioState => ({ ...s, log: [...s.log, { t: Date.now() - s.progress.startedAt, msg }] });
 
-const initial: StudioState = { phase: "form", request: null, plan: null, slots: {}, spec: null, rendered: null, checks: [], usage: null, meta: null, savedId: null, busySlot: null, error: null, progress: { stage: "requesting", startedAt: 0, expectedMs: null } };
+const initial: StudioState = { phase: "form", request: null, plan: null, slots: {}, spec: null, rendered: null, checks: [], usage: null, meta: null, savedId: null, busySlot: null, error: null, progress: { stage: "requesting", startedAt: 0, expectedMs: null }, log: [] };
 
 /** 만들기 흐름: plan(질문) → generate(스트리밍) → result(재생성·보관). */
 export function useStudio() {
@@ -33,7 +36,7 @@ export function useStudio() {
   const generate = useCallback(async (req: StudioRequest) => {
     cancel();
     const ac = new AbortController(); abortRef.current = ac;
-    setState((s) => ({ ...s, phase: "generating", request: req, slots: {}, spec: null, rendered: null, checks: [], usage: null, savedId: null, error: null, progress: { stage: "requesting", startedAt: Date.now(), expectedMs: null } }));
+    setState((s) => ({ ...s, phase: "generating", request: req, slots: {}, spec: null, rendered: null, checks: [], usage: null, savedId: null, error: null, progress: { stage: "requesting", startedAt: Date.now(), expectedMs: null }, log: [...s.log, { t: 0, msg: `생성 요청 · ${req.purpose}${req.subtype ? `/${req.subtype}` : ""} · ${req.length} · ${req.promptLanguage}` }] }));
     let res: Response;
     try { res = await api.prompts.generate(req, ac.signal); }
     catch (e) { if (!ac.signal.aborted) setState((s) => ({ ...s, phase: "form", error: String(e) })); return; }
@@ -46,15 +49,15 @@ export function useStudio() {
       for await (const ev of readSseRaw(res, ac.signal)) {
         setState((s) => {
           switch (ev.event) {
-            case "progress": { const d = ev.data as { stage: StudioState["progress"]["stage"]; expectedMs?: number | null }; return { ...s, progress: { ...s.progress, stage: d.stage, expectedMs: d.expectedMs ?? s.progress.expectedMs } }; }
-            case "meta": return { ...s, meta: ev.data as StudioState["meta"] };
-            case "slot": { const d = ev.data as { key: SlotKey; value: unknown }; return { ...s, slots: { ...s.slots, [d.key]: d.value } }; }
-            case "spec": return { ...s, spec: ev.data as PromptSpec };
-            case "rendered": return { ...s, rendered: ev.data as RenderedPrompt };
-            case "checks": return { ...s, checks: ev.data as CheckResult[] };
-            case "usage": return { ...s, usage: ev.data as StudioUsage };
+            case "progress": { const d = ev.data as { stage: StudioState["progress"]["stage"]; expectedMs?: number | null }; return withLog({ ...s, progress: { ...s.progress, stage: d.stage, expectedMs: d.expectedMs ?? s.progress.expectedMs } }, `${STAGE_MSG[d.stage]}${d.stage === "requesting" && d.expectedMs ? ` · 보통 ${Math.round(d.expectedMs / 1000)}초` : ""}`); }
+            case "meta": { const d = ev.data as NonNullable<StudioState["meta"]>; return withLog({ ...s, meta: d }, `서버 준비 · ${d.model} · 스튜디오 v${d.promptVersion}`); }
+            case "slot": { const d = ev.data as { key: SlotKey; value: unknown }; const n = Object.keys(s.slots).length + 1; return withLog({ ...s, slots: { ...s.slots, [d.key]: d.value } }, `슬롯 ${n}/13 · ${SLOT_KO[d.key] ?? d.key}`); }
+            case "spec": return withLog({ ...s, spec: ev.data as PromptSpec }, "스펙 검증 통과");
+            case "rendered": return withLog({ ...s, rendered: ev.data as RenderedPrompt }, "프롬프트 렌더 완료");
+            case "checks": { const c = ev.data as CheckResult[]; return withLog({ ...s, checks: c }, `규격 점검 ${c.filter((x) => x.ok).length}/${c.length}`); }
+            case "usage": { const u = ev.data as StudioUsage; return withLog({ ...s, usage: u }, `완료 · ${(u.latencyMs / 1000).toFixed(1)}초 · 출력 ${u.outputTokens}토큰`); }
             case "done": return { ...s, phase: "result" };
-            case "error": return { ...s, phase: "form", error: (ev.data as { message: string }).message };
+            case "error": { const d = ev.data as { code: string; message: string }; return withLog({ ...s, phase: "form", error: d.message }, `오류 ${d.code}: ${d.message}`); }
             default: return s;
           }
         });
@@ -71,10 +74,11 @@ export function useStudio() {
     cancel();
     if (req.clarify === "never_ask") { await generate(req); return; }
     const ac = new AbortController(); abortRef.current = ac;
-    setState({ ...initial, phase: "planning", request: req, progress: { stage: "requesting", startedAt: Date.now(), expectedMs: null } });
+    setState({ ...initial, phase: "planning", request: req, progress: { stage: "requesting", startedAt: Date.now(), expectedMs: null }, log: [{ t: 0, msg: "의도 정리 요청" }] });
     try {
       const r = await api.prompts.plan(req, ac.signal);
       if (ac.signal.aborted) return;
+      setState((s) => withLog(s, `의도 정리 ${r.plan.mode === "ask" ? `→ 질문 ${r.plan.questions.length}개` : `→ 바로 생성(가정 ${r.plan.assumptions.length}개)`} · ${(r.usage.latencyMs / 1000).toFixed(1)}초`));
       const next: StudioRequest = { ...req, ...(r.plan.subtype ? { subtype: r.plan.subtype } : {}) };
       if (r.plan.mode === "ask" && r.plan.questions.length > 0) { setState((s) => ({ ...s, phase: "ask", plan: r.plan, request: next })); return; }
       setState((s) => ({ ...s, plan: r.plan }));
@@ -126,6 +130,7 @@ export function useStudio() {
     if (!request || !spec) return null;
     const r = await api.prompts.save({ purpose: request.purpose, subtype: request.subtype ?? null, language: request.promptLanguage, goal: request.goal, spec, studioVersion: meta?.promptVersion ?? "", provider: meta?.provider ?? null, model: meta?.model ?? null, usage });
     setState((s) => ({ ...s, savedId: r.prompt.id, spec: r.version.spec, rendered: r.version.rendered, checks: r.version.checks }));
+    try { localStorage.removeItem("gh:studio:draft"); } catch { /* noop */ }
     return r.prompt.id;
   }, [state]);
 

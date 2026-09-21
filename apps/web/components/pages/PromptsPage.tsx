@@ -8,6 +8,7 @@ import { AskStep } from "@/components/studio/AskStep";
 import { ResultPanel } from "@/components/studio/ResultPanel";
 import { LibraryPanel } from "@/components/studio/LibraryPanel";
 import { ProgressLine } from "@/components/ProgressLine";
+import { RunLog } from "@/components/RunLog";
 
 /** 프롬프트 스튜디오: 개발 생애주기(조사→계획→개발→검토) 목적의 프롬프트를 규격에 맞춰 만들고 보관한다. */
 export function PromptsPage() {
@@ -29,11 +30,12 @@ export function PromptsPage() {
         extra={<Segmented data-testid="studio-tab" value={tab} onChange={(v) => setTab(v as typeof tab)} options={[{ value: "create", label: "만들기" }, { value: "library", label: "보관함" }]} />} />
       {tab === "create" ? (
         <div className="flex flex-col gap-4">
-          {state.phase === "form" && <CreateForm busy={false} error={state.error} onSubmit={(req) => void studio.start(req)} />}
+          {state.phase === "form" && <CreateForm busy={false} error={state.error} initial={state.request} onSubmit={(req) => void studio.start(req)} />}
           {state.phase === "planning" && (
             <div className="flex flex-col gap-2 py-6">
               <div className="flex items-center gap-3"><Spin /><Typography.Text type="secondary">의도를 정리하는 중… 필요한 것만 묻습니다.</Typography.Text></div>
               <ProgressLine compact stage="requesting" startedAt={state.progress.startedAt} expectedMs={null} />
+              <RunLog entries={state.log} running compact />
             </div>
           )}
           {state.phase === "ask" && state.plan && <AskStep plan={state.plan} busy={busy} onAnswer={(a, assume) => void studio.answer(a, assume)} onBack={studio.backToForm} />}

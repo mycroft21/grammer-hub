@@ -6,6 +6,7 @@ import { SLOT_KEYS, checksSummary, type CheckResult, type PromptSpec, type Rende
 import type { StudioState } from "./useStudio";
 import { SlotCard } from "./SlotCard";
 import { ProgressLine } from "@/components/ProgressLine";
+import { RunLog } from "@/components/RunLog";
 import { SLOT_KEYS as ALL_SLOTS } from "@grammer-hub/core";
 
 const fmtUsd = (v: number) => `$${v.toFixed(4)}`;
@@ -82,6 +83,7 @@ export function ResultPanel({ state, onRegenerate, onEdit, onSave, onReset }: {
         <ProgressLine compact stage={state.progress.stage} startedAt={state.progress.startedAt} expectedMs={state.progress.expectedMs}
           fraction={Object.keys(state.slots).length / ALL_SLOTS.length} detail={`슬롯 ${Object.keys(state.slots).length}/${ALL_SLOTS.length}`} />
       )}
+      <RunLog entries={state.log} running={generating} compact />
       {assumptions.length > 0 && (
         <Alert type="warning" showIcon message="이 가정으로 만들었습니다" description={<ul className="m-0 pl-5">{assumptions.map((a, i) => <li key={i}>{a}</li>)}</ul>} />
       )}

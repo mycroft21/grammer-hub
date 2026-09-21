@@ -13,6 +13,7 @@ export interface ClaudeCliOptions {
   effort?: "low" | "medium" | "high"; // 기본 low(API provider와 동일). 교정은 low면 충분하고 지연이 크게 준다
   cwd?: string;              // 기본: 빈 임시 디렉터리(프로젝트 CLAUDE.md·훅이 섞이지 않게)
   logPath?: string;          // 지정하면 stream-json 원문을 그대로 덧붙여 기록(진단용). 환경 변수 CLAUDE_CLI_LOG
+  onLog?: (msg: string) => void; // 진행 로그(사람이 읽는 한 줄). 서버 터미널에 찍는 용도
 }
 
 /** `claude -p --output-format stream-json`의 마지막 `result` 줄 */
@@ -77,6 +78,7 @@ export class ClaudeCliProvider implements CorrectionProvider {
   private readonly effort: "low" | "medium" | "high";
   private readonly cwd: string;
   private readonly logPath: string | null;
+  private readonly onLog: ((msg: string) => void) | null;
 
   constructor(opts: ClaudeCliOptions = {}) {
     this.bin = opts.bin ?? "claude";
@@ -86,7 +88,9 @@ export class ClaudeCliProvider implements CorrectionProvider {
     this.effort = opts.effort ?? "low";
     this.cwd = opts.cwd ?? mkdtempSync(join(tmpdir(), "gh-claude-cli-"));
     this.logPath = opts.logPath ?? process.env["CLAUDE_CLI_LOG"] ?? null;
+    this.onLog = opts.onLog ?? null;
   }
+  private note(msg: string) { this.onLog?.(msg); }
   private log(line: string) { if (this.logPath) { try { appendFileSync(this.logPath, line + "\n"); } catch { /* 진단용, 실패 무시 */ } } }
 
   async *correct(input: ProviderInput): AsyncIterable<ProviderEvent> {
@@ -101,25 +105,30 @@ export class ClaudeCliProvider implements CorrectionProvider {
       ...ISOLATION_ARGS,
     ];
     const ch = new Channel<ProviderEvent>();
-    let raw = ""; let stage: "thinking" | "writing" | null = null; let result: CliResult | null = null;
+    let raw = ""; let stage: "thinking" | "writing" | null = null; let result: CliResult | null = null; let toolCalls = 0;
     // 콜백에서 갱신되는 값은 객체에 담는다(let이면 TS가 초기값 null로 좁혀 버린다)
     const st: { lastNote: string; rateLimit: NonNullable<StreamLine["rate_limit_info"]> | null } = { lastNote: "", rateLimit: null };
     this.log(`# ${new Date().toISOString()} ${args.filter((a) => a.length < 80).join(" ")}`);
+    const t0 = Date.now(); const el = () => `+${((Date.now() - t0) / 1000).toFixed(1)}s`;
+    this.note(`spawn ${this.bin} model=${this.model} effort=${this.effort} system=${system.length}자 user=${input.user.length}자`);
+    let firstLine = true;
     const onLine = (line: string) => {
       this.log(line);
+      if (firstLine) { firstLine = false; this.note(`${el()} 첫 응답 줄(프로세스 기동 완료)`); }
       let j: StreamLine; try { j = JSON.parse(line) as StreamLine; } catch { return; }
       if (j.type === "stream_event" && j.event) {
         const e = j.event;
-        if (e.type === "content_block_start" && e.content_block?.type === "thinking" && stage === null) { stage = "thinking"; ch.push({ type: "status", stage }); }
+        if (e.type === "content_block_start" && e.content_block?.type === "thinking" && stage === null) { stage = "thinking"; ch.push({ type: "status", stage }); this.note(`${el()} 모델 검토(thinking) 시작`); }
         else if (e.type === "content_block_delta" && e.delta?.type === "input_json_delta" && e.delta.partial_json) {
-          if (stage !== "writing") { stage = "writing"; ch.push({ type: "status", stage }); }
+          if (stage !== "writing") { stage = "writing"; ch.push({ type: "status", stage }); this.note(`${el()} 구조화 출력 작성 시작`); }
           raw += e.delta.partial_json; ch.push({ type: "delta", text: e.delta.partial_json });
         } else if (e.type === "content_block_start" && e.content_block?.type === "tool_use") {
-          // 재시도(두 번째 도구 호출)면 앞서 흘린 부분 JSON은 버려진다 — 최종본은 result.structured_output이 대신한다
-          if (raw) { raw = ""; }
+          // 두 번째 이후 도구 호출 = 재시도(앞선 출력이 스키마 검증에 걸림). 앞서 흘린 부분 JSON은 무효 — 소비자에게 초기화를 알린다.
+          toolCalls++;
+          if (toolCalls > 1) { raw = ""; ch.push({ type: "restart" }); this.note(`${el()} 구조화 출력 재시도 ${toolCalls - 1}회차(앞선 출력이 스키마 검증에 걸림)`); }
         }
-      } else if (j.type === "result") result = j as CliResult;
-      else if (j.type === "rate_limit_event") st.rateLimit = j.rate_limit_info ?? null;
+      } else if (j.type === "result") { result = j as CliResult; const r = j as CliResult & { num_turns?: number; duration_ms?: number }; this.note(`${el()} result ${r.subtype ?? "?"} turns=${r.num_turns ?? "?"} out=${r.usage?.output_tokens ?? "?"}tok cache=${r.usage?.cache_read_input_tokens ?? 0}/${r.usage?.cache_creation_input_tokens ?? 0}`); }
+      else if (j.type === "rate_limit_event") { st.rateLimit = j.rate_limit_info ?? null; if (j.rate_limit_info?.status && j.rate_limit_info.status !== "allowed") this.note(`${el()} 사용량 창 ${j.rate_limit_info.rateLimitType ?? ""}: ${j.rate_limit_info.status}`); }
       else if ((j.type === "user" || j.type === "assistant") && j.message?.content) {
         for (const c of j.message.content) {
           if (c.type === "tool_result" && typeof c.content === "string") st.lastNote = c.content;
@@ -130,7 +139,7 @@ export class ClaudeCliProvider implements CorrectionProvider {
     const outcome = this.run(args, input.user, input.signal, onLine, () => ch.close());
     for await (const ev of ch) yield ev;
     const r = await outcome;
-    if (r.kind === "error") { yield { type: "error", code: r.code, message: r.message }; return; }
+    if (r.kind === "error") { this.note(`${el()} 실패 ${r.code}: ${r.message.slice(0, 120)}`); yield { type: "error", code: r.code, message: r.message }; return; }
     const res = result as CliResult | null;
     if (!res) { yield { type: "error", code: "provider_unavailable", message: `claude가 result를 내지 않았습니다: ${r.stdout.trim().slice(-200)}` }; return; }
     // 델타가 없었으면(구버전·비스트리밍) 결과에서 JSON을 건진다. 구조화 출력이 우선.

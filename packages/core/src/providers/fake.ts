@@ -98,7 +98,7 @@ function fakeStudio(input: ProviderInput): unknown | null {
       failure_guards: en ? ["Check the call sites first instead of inferring a function's role from its name"] : ["함수 역할은 이름으로 단정하는 대신 실제 호출 지점을 먼저 확인한다"],
       clarify_policy: "assume_and_state",
       examples: null,
-      rationale: { role: "판단 기준을 드러내는 역할", goal: "결과물을 명시", success_criteria: "검증 가능한 기준", inputs: "매번 달라지는 코드만 변수", hard_rules: "흔한 실패 금지", process: "단일 패스", output_contract: "다음 단계 입력 형식", self_check: "확인 동작", failure_guards: "씨앗 반영" },
+      rationale: { role: "판단 기준을 드러내는 역할", goal: "결과물을 명시", success_criteria: "검증 가능한 기준", inputs: "매번 달라지는 코드만 변수", context: "목표에 확정된 사실 없음", hard_rules: "흔한 실패 금지", process: "단일 패스", output_contract: "다음 단계 입력 형식", self_check: "확인 동작", failure_guards: "씨앗 반영", examples: "형식이 평범해 생략" },
     };
   }
   return null;

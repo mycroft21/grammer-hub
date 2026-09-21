@@ -19,7 +19,7 @@ const baseSpec = (): PromptSpec => ({
   context: null, hard_rules: ["읽지 않은 파일은 추측하는 대신 '미확인'으로 표시한다"], process: null,
   output_contract: { format: "markdown", structure: "요약/흐름/미확인", length: "800자 이내" },
   self_check: ["인용 확인", "미확인 확인"], failure_guards: ["역할은 이름으로 단정하는 대신 호출 지점을 먼저 확인한다"], clarify_policy: "ask_first", examples: null,
-  rationale: { role: "", goal: "", success_criteria: "", inputs: "", hard_rules: "", process: "", output_contract: "", self_check: "", failure_guards: "" },
+  rationale: { role: "", goal: "", success_criteria: "", inputs: "", context: "", hard_rules: "", process: "", output_contract: "", self_check: "", failure_guards: "", examples: "" },
 });
 
 describe("taxonomy", () => {

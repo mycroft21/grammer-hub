@@ -1,19 +1,45 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Input, Segmented, Select, Space, Switch, Tooltip, Typography } from "antd";
 import { ArrowRightOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { DOMAINS, DOMAIN_LIST, PURPOSES, type ClarifyPolicy, type Domain, type PromptLanguage, type PromptLength, type Purpose, type StudioRequest } from "@grammer-hub/core";
 import { CLARIFY_KO, LANG_LABEL, LENGTH_KO } from "./labels";
 
-export function CreateForm({ busy, error, onSubmit }: { busy: boolean; error: string | null; onSubmit: (req: StudioRequest) => void }) {
-  const [domain, setDomain] = useState<Domain>("dev");
-  const [purpose, setPurpose] = useState<Purpose>("investigate");
-  const [subtype, setSubtype] = useState<string | null>(null);
-  const [goal, setGoal] = useState("");
-  const [length, setLength] = useState<PromptLength>("standard");
-  const [clarify, setClarify] = useState<ClarifyPolicy>("ask_first");
-  const [language, setLanguage] = useState<PromptLanguage>("ko");
-  const [includeStyleRules, setIncludeStyleRules] = useState(false);
+const DRAFT_KEY = "gh:studio:draft";
+type Draft = Pick<StudioRequest, "purpose" | "subtype" | "goal" | "length" | "clarify" | "promptLanguage" | "includeStyleRules">;
+function loadDraft(): Draft | null {
+  try { const raw = localStorage.getItem(DRAFT_KEY); return raw ? (JSON.parse(raw) as Draft) : null; } catch { return null; }
+}
+
+/**
+ * 만들기 폼. 실패해서 폼으로 돌아와도 입력이 남도록 (1) 마지막 요청(initial)에서 복원하고 (2) 입력값을 localStorage에 임시 저장한다.
+ * 새로고침해도 마지막 목표가 살아 있다. 보관함에 저장한 뒤에는 임시 저장을 지운다.
+ */
+export function CreateForm({ busy, error, initial, onSubmit }: { busy: boolean; error: string | null; initial?: StudioRequest | null; onSubmit: (req: StudioRequest) => void }) {
+  const seed: Draft | null = initial ?? null;
+  const [domain, setDomain] = useState<Domain>(() => (seed ? PURPOSES[seed.purpose].domain : "dev"));
+  const [purpose, setPurpose] = useState<Purpose>(() => seed?.purpose ?? "investigate");
+  const [subtype, setSubtype] = useState<string | null>(() => seed?.subtype ?? null);
+  const [goal, setGoal] = useState(() => seed?.goal ?? "");
+  const [length, setLength] = useState<PromptLength>(() => seed?.length ?? "standard");
+  const [clarify, setClarify] = useState<ClarifyPolicy>(() => seed?.clarify ?? "ask_first");
+  const [language, setLanguage] = useState<PromptLanguage>(() => seed?.promptLanguage ?? "ko");
+  const [includeStyleRules, setIncludeStyleRules] = useState(() => seed?.includeStyleRules ?? false);
+  const [restored, setRestored] = useState(false);
+
+  // 마지막 요청이 없을 때만(첫 진입) 임시 저장분을 복원한다
+  useEffect(() => {
+    if (seed) return;
+    const d = loadDraft();
+    if (d && d.goal) {
+      setDomain(PURPOSES[d.purpose]?.domain ?? "dev"); setPurpose(d.purpose); setSubtype(d.subtype ?? null); setGoal(d.goal);
+      setLength(d.length); setClarify(d.clarify); setLanguage(d.promptLanguage); setIncludeStyleRules(d.includeStyleRules); setRestored(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    try { if (goal.trim()) localStorage.setItem(DRAFT_KEY, JSON.stringify({ purpose, subtype, goal, length, clarify, promptLanguage: language, includeStyleRules } satisfies Draft)); } catch { /* noop */ }
+  }, [purpose, subtype, goal, length, clarify, language, includeStyleRules]);
 
   const def = PURPOSES[purpose];
   const sub = useMemo(() => def.subtypes.find((s) => s.id === subtype) ?? null, [def, subtype]);
@@ -80,7 +106,9 @@ export function CreateForm({ busy, error, onSubmit }: { busy: boolean; error: st
       </div>
 
       {language === "en" && <Alert type="info" showIcon message="지시문은 영어로, 답변은 한국어로 나오도록 렌더 시 규칙이 자동 삽입됩니다." style={{ padding: "6px 12px" }} />}
-      {error && <Alert type="error" showIcon message={error} />}
+      {restored && !error && <Alert type="info" showIcon closable onClose={() => setRestored(false)} message="마지막에 입력하던 목표를 복원했습니다." style={{ padding: "6px 12px" }} />}
+      {error && <Alert type="error" showIcon message="생성에 실패했습니다. 입력은 그대로 남아 있습니다." description={error}
+        action={<Button size="small" type="primary" disabled={!canRun} onClick={submit}>다시 시도</Button>} />}
 
       <Space>
         <Button data-testid="studio-run" type="primary" icon={<ThunderboltOutlined />} loading={busy} disabled={!canRun} onClick={submit}>프롬프트 만들기</Button>

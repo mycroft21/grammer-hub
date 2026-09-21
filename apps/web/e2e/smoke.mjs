@@ -69,6 +69,7 @@ try {
   await page.waitForSelector("[data-testid=copy][data-done='1']", { timeout: 20000 }); // 완료 표시
   const cards = await page.locator("[data-card]").count();
   check("edit cards appear (>=4)", cards >= 4);
+  check("run log lists events", (await page.locator("[data-testid=run-log]").count()) === 1 && /로그 \d+/.test(await page.textContent("[data-testid=run-log]")));
   check("original phone visible unmasked in card", (await page.textContent("body")).includes("010-1234-5678"));
   check("no stand-in leaked", !(await page.textContent("body")).includes("010-0000-0001"));
 

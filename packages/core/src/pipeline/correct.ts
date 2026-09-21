@@ -89,7 +89,7 @@ export async function* runCorrection(input: CorrectPipelineInput): AsyncGenerato
   };
 
   // 3. provider 스트림 → 부분 파싱 → 앵커 해소(즉시) → edit 이벤트
-  const parser = new PartialCorrectionParser();
+  let parser = new PartialCorrectionParser();
   const emitted: Suggestion[] = [];
   const dropped: { id: string; reason: string }[] = [];
   const rewrites: (LlmRewrite & { index: number })[] = [];
@@ -120,6 +120,10 @@ export async function* runCorrection(input: CorrectPipelineInput): AsyncGenerato
   for await (const ev of input.provider.correct({ system: prompt.system, user: prompt.user, level: input.level, schema: OUTPUT_SCHEMA, ...(input.signal ? { signal: input.signal } : {}) })) {
     if (ev.type === "status") {
       yield { event: "progress", data: { stage: ev.stage } };
+    } else if (ev.type === "restart") {
+      // provider가 처음부터 다시 쓴다. 부분 파서만 초기화한다(이미 보낸 카드는 최종 단계의 겹침 검사로 정리된다).
+      parser = new PartialCorrectionParser();
+      yield { event: "progress", data: { stage: "writing" } };
     } else if (ev.type === "delta") {
       if (ttfbMs === null) ttfbMs = now() - t0;
       const got = parser.push(ev.text);
