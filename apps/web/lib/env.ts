@@ -10,4 +10,11 @@ export const env = {
   storeDrafts: (process.env["STORE_DRAFTS"] ?? "true") !== "false",
   hasAnthropicKey: Boolean(process.env["ANTHROPIC_API_KEY"]),
   fakeProvider: process.env["FAKE_PROVIDER"] === "1",
+  /** cloud 자리를 무엇으로 채울지. api(기본) | claude-cli(개인 테스트: Claude Code 구독 로그인으로 `claude -p` 호출) */
+  cloudBackend: (process.env["CLOUD_BACKEND"] === "claude-cli" ? "claude-cli" : "api") as "api" | "claude-cli",
+  claudeCliPath: process.env["CLAUDE_CLI_PATH"] ?? "claude",
+  claudeCliModel: process.env["CLAUDE_CLI_MODEL"] ?? "claude-sonnet-5",
 };
+
+/** cloud provider가 API 키 없이도 동작하는가(fake 또는 claude-cli). */
+export const cloudReady = (): boolean => env.hasAnthropicKey || env.fakeProvider || env.cloudBackend === "claude-cli";

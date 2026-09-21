@@ -1,10 +1,13 @@
 import "server-only";
 import { CloudProvider, FakeProvider, LocalProvider, type CorrectionProvider, type ProviderId } from "@grammer-hub/core";
+import { ClaudeCliProvider } from "@grammer-hub/core/node";
 import { env } from "./env";
 
 const cache = new Map<ProviderId, CorrectionProvider>();
 
-/** cloud | local. `FAKE_PROVIDER=1`이면 cloud 자리에 개발용 결정적 provider를 끼운다(E2E·키 없는 데모 전용). */
+/**
+ * cloud | local. cloud 자리는 우선순위대로: FAKE_PROVIDER=1(E2E·데모) → CLOUD_BACKEND=claude-cli(개인 테스트, 구독 로그인) → API 키.
+ */
 export function getProvider(id: ProviderId | null | undefined): CorrectionProvider {
   const pid = id ?? env.defaultProvider;
   const hit = cache.get(pid);
@@ -12,6 +15,7 @@ export function getProvider(id: ProviderId | null | undefined): CorrectionProvid
   const p: CorrectionProvider =
     pid === "local" ? new LocalProvider({ baseUrl: env.localLlmUrl, model: env.localLlmModel })
     : env.fakeProvider ? new FakeProvider()
+    : env.cloudBackend === "claude-cli" ? new ClaudeCliProvider({ bin: env.claudeCliPath, model: env.claudeCliModel })
     : new CloudProvider();
   cache.set(pid, p);
   return p;

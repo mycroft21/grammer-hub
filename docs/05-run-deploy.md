@@ -45,6 +45,8 @@ cp .env.example .env
 
 ### A-3. `.env` 채우기
 
+> API 키를 아직 안 만들었고 Claude Code 구독으로 먼저 써 보고 싶으면 [C′](#c-claude-code-구독으로-테스트하기-개인용-선택)를 보세요.
+
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...        # https://console.anthropic.com 에서 발급
 DEFAULT_PROVIDER=cloud
@@ -153,6 +155,46 @@ llama-server \
 에디터 상단의 `☁ cloud · Sonnet 5` 배지를 눌러 `💻 local · Gemma 4`로 바꾸면 됩니다. 기본값을 로컬로 하려면 `.env`에 `DEFAULT_PROVIDER=local`.
 
 로컬은 출력 토큰이 병목이라 교정문을 모델이 만들지 않고 앱이 합성하며, L3 대안도 1개만 만듭니다. 서버가 안 떠 있으면 에디터에 "클라우드로 전환" 버튼이 나오는데, **누르면 원문이 외부로 나가므로** 자동 전환은 하지 않습니다.
+
+---
+
+## C′. Claude Code 구독으로 테스트하기 (개인용, 선택)
+
+API 키 없이 **이미 로그인된 Claude Code(Pro/Max)** 로 교정·프롬프트 스튜디오를 돌려 보는 옵션입니다. 앱이 `claude -p --output-format json --json-schema …`를 서브프로세스로 부릅니다.
+
+> 언제 쓰나: 크레딧을 넣기 전에 품질을 보고 싶을 때. **기본값은 API 키**이고, 이 모드는 개인 Mac에서 본인 계정으로만 쓰세요. Anthropic은 제3자 제품에 claude.ai 로그인·한도를 제공하는 것을 허용하지 않습니다(Agent SDK 문서). 범용 배포로 가면 API 키로 돌아가야 합니다.
+
+### 설정
+
+```bash
+which claude                  # Claude Code가 설치되어 있고 로그인돼 있어야 한다 (claude 실행 → /login)
+```
+
+`.env`:
+
+```
+CLOUD_BACKEND=claude-cli
+CLAUDE_CLI_PATH=claude        # which claude 결과. launchd로 띄우면 PATH가 짧으니 절대 경로 권장
+CLAUDE_CLI_MODEL=claude-sonnet-5
+```
+
+그다음 평소처럼 `pnpm start`. 에디터의 `☁ cloud` 자리에서 그대로 동작하고, 기록에는 모델이 `claude-sonnet-5`, provider가 `cloud`로 남습니다(비용은 API 요금 기준 **추정치**, 실제 청구는 구독 한도에서 차감).
+
+### 알아둘 것
+
+| 항목 | API 키 | claude-cli |
+|---|---|---|
+| 첫 응답까지 | 1~2초(스트리밍) | **4~10초**(프로세스 기동 + 완성 후 한 번에) |
+| 슬롯·카드 스트리밍 | 있음 | 없음(완료 후 일괄 표시) |
+| 프롬프트 캐시 | 앱이 제어 | Claude Code가 알아서 |
+| 사용량 | 크레딧 차감 | Claude Code와 **같은 5시간 창** 공유 — 코딩 중 한도에 걸리면 교정도 멈춤 |
+| 도구 | 없음 | 앱이 `--tools ""`로 내장 도구를 전부 끄고 MCP·스킬도 막는다. 구조화 출력용 내부 도구 1회만 허용(`--max-turns 2`) |
+| 요청당 컨텍스트 | 앱 프롬프트만(약 2.5K) | 앱 프롬프트 + Claude Code 기본 프롬프트 ≈ **2K 추가**(도구를 끈 덕에 26K→2K) |
+
+- `--bare`를 쓰지 않습니다. bare 모드는 구독 로그인을 읽지 않고 API 키를 요구하기 때문입니다. 대신 앱이 빈 임시 디렉터리에서 실행해 프로젝트 CLAUDE.md·훅이 섞이지 않게 합니다. `~/.claude`의 사용자 설정은 로드됩니다.
+- "claude CLI를 찾을 수 없습니다"가 나오면 `CLAUDE_CLI_PATH`에 `which claude`의 절대 경로를 넣으세요.
+- "Not logged in" 류 오류는 터미널에서 `claude`를 한 번 열어 `/login` 하면 풀립니다.
+- API 키로 돌아가려면 `CLOUD_BACKEND=api`(또는 줄 삭제) 후 재시작.
 
 ---
 

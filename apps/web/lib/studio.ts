@@ -3,7 +3,7 @@ import { PromptLanguage, Purpose, renderRulesSnapshot, type StudioContext, type 
 import { listRules } from "@grammer-hub/db";
 import { z } from "zod";
 import { getDb, getUser } from "./db";
-import { env } from "./env";
+import { env, cloudReady } from "./env";
 import { getProvider } from "./providers";
 
 /** 요청 → StudioContext. 어투 규칙은 사용자가 켰을 때만(기본 중립). */
@@ -23,7 +23,7 @@ export function studioProvider(id: "cloud" | "local" | null | undefined): { ok: 
   let provider: ReturnType<typeof getProvider>;
   try { provider = getProvider(id ?? null); }
   catch (e) { return { ok: false, res: Response.json({ error: { code: "provider_unavailable", message: String(e) } }, { status: 503 }) }; }
-  if (provider.id === "cloud" && !env.hasAnthropicKey && !env.fakeProvider) {
+  if (provider.id === "cloud" && !cloudReady()) {
     return { ok: false, res: Response.json({ error: { code: "provider_unavailable", message: "ANTHROPIC_API_KEY가 설정되지 않았습니다" } }, { status: 503 }) };
   }
   return { ok: true, provider };

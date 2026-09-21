@@ -1,7 +1,7 @@
 import { CorrectRequest, runCorrection, type Category, type PiiKind, type SseEvent, type Usage } from "@grammer-hub/core";
 import { createDraft, createRun, finishRun, getProfile, listDictionary, listRules, saveSuggestions, updateDraftMask } from "@grammer-hub/db";
 import { getDb, getUser } from "@/lib/db";
-import { env } from "@/lib/env";
+import { env, cloudReady } from "@/lib/env";
 import { bad, parseBody } from "@/lib/json";
 import { getProvider } from "@/lib/providers";
 import { sseResponse } from "@/lib/sse";
@@ -22,7 +22,7 @@ export async function POST(req: Request): Promise<Response> {
   let provider;
   try { provider = getProvider(body.data.provider ?? null); }
   catch (e) { return Response.json({ error: { code: "provider_unavailable", message: String(e) } }, { status: 503 }); }
-  if (provider.id === "cloud" && !env.hasAnthropicKey && !env.fakeProvider) {
+  if (provider.id === "cloud" && !cloudReady()) {
     return Response.json({ error: { code: "provider_unavailable", message: "ANTHROPIC_API_KEY가 설정되지 않았습니다" } }, { status: 503 });
   }
 
