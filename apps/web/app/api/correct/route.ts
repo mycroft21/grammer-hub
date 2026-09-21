@@ -1,5 +1,5 @@
 import { CorrectRequest, runCorrection, type Category, type PiiKind, type SseEvent, type Usage } from "@grammer-hub/core";
-import { createDraft, createRun, finishRun, getProfile, listDictionary, listRules, saveSuggestions, updateDraftMask } from "@grammer-hub/db";
+import { createDraft, createRun, expectedLatencyMs, finishRun, getProfile, listDictionary, listRules, saveSuggestions, updateDraftMask } from "@grammer-hub/db";
 import { getDb, getUser } from "@/lib/db";
 import { env, cloudReady } from "@/lib/env";
 import { bad, parseBody } from "@/lib/json";
@@ -44,6 +44,8 @@ export async function POST(req: Request): Promise<Response> {
 
   // 결과 저장을 위해 제너레이터를 감싼다
   const wrapped = (async function* (): AsyncGenerator<SseEvent, void> {
+    // 진행 표시: 같은 provider·강도의 최근 중앙값을 먼저 알려 준다(없으면 null → 시간 기반 추정만)
+    yield { event: "progress", data: { stage: "requesting", expectedMs: expectedLatencyMs(db, provider.id, level) } };
     let r = await gen.next();
     while (!r.done) { yield r.value; r = await gen.next(); }
     const result = r.value;

@@ -19,11 +19,14 @@ export interface CorrectionState {
   readerView: string | null;
   usage: Usage | null;
   error: { code: string; message: string } | null;
+  /** 진행 표시: 단계, 시작 시각, 예상 소요(최근 중앙값, 없으면 null) */
+  progress: { stage: "requesting" | "thinking" | "writing"; startedAt: number; expectedMs: number | null };
 }
 
 const initial: CorrectionState = {
   status: "idle", runId: null, provider: null, model: null, sourceText: "", edits: [], dropped: [], rewrites: [],
   correctedText: null, readerView: null, usage: null, error: null,
+  progress: { stage: "requesting", startedAt: 0, expectedMs: null },
 };
 
 export function useCorrection() {
@@ -37,7 +40,7 @@ export function useCorrection() {
     const ac = new AbortController();
     abortRef.current = ac;
     const sourceText = input.text.normalize("NFC");
-    setState({ ...initial, status: "running", sourceText });
+    setState({ ...initial, status: "running", sourceText, progress: { stage: "requesting", startedAt: Date.now(), expectedMs: null } });
     let res: Response;
     try {
       res = await fetch("/api/correct", {
@@ -58,6 +61,7 @@ export function useCorrection() {
       for await (const ev of readSse(res, ac.signal)) {
         setState((s) => {
           switch (ev.event) {
+            case "progress": return { ...s, progress: { ...s.progress, stage: ev.data.stage, expectedMs: ev.data.expectedMs ?? s.progress.expectedMs } };
             case "meta": return { ...s, runId: ev.data.runId, provider: ev.data.provider, model: ev.data.model };
             case "edit": { const item: EditItem = { s: ev.data, state: "pending" }; return { ...s, edits: [...s.edits, item].sort((a, b) => a.s.start - b.s.start) }; }
             case "edit_dropped": return { ...s, dropped: [...s.dropped, ev.data] };

@@ -38,8 +38,8 @@ describe("CloudProvider", () => {
     expect((params["output_config"] as Record<string, unknown>)["effort"]).toBe("low");
     expect(((params["output_config"] as Record<string, unknown>)["format"] as Record<string, unknown>)["type"]).toBe("json_schema");
     expect(params["thinking"]).toEqual({ type: "adaptive" });
-    expect(events.map((e) => e.type)).toEqual(["delta", "delta", "final"]);
-    const fin = events[2]!;
+    expect(events.map((e) => e.type)).toEqual(["status", "delta", "delta", "final"]);
+    const fin = events[3]!;
     if (fin.type !== "final") throw new Error();
     expect(fin.usage).toEqual({ inputTokens: 900, cachedTokens: 2500, cacheWriteTokens: 0, outputTokens: 120 });
     expect(p.cost(fin.usage)).toBeCloseTo((900 * 2 + 2500 * 0.2 + 120 * 10) / 1e6, 9);

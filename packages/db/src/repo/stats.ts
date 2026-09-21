@@ -62,3 +62,12 @@ export function getStats(db: Db, weeks = 8, recentN = 30): Stats {
 
   return { weekly: [...buckets.values()], byCategory, recent, collection };
 }
+
+/** 진행 표시용 예상 소요: 같은 provider·강도의 최근 성공 실행 지연 중앙값(ms). 표본이 3개 미만이면 null. */
+export function expectedLatencyMs(db: Db, provider: string, level: string, n = 15): number | null {
+  const rows = db.select({ ms: correctionRuns.latencyMs }).from(correctionRuns)
+    .where(sql`${correctionRuns.status} = 'ok' and ${correctionRuns.provider} = ${provider} and ${correctionRuns.level} = ${level} and ${correctionRuns.latencyMs} is not null`)
+    .orderBy(desc(correctionRuns.createdAt)).limit(n).all().map((r) => r.ms as number).sort((a, b) => a - b);
+  if (rows.length < 3) return null;
+  return rows[Math.floor(rows.length / 2)] ?? null;
+}

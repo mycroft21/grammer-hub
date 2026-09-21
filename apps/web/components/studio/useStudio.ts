@@ -19,9 +19,10 @@ export interface StudioState {
   savedId: string | null;                // 보관함에 저장된 프롬프트 id
   busySlot: SlotKey | null;              // 재생성 중인 슬롯
   error: string | null;
+  progress: { stage: "requesting" | "thinking" | "writing"; startedAt: number; expectedMs: number | null };
 }
 
-const initial: StudioState = { phase: "form", request: null, plan: null, slots: {}, spec: null, rendered: null, checks: [], usage: null, meta: null, savedId: null, busySlot: null, error: null };
+const initial: StudioState = { phase: "form", request: null, plan: null, slots: {}, spec: null, rendered: null, checks: [], usage: null, meta: null, savedId: null, busySlot: null, error: null, progress: { stage: "requesting", startedAt: 0, expectedMs: null } };
 
 /** 만들기 흐름: plan(질문) → generate(스트리밍) → result(재생성·보관). */
 export function useStudio() {
@@ -32,7 +33,7 @@ export function useStudio() {
   const generate = useCallback(async (req: StudioRequest) => {
     cancel();
     const ac = new AbortController(); abortRef.current = ac;
-    setState((s) => ({ ...s, phase: "generating", request: req, slots: {}, spec: null, rendered: null, checks: [], usage: null, savedId: null, error: null }));
+    setState((s) => ({ ...s, phase: "generating", request: req, slots: {}, spec: null, rendered: null, checks: [], usage: null, savedId: null, error: null, progress: { stage: "requesting", startedAt: Date.now(), expectedMs: null } }));
     let res: Response;
     try { res = await api.prompts.generate(req, ac.signal); }
     catch (e) { if (!ac.signal.aborted) setState((s) => ({ ...s, phase: "form", error: String(e) })); return; }
@@ -45,6 +46,7 @@ export function useStudio() {
       for await (const ev of readSseRaw(res, ac.signal)) {
         setState((s) => {
           switch (ev.event) {
+            case "progress": { const d = ev.data as { stage: StudioState["progress"]["stage"]; expectedMs?: number | null }; return { ...s, progress: { ...s.progress, stage: d.stage, expectedMs: d.expectedMs ?? s.progress.expectedMs } }; }
             case "meta": return { ...s, meta: ev.data as StudioState["meta"] };
             case "slot": { const d = ev.data as { key: SlotKey; value: unknown }; return { ...s, slots: { ...s.slots, [d.key]: d.value } }; }
             case "spec": return { ...s, spec: ev.data as PromptSpec };
@@ -69,7 +71,7 @@ export function useStudio() {
     cancel();
     if (req.clarify === "never_ask") { await generate(req); return; }
     const ac = new AbortController(); abortRef.current = ac;
-    setState({ ...initial, phase: "planning", request: req });
+    setState({ ...initial, phase: "planning", request: req, progress: { stage: "requesting", startedAt: Date.now(), expectedMs: null } });
     try {
       const r = await api.prompts.plan(req, ac.signal);
       if (ac.signal.aborted) return;

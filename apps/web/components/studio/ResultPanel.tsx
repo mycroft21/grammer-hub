@@ -5,6 +5,8 @@ import { CheckCircleFilled, CloseCircleFilled, CopyOutlined, SaveOutlined, Reloa
 import { SLOT_KEYS, checksSummary, type CheckResult, type PromptSpec, type RenderedPrompt, type SlotKey } from "@grammer-hub/core";
 import type { StudioState } from "./useStudio";
 import { SlotCard } from "./SlotCard";
+import { ProgressLine } from "@/components/ProgressLine";
+import { SLOT_KEYS as ALL_SLOTS } from "@grammer-hub/core";
 
 const fmtUsd = (v: number) => `$${v.toFixed(4)}`;
 
@@ -76,6 +78,10 @@ export function ResultPanel({ state, onRegenerate, onEdit, onSave, onReset }: {
           <Button data-testid="studio-save" size="small" type="primary" icon={<SaveOutlined />} loading={saving} disabled={!state.spec || generating || Boolean(state.savedId)} onClick={save}>{state.savedId ? "보관됨" : "보관"}</Button>
         </Space>
       </div>
+      {generating && (
+        <ProgressLine compact stage={state.progress.stage} startedAt={state.progress.startedAt} expectedMs={state.progress.expectedMs}
+          fraction={Object.keys(state.slots).length / ALL_SLOTS.length} detail={`슬롯 ${Object.keys(state.slots).length}/${ALL_SLOTS.length}`} />
+      )}
       {assumptions.length > 0 && (
         <Alert type="warning" showIcon message="이 가정으로 만들었습니다" description={<ul className="m-0 pl-5">{assumptions.map((a, i) => <li key={i}>{a}</li>)}</ul>} />
       )}

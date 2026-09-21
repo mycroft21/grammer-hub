@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, App, Button, Segmented, Select, Splitter, Tooltip } from "antd";
 import { CopyOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { applyEdits, type Level, type ProviderId, type SituationProfile } from "@grammer-hub/core";
+import { ProgressLine } from "@/components/ProgressLine";
 import { api } from "@/lib/api";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 import { HighlightView } from "./HighlightView";
@@ -144,12 +145,17 @@ export function Editor({ profiles, defaultProvider, initialProfileId }: { profil
         <div className="flex items-center gap-2 border-b px-3 py-2" style={divider}>
           <Segmented size="small" value={view} onChange={(v) => setView(v as "diff" | "result")}
             options={[{ value: "diff", label: "변경 보기" }, { value: "result", label: "결과 보기" }]} />
-          {running && <span className="ml-1 text-[12px]" style={faint}>교정 중…</span>}
           <Tooltip title="최종본을 클립보드에 복사 (⌘⇧C)">
             <Button data-testid="copy" data-done={done ? "1" : "0"} className="ml-auto" type={done ? "primary" : "default"} icon={<CopyOutlined />}
               disabled={!state.sourceText || running} onClick={copyFinal}>최종본 복사</Button>
           </Tooltip>
         </div>
+        {running && (
+          <div className="border-b" style={divider}>
+            <ProgressLine stage={state.progress.stage} startedAt={state.progress.startedAt} expectedMs={state.progress.expectedMs}
+              detail={state.edits.length > 0 ? `카드 ${state.edits.length}` : undefined} />
+          </div>
+        )}
         <div className="min-h-[220px] p-3">
           {state.status === "idle" && (
             <div className="flex min-h-[190px] flex-col items-center justify-center gap-1 text-center text-[13px]" style={faint}>

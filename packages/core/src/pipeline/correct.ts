@@ -118,7 +118,9 @@ export async function* runCorrection(input: CorrectPipelineInput): AsyncGenerato
   const pendingUnresolved: LlmEdit[] = [];
 
   for await (const ev of input.provider.correct({ system: prompt.system, user: prompt.user, level: input.level, schema: OUTPUT_SCHEMA, ...(input.signal ? { signal: input.signal } : {}) })) {
-    if (ev.type === "delta") {
+    if (ev.type === "status") {
+      yield { event: "progress", data: { stage: ev.stage } };
+    } else if (ev.type === "delta") {
       if (ttfbMs === null) ttfbMs = now() - t0;
       const got = parser.push(ev.text);
       yield* handleEdits(got.edits);

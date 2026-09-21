@@ -8,7 +8,11 @@ export interface ProviderUsage {
   outputTokens: number;
 }
 
+/** 진행 단계. thinking = 모델이 답을 쓰기 전 검토 중, writing = 출력 토큰이 나오기 시작 */
+export type ProviderStage = "thinking" | "writing";
+
 export type ProviderEvent =
+  | { type: "status"; stage: ProviderStage }
   | { type: "delta"; text: string }
   | { type: "final"; raw: string; usage: ProviderUsage; stopReason: string }
   | { type: "error"; code: "provider_unavailable" | "refusal" | "timeout" | "max_tokens"; message: string };

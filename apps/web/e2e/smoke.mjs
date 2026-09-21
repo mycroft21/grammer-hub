@@ -63,6 +63,8 @@ try {
   await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "load" });
   await fillDraft(page, "팀장님 어제 말씀하신 자료 정리해서 보내드릴께요. 커피 나오셨습니다 ㅎㅎ 연락은 010-1234-5678 로 부탁드리겠습니다.");
   await page.click("[data-testid=run]");
+  const progressSeen = await page.waitForSelector("[data-testid=progress]", { timeout: 5000 }).then(() => true).catch(() => false);
+  check("progress line shown while running", progressSeen);
   await page.waitForSelector("[data-card]", { timeout: 20000 });
   await page.waitForSelector("[data-testid=copy][data-done='1']", { timeout: 20000 }); // 완료 표시
   const cards = await page.locator("[data-card]").count();

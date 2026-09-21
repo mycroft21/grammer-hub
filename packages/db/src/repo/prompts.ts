@@ -105,3 +105,12 @@ export function promptStats(db: Db, userId: string): { byPurpose: Record<string,
   }
   return { byPurpose: Object.fromEntries(rows.map((r) => [r.purpose, r.n])), copies, slotEdits };
 }
+
+/** 진행 표시용 예상 소요: 최근 생성(generate) 버전의 지연 중앙값(ms). 표본 3개 미만이면 null. */
+export function expectedStudioLatencyMs(db: Db, provider: string | null, n = 15): number | null {
+  const rows = db.select({ ms: promptVersions.latencyMs }).from(promptVersions)
+    .where(provider ? sql`${promptVersions.source} = 'generate' and ${promptVersions.latencyMs} is not null and ${promptVersions.provider} = ${provider}` : sql`${promptVersions.source} = 'generate' and ${promptVersions.latencyMs} is not null`)
+    .orderBy(desc(promptVersions.createdAt)).limit(n).all().map((r) => r.ms as number).sort((a, b) => a - b);
+  if (rows.length < 3) return null;
+  return rows[Math.floor(rows.length / 2)] ?? null;
+}

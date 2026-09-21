@@ -48,8 +48,12 @@ export class CloudProvider implements CorrectionProvider {
     }
 
     try {
+      let stage: "thinking" | "writing" | null = null;
       for await (const ev of stream) {
-        if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") {
+        if (ev.type === "content_block_start" && ev.content_block.type === "thinking" && stage === null) {
+          stage = "thinking"; yield { type: "status", stage };
+        } else if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") {
+          if (stage !== "writing") { stage = "writing"; yield { type: "status", stage }; }
           yield { type: "delta", text: ev.delta.text };
         }
       }

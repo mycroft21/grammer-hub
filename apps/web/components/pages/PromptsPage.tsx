@@ -7,6 +7,7 @@ import { CreateForm } from "@/components/studio/CreateForm";
 import { AskStep } from "@/components/studio/AskStep";
 import { ResultPanel } from "@/components/studio/ResultPanel";
 import { LibraryPanel } from "@/components/studio/LibraryPanel";
+import { ProgressLine } from "@/components/ProgressLine";
 
 /** 프롬프트 스튜디오: 개발 생애주기(조사→계획→개발→검토) 목적의 프롬프트를 규격에 맞춰 만들고 보관한다. */
 export function PromptsPage() {
@@ -30,7 +31,10 @@ export function PromptsPage() {
         <div className="flex flex-col gap-4">
           {state.phase === "form" && <CreateForm busy={false} error={state.error} onSubmit={(req) => void studio.start(req)} />}
           {state.phase === "planning" && (
-            <div className="flex items-center gap-3 py-6"><Spin /><Typography.Text type="secondary">의도를 정리하는 중… 필요한 것만 묻습니다.</Typography.Text></div>
+            <div className="flex flex-col gap-2 py-6">
+              <div className="flex items-center gap-3"><Spin /><Typography.Text type="secondary">의도를 정리하는 중… 필요한 것만 묻습니다.</Typography.Text></div>
+              <ProgressLine compact stage="requesting" startedAt={state.progress.startedAt} expectedMs={null} />
+            </div>
           )}
           {state.phase === "ask" && state.plan && <AskStep plan={state.plan} busy={busy} onAnswer={(a, assume) => void studio.answer(a, assume)} onBack={studio.backToForm} />}
           {(state.phase === "generating" || state.phase === "result") && (

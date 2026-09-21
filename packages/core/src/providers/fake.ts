@@ -49,6 +49,9 @@ export class FakeProvider implements CorrectionProvider {
 
   private async *stream(out: unknown, input: ProviderInput): AsyncIterable<ProviderEvent> {
     const json = JSON.stringify(out);
+    yield { type: "status", stage: "thinking" };
+    await new Promise((r) => setTimeout(r, this.delayMs * 3));
+    yield { type: "status", stage: "writing" };
     for (let i = 0; i < json.length; i += 40) {
       await new Promise((r) => setTimeout(r, this.delayMs));
       if (input.signal?.aborted) return;

@@ -21,7 +21,13 @@ export const ErrorCode = z.enum([
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;
 
+export const ProgressStage = z.enum(["requesting", "thinking", "writing"]);
+export type ProgressStage = z.infer<typeof ProgressStage>;
+/** 진행 표시용. expectedMs는 같은 provider·강도의 최근 실행 중앙값(없으면 null). */
+export const ProgressDto = z.object({ stage: ProgressStage, expectedMs: z.number().int().nullable().optional() });
+
 export const SseEvent = z.discriminatedUnion("event", [
+  z.object({ event: z.literal("progress"), data: ProgressDto }),
   z.object({ event: z.literal("meta"), data: z.object({
     runId: z.string(), provider: ProviderId, model: z.string(),
     profileVersionId: z.string().nullable(), maskedSpans: z.array(MaskedSpanDto),
