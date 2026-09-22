@@ -70,6 +70,10 @@ export function TicketReview({ ticket, plan, workspace, busy, onGenerate, onBack
 
       <Alert type="info" showIcon message={plan.summary} description={plan.questions.length ? "모델이 정리한 초안입니다. 아래 질문은 저장소를 읽어도 알 수 없는 것만 골랐습니다. 나머지는 가정으로 두었으니 틀린 곳만 고치세요." : "모델이 정리한 초안입니다. 물을 것이 없어 바로 만들 수 있습니다. 가정이 틀렸으면 아래에서 고치세요."} />
       {plan.missing_inputs.length > 0 && <Alert type="warning" showIcon message="티켓 밖에 있는 정보" description={<ul className="m-0 pl-5">{plan.missing_inputs.map((m, i) => <li key={i}>{m}</li>)}</ul>} />}
+      {plan.suggested_purpose && purpose === plan.purpose && (
+        <Alert type="warning" showIcon data-testid="purpose-suggestion" message={`분류를 '${PURPOSES[plan.suggested_purpose.purpose].label}'으로 바꾸는 것이 맞아 보입니다`} description={plan.suggested_purpose.why}
+          action={<Button size="small" type="primary" onClick={() => { const v = plan.suggested_purpose!.purpose; setPurpose(v); setSubtype(null); setRuntime(rtFor(v)); setLength(lenFor(v)); }}>바꾸기</Button>} />
+      )}
       {workspace && !workspace.exists && PURPOSES[purpose].domain === "dev" && (
         <Typography.Text type="secondary" style={label(12)}>작업 공간 프로필이 없어 저장소를 티켓 텍스트에서만 추측했습니다. 루트에 <code>studio.workspace.json</code>을 두면(예시: <code>studio.workspace.example.json</code>) 저장소·검증 명령·팀 규칙을 매번 묻지 않습니다.</Typography.Text>
       )}

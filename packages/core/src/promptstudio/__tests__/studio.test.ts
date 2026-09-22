@@ -130,9 +130,10 @@ describe("checks", () => {
     const good = { ...cc, starting_points: ["eximbay-partner: Set-Cookie·addCookie 호출부 전체 검색"] };
     expect(runChecks(good).find((c) => c.id === "starting_points")?.ok).toBe(true);
     // 완료 조건·검증에 실행 가능한 확인이 있어야 한다(에이전트만)
-    expect(runChecks(good).find((c) => c.id === "verification_runnable")?.ok).toBe(false);
+    expect(runChecks(good, { purpose: "build" }).find((c) => c.id === "verification_runnable")?.ok).toBe(false);   // 구현: '인용'은 검증이 아니다
+    expect(runChecks(good).find((c) => c.id === "verification_runnable")?.ok).toBe(true);                        // 목적을 모르면 읽어서 인용도 인정
     const runnable = { ...good, self_check: ["./gradlew test 통과 출력을 보고에 붙인다", "변경 파일 목록"] };
-    expect(runChecks(runnable).find((c) => c.id === "verification_runnable")?.ok).toBe(true);
+    expect(runChecks(runnable, { purpose: "build" }).find((c) => c.id === "verification_runnable")?.ok).toBe(true);
     expect(runChecks(baseSpec()).find((c) => c.id === "verification_runnable")).toBeUndefined();
     const dup = { ...baseSpec(), hard_rules: ["이름만 보고 역할을 단정하지 않고 호출부를 먼저 본다"], failure_guards: ["이름만 보고 역할을 단정하지 않고 실제 호출부를 확인한다"] };
     expect(runChecks(dup).find((c) => c.id === "no_duplicates")?.ok).toBe(false);
@@ -144,6 +145,15 @@ describe("checks", () => {
     expect(runChecks(agent, { purpose: "build" }).find((c) => c.id === "scope_consistent")?.ok).toBe(true);
     expect(runChecks({ ...agent, goal: "설계안 문서를 만든다", process: null }, { purpose: "plan" }).find((c) => c.id === "scope_consistent")?.ok).toBe(true);
     expect(runChecks(agent).find((c) => c.id === "scope_consistent")).toBeUndefined();            // 목적을 모르면 보지 않는다
+    // 반대 방향: 구현 분류인데 '코드를 수정하지 않고 설계안만'
+    const designOnly = { ...agent, goal: "Produce a design doc for EP-1174", process: null, hard_rules: ["Do not modify code; produce only the design document."] };
+    expect(runChecks(designOnly, { purpose: "build" }).find((c) => c.id === "scope_consistent")?.ok).toBe(false);
+    expect(runChecks(designOnly, { purpose: "build" }).find((c) => c.id === "scope_consistent")?.detail).toContain("계획");
+    expect(runChecks(designOnly, { purpose: "plan" }).find((c) => c.id === "scope_consistent")?.ok).toBe(true);
+    // 조사·설계에서는 '읽어서 인용'도 실행 가능한 검증으로 본다; 구현에서는 아니다
+    const readVerify = { ...agent, goal: "설계안 문서를 만든다", process: null, self_check: ["Quote CardCode.VISA's actual value read from the enum file", "변경 파일 목록"] };
+    expect(runChecks(readVerify, { purpose: "plan" }).find((c) => c.id === "verification_runnable")?.ok).toBe(true);
+    expect(runChecks(readVerify, { purpose: "build" }).find((c) => c.id === "verification_runnable")?.ok).toBe(false);
     expect(runChecks(baseSpec(), { purpose: "plan" }).find((c) => c.id === "scope_consistent")).toBeUndefined();  // chat 런타임은 범위 문장이 없다
   });
   it("flags rule sets that are only prohibitions, passes 'X instead of Y' forms", () => {

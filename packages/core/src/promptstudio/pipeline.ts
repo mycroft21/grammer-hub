@@ -7,7 +7,7 @@ import { PartialSlotParser } from "./partial";
 import { renderClaude, type RenderedPrompt } from "./render/claude";
 import { runChecks } from "./checks";
 import { DOMAINS, PURPOSES, findSubtype } from "./taxonomy";
-import { TicketPlanRaw, buildTicketPlanPrompt, type Ticket, type TicketPlanResult } from "./ticket";
+import { TicketPlanRaw, buildTicketPlanPrompt, suggestPurpose, type Ticket, type TicketPlanResult } from "./ticket";
 import { UNIVERSAL_NEEDS, deriveNeeds } from "./needs";
 import { resolveRepos, type WorkspaceProfile } from "./workspace";
 import { agentDefaultsFor } from "./agent-defaults";
@@ -92,6 +92,7 @@ export async function planFromTicket(provider: CorrectionProvider, ticketText: s
     ...raw, subtype: findSubtype(raw.purpose, raw.subtype).id, needs: d.needs,
     mode: d.mode, questions: d.questions, assumptions: d.assumptions, missing_inputs: d.missing_inputs, verify_in_repo: d.verify_in_repo,
     repos: d.repos, repo_evidence: repoMatches.length ? repoMatches.map((x) => `${x.repo.name}: ${x.evidence}`).join("; ") : null,
+    suggested_purpose: suggestPurpose(raw.purpose, d.needs),
   };
   const u = r.usage ?? { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
   return { plan: unmaskDeep(plan, m), usage: { ...u, costUsd: provider.cost(u), latencyMs: Date.now() - t0 }, error: null };

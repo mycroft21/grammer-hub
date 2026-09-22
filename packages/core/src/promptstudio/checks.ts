@@ -11,6 +11,10 @@ const BARE_KEYWORD = /^[^\s:/·(]+$/;
 /** 목표·완료 조건·진행에 '구현'이 들어 있는가. 코드를 수정하지 않는 목적(조사·계획·검토)과 모순되면 잡는다 */
 const IMPLEMENTS = /(구현한다|구현하고|코드 변경|코드를 변경|코드를 수정|수정한다|변경한다|변경된다|갱신된다|갱신한다|패치|리팩터링한다|추가한다|삭제한다|diff를|PR을)|\b(implement|modify|refactor|patch|change the code|add the|update the code|commit|open a PR)\b/i;
 const READ_ONLY_PURPOSES: Purpose[] = ["investigate", "plan", "review"];
+/** 구현 분류인데 내용이 '코드를 수정하지 않는다·설계안만'이면 반대 방향 모순 */
+const READ_ONLY_TEXT = /(코드를 수정하지 않|코드를 고치지 않|수정 없이|설계안만|설계 문서만|문서만 낸다|구현하지 않)|\b(do not modify code|don't modify code|without editing code|without modifying|design doc only|design document only|no code changes?)\b/i;
+/** 조사·설계·검토에서는 '읽어서 인용·확인'도 실행해 보일 수 있는 검증이다(테스트가 없을 수 있다) */
+const RUNNABLE_READ = /(읽어|인용|줄 번호|파일·라인|enum|열어서|확인한 값|git status|변경 없음|수정되지 않)|\b(read|quote|quoted|cite|line numbers?|open the|inspect|git status|unchanged|not edited|enum)\b/i;
 export interface CheckOptions { purpose?: Purpose | null | undefined }
 const RUNNABLE = /(테스트|빌드|컴파일|실행|명령|출력|화면|스크린샷|응답|상태 코드|로그|통과|실패|재현|curl|http|exit|lint|typecheck|pnpm|npm|yarn|gradle|gradlew|mvn|pytest|vitest|jest|go test|cargo|make\b|docker|sql|select |grep|diff|git )|\b(test|tests|build|compile|run|command|output|screenshot|response|status code|logs?|pass|passes|fails?|reproduce|exit code)\b/i;
 
@@ -23,9 +27,13 @@ export function runChecks(spec: PromptSpec, opts: CheckOptions = {}): CheckResul
     const text = [spec.goal, ...spec.success_criteria, ...(spec.process ?? [])].join("\n");
     const readOnly = READ_ONLY_PURPOSES.includes(opts.purpose);
     const implementing = IMPLEMENTS.test(text);
-    add("scope_consistent", "분류의 범위(조사·설계·검토는 코드 수정 없음)와 목표·진행이 어긋나지 않는다", !(readOnly && implementing),
+    const readOnlyText = READ_ONLY_TEXT.test([text, ...spec.hard_rules].join("\n"));
+    const inverse = opts.purpose === "build" && readOnlyText && !implementing;
+    add("scope_consistent", "분류의 범위(조사·설계·검토는 코드 수정 없음, 구현은 코드 변경)와 목표·진행이 어긋나지 않는다", !(readOnly && implementing) && !inverse,
       readOnly && implementing
         ? `분류가 '${PURPOSES[opts.purpose].label}'이라 첫 규칙이 "코드를 수정하지 않는다"인데 목표·완료 조건·진행에 구현이 있습니다. 분류를 '구현'으로 바꾸거나(진행에 설계 단계를 넣어도 됩니다) 목표에서 구현을 빼세요.`
+        : inverse
+        ? "분류가 '구현'이라 첫 규칙·보고 분량이 코드 변경 기준인데, 내용은 '코드를 수정하지 않고 설계안만'입니다. 분류를 '계획'(설계안) 또는 '조사'로 바꾸세요. 그러면 첫 규칙과 보고 분량도 문서 기준으로 바뀝니다."
         : "분류와 내용이 맞습니다.");
   }
 
@@ -38,8 +46,10 @@ export function runChecks(spec: PromptSpec, opts: CheckOptions = {}): CheckResul
     add("starting_points", "저장소에서 어디부터 볼지 시작점이 있다(검색어 하나만은 아니다)", spec.starting_points.length > 0 && bare.length === 0 && spec.inputs.every((i) => /^[a-z][a-z0-9_]*$/.test(i.name)),
       spec.starting_points.length === 0 ? "URL·경로·클래스명·검색어 중 하나는 있어야 모델이 헤매지 않습니다." : bare.length ? `'${bare.join("', '")}'는 이름 하나뿐입니다. '저장소: 클래스·메서드' 또는 '저장소: X·Y 호출부 검색'처럼 어느 저장소의 어디를 어떻게 볼지 적으세요.` : "변수명은 영문 snake_case여야 합니다.");
     const pool = [...spec.success_criteria, ...spec.self_check];
-    add("verification_runnable", "완료 조건이나 검증에 에이전트가 직접 실행할 확인(테스트·명령·화면)이 있다", pool.some((x) => RUNNABLE.test(x)),
-      "'문서가 정리된다'만으로는 에이전트가 끝을 모릅니다. 테스트 명령, 빌드, 재현 절차, 화면 확인처럼 실행해서 보일 수 있는 항목이 하나는 있어야 합니다.");
+    // 구현은 테스트·빌드·재현 같은 실행 확인, 조사·설계·검토는 '파일을 읽어 값을 인용·확인'도 인정한다
+    const readOnlyPurpose = !opts.purpose || READ_ONLY_PURPOSES.includes(opts.purpose);
+    add("verification_runnable", "완료 조건이나 검증에 에이전트가 직접 실행해 보일 확인(테스트·명령·화면, 조사·설계는 읽어서 인용)이 있다", pool.some((x) => RUNNABLE.test(x) || (readOnlyPurpose && RUNNABLE_READ.test(x))),
+      readOnlyPurpose ? "'문서가 정리된다'만으로는 끝을 모릅니다. 어느 파일을 읽어 어떤 값을 인용·확인할지, 또는 실행할 명령이 하나는 있어야 합니다." : "'문서가 정리된다'만으로는 에이전트가 끝을 모릅니다. 테스트 명령, 빌드, 재현 절차, 화면 확인처럼 실행해서 보일 수 있는 항목이 하나는 있어야 합니다.");
   } else {
     add("inputs_delimited", "입력이 변수로 분리되어 구분자로 감싸진다", spec.inputs.length > 0 && spec.inputs.every((i) => /^[a-z][a-z0-9_]*$/.test(i.name)),
       spec.inputs.length === 0 ? "입력 변수가 없습니다. 매번 달라지는 것이 정말 없는지 확인하세요." : "변수명은 영문 snake_case여야 렌더에서 태그로 쓸 수 있습니다.");

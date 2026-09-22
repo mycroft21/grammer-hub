@@ -4,6 +4,7 @@ import { DEMO_TICKET, DEMO_TICKET_TERSE, adfToText, buildTicketPlanPrompt, jiraI
 import { generatePrompt, planFromTicket, planPrompt } from "../pipeline";
 import { EXAMPLE_PROFILE, glossaryFor, parseWorkspaceProfile, resolveRepos, workspaceBlock } from "../workspace";
 import { deriveNeeds, needsCatalog } from "../needs";
+import { suggestPurpose } from "../ticket";
 import type { Need } from "../spec";
 
 describe("parseIssueKey", () => {
@@ -182,6 +183,17 @@ describe("workspace profile", () => {
     expect(b).toContain("EP = 결제 플랫폼 개발 요청");
     expect(glossaryFor(EXAMPLE_PROFILE, "PSP 모델")).toEqual(["PSP: Payment Service Provider. 결제대행사 모델"]);
     expect(workspaceBlock(null)).toBe("");
+  });
+});
+
+describe("suggestPurpose", () => {
+  const need = (value: string): Need => ({ id: "deliverable", label: "결과물 형태", status: "filled", value, options: [], question: null, why: "" });
+  it("build with a document deliverable → plan; plan with a code deliverable → build; otherwise null", () => {
+    expect(suggestPurpose("build", [need("설계안(비교표 + 권장안)")])?.purpose).toBe("plan");
+    expect(suggestPurpose("plan", [need("코드 변경(Visa 분기 추가)")])?.purpose).toBe("build");
+    expect(suggestPurpose("build", [need("코드 변경")])).toBeNull();
+    expect(suggestPurpose("build", [need("설계안과 코드 변경")])).toBeNull();   // 둘 다면 판단 보류
+    expect(suggestPurpose("review", [need("코드 변경")])).toBeNull();
   });
 });
 

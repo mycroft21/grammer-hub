@@ -72,7 +72,7 @@ export function studioStableSystem(): string {
 }
 
 /** 목적별 블록: 원칙 + 세부 유형의 씨앗. 프로그램이 넣는 '최소 품질' 요구사항. */
-export function studioPurposeBlock(purpose: Purpose, subtypeId: string | null | undefined, runtime: Runtime = "chat"): string {
+export function studioPurposeBlock(purpose: Purpose, subtypeId: string | null | undefined, runtime: Runtime = "chat", language: PromptLanguage = "ko"): string {
   const p = PURPOSES[purpose];
   const s = findSubtype(purpose, subtypeId);
   const next = p.next ? PURPOSES[p.next] : null;
@@ -96,8 +96,8 @@ export function studioPurposeBlock(purpose: Purpose, subtypeId: string | null | 
     `- 기본 출력 형식: ${s.seeds.outputFormat}`,
     inputsLine,
     s.seeds.handoff.length ? `- ${next ? "다음 단계로 넘길 것" : "결과에 반드시 포함할 것"}(출력 형식에 반드시 포함): ${s.seeds.handoff.join(" / ")}` : "",
-    ad ? `- 에이전트 보고 기본 구성(output_contract.structure의 기준): ${ad.report.structure.ko} · 분량은 프로그램이 "${ad.report.length.ko}"로 넣는다` : "",
-    ad ? `- 범위 유지 문장(프로그램이 범위와 제약 첫 줄에 넣음. 다시 쓰지 말 것): "${ad.scope.ko}"` : "",
+    ad ? `- 에이전트 보고 기본 구성(output_contract.structure의 기준, 프롬프트 언어로 쓴다): ${ad.report.structure[language]} · 분량은 프로그램이 "${ad.report.length[language]}"로 넣는다` : "",
+    ad ? `- 범위 유지 문장(프로그램이 범위와 제약 첫 줄에 넣음. 다시 쓰지 말 것): "${ad.scope[language]}"` : "",
   ].filter((l) => l !== "").join("\n");
 }
 
@@ -171,7 +171,7 @@ export function buildPlanPrompt(ctx: StudioContext): { system: SystemBlock[]; us
   return {
     system: [
       { text: studioStableSystem(), cache: true },
-      { text: [studioPurposeBlock(ctx.purpose, ctx.subtype, ctx.runtime), needsRules(), ws].filter(Boolean).join("\n\n"), cache: false },
+      { text: [studioPurposeBlock(ctx.purpose, ctx.subtype, ctx.runtime, ctx.language), needsRules(), ws].filter(Boolean).join("\n\n"), cache: false },
     ],
     user,
   };
@@ -179,7 +179,7 @@ export function buildPlanPrompt(ctx: StudioContext): { system: SystemBlock[]; us
 
 /** 2단계: PromptSpec 생성. */
 export function buildGeneratePrompt(ctx: StudioContext): { system: SystemBlock[]; user: string } {
-  const dyn = [studioPurposeBlock(ctx.purpose, ctx.subtype, ctx.runtime)];
+  const dyn = [studioPurposeBlock(ctx.purpose, ctx.subtype, ctx.runtime, ctx.language)];
   const ws = workspaceFor(ctx); if (ws) dyn.push(ws);
   if (ctx.styleRules) dyn.push("## 사용자가 명시적으로 포함을 요청한 어투 규칙 (글쓰기 목적에만 반영)\n" + ctx.styleRules);
   const user = [
@@ -222,7 +222,7 @@ export function buildRegeneratePrompt(ctx: StudioContext, spec: PromptSpec, slot
   return {
     system: [
       { text: studioStableSystem(), cache: true },
-      { text: [studioPurposeBlock(ctx.purpose, ctx.subtype, ctx.runtime), ws].filter(Boolean).join("\n\n"), cache: false },
+      { text: [studioPurposeBlock(ctx.purpose, ctx.subtype, ctx.runtime, ctx.language), ws].filter(Boolean).join("\n\n"), cache: false },
     ],
     user,
   };

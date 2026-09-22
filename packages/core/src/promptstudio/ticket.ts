@@ -197,8 +197,27 @@ export const TicketPlanResult = TicketPlanRaw.extend({
   verify_in_repo: z.array(z.string()),    // 모델이 저장소에서 직접 확인할 것(agent_can_find 항목)
   repos: z.array(z.string()),             // 확정된 대상 저장소
   repo_evidence: z.string().nullable(),   // 코드가 확정했다면 그 근거
+  /** 장부의 '결과물 형태'와 분류가 어긋나면 코드가 제안하는 분류(사용자가 검토 화면에서 한 번에 바꿈) */
+  suggested_purpose: z.object({ purpose: Purpose, why: z.string() }).nullable(),
 });
 export type TicketPlanResult = z.infer<typeof TicketPlanResult>;
+
+const DOC_DELIVERABLE = /(설계안|설계 문서|비교표|비교 문서|검토 의견|조사 목록|보고서|문서|design|comparison|review|report|list of)/i;
+const CODE_DELIVERABLE = /(코드 변경|코드를 변경|구현|수정|패치|implement|code change|patch|fix)/i;
+/**
+ * 결과물 형태(장부 deliverable) ↔ 분류 어긋남. 구현 분류인데 결과물이 '설계안·문서'면 계획을, 계획·조사 분류인데 결과물이 '코드 변경'이면 구현을 제안한다.
+ * 첫 실사용에서 설계안 티켓이 build로 분류돼 "요청된 변경만 한다"와 "코드를 수정하지 않는다"가 한 프롬프트에 들어간 문제의 예방책.
+ */
+export function suggestPurpose(purpose: Purpose, needs: Need[]): { purpose: Purpose; why: string } | null {
+  const d = needs.find((n) => n.id === "deliverable");
+  const v = d?.value ?? "";
+  if (!v) return null;
+  const doc = DOC_DELIVERABLE.test(v) && !CODE_DELIVERABLE.test(v);
+  const code = CODE_DELIVERABLE.test(v) && !DOC_DELIVERABLE.test(v);
+  if (purpose === "build" && doc) return { purpose: "plan", why: `결과물 형태가 "${v}"(문서)인데 분류가 구현입니다. 계획(설계안)이면 첫 규칙이 "코드를 수정하지 않는다"가 되고 보고 분량도 문서 기준이 됩니다.` };
+  if ((purpose === "plan" || purpose === "investigate") && code) return { purpose: "build", why: `결과물 형태가 "${v}"(코드 변경)인데 분류가 ${purpose === "plan" ? "계획" : "조사"}입니다. 구현이면 설계는 진행의 앞 단계로 들어가고 코드 변경이 허용됩니다.` };
+  return null;
+}
 
 function taxonomyList(): string {
   return DOMAIN_LIST.map((d) => {
@@ -221,7 +240,7 @@ export function buildTicketPlanPrompt(ticketText: string, opts: TicketPlanOption
     "티켓(이슈 트래커 카드)을 읽고 이 앱의 분류 체계에서 purpose(중분류 id)와 subtype(세부 유형 id)을 고른다. 목록:",
     taxonomyList(),
     "",
-    "- 코드 조사·수정이 필요한 티켓은 개발 대분류. 이미 조사가 끝나 파일·메서드가 적혀 있으면 plan(설계 판단만 남았고 코드는 고치지 않을 때) 또는 build(코드를 고칠 때. 설계와 구현을 함께 요구해도 build — 진행의 앞 단계에 설계를 넣는다). 원인만 묻는 버그면 investigate/logic. 보안 스캐너 결과처럼 위치를 모르면 investigate/source. 조사·계획·검토 프롬프트는 코드를 수정하지 않는다는 규칙이 자동으로 붙는다.",
+    "- 코드 조사·수정이 필요한 티켓은 개발 대분류. 결과물이 설계안·비교표·문서면 plan, 코드 변경이면 build(설계와 구현을 함께 요구해도 build — 진행의 앞 단계에 설계를 넣는다). 이미 조사가 끝나 파일·메서드가 적혀 있어도 이 기준으로 가른다. 원인만 묻는 버그면 investigate/logic. 보안 스캐너 결과처럼 위치를 모르면 investigate/source. 조사·계획·검토 프롬프트는 코드를 수정하지 않는다는 규칙이 자동으로 붙는다.",
     "- '검토 요청', '연동 가능 여부', '일정 산정'처럼 코드보다 조사·판단이 핵심이면 리서치 또는 기획.",
     "- goal: 티켓 표현을 살려 한두 문장. 결과물이 무엇인지 드러나게. 사람 이름·인사말·담당자 의견은 빼고 핵심만.",
     "- starting_points: '저장소: 대상' 형태로 한 줄에 하나(예: 'reporter-api: MerchantServiceCommandService.updateMasterCardStatus', 'eximbay-partner: Set-Cookie·addCookie 호출부 전체 검색'). 티켓에 적힌 클래스·메서드·파일·URL·화면을 그대로 옮기고, 없으면 검색어를 한 줄로 묶는다. 'cookie', 'session'처럼 단어만 나열하지 않는다.",
