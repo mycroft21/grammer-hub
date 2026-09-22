@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Layout, Menu, Tooltip, Button } from "antd";
-import { EditOutlined, IdcardOutlined, HighlightOutlined, BookOutlined, HistoryOutlined, ExperimentOutlined, MoonOutlined, SunOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
+import { EditOutlined, IdcardOutlined, HighlightOutlined, BookOutlined, HistoryOutlined, ExperimentOutlined, MoonOutlined, SunOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SettingOutlined } from "@ant-design/icons";
 import { useThemeMode } from "./providers/AppProviders";
 
 const ITEMS = [
@@ -13,6 +13,7 @@ const ITEMS = [
   { key: "/dictionary", label: "사전", icon: <BookOutlined /> },
   { key: "/runs", label: "기록", icon: <HistoryOutlined /> },
   { key: "/prompts", label: "프롬프트", icon: <ExperimentOutlined /> },
+  { key: "/settings", label: "설정", icon: <SettingOutlined /> },
 ];
 
 /** 아이콘 레일 사이드바(접힘 기본) + 콘텐츠. 모바일(<lg)에서는 상단 가로 메뉴. */

@@ -1,7 +1,7 @@
 // E2E 스모크: FAKE_PROVIDER=1 서버를 대상으로 에디터 → 카드 → 수락 → 복사 → 실행 기록까지.
 // 실행: pnpm --filter @grammer-hub/web e2e  (서버는 스크립트가 직접 띄운다)
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
@@ -14,7 +14,8 @@ const dir = mkdtempSync(join(tmpdir(), "gh-e2e-"));
 const server = spawn(process.execPath, [require.resolve("next/dist/bin/next"), "start", "-p", PORT], {
   cwd: new URL("..", import.meta.url).pathname,
   // 작업 공간 프로필은 예시 파일을 그대로 쓴다(DEMO-2의 [partner] 태그 → eximbay-partner 확정 경로를 검사)
-  env: { ...process.env, DATABASE_URL: `file:${join(dir, "e2e.db")}`, FAKE_PROVIDER: "1", ALLOWED_EMAIL: "e2e@example.com", WORKSPACE_PROFILE: "studio.workspace.example.json" },
+  // 설정 화면 검사는 실제 .env를 건드리지 않도록 GH_ENV_FILE을 임시 파일로 돌린다
+  env: { ...process.env, DATABASE_URL: `file:${join(dir, "e2e.db")}`, FAKE_PROVIDER: "1", ALLOWED_EMAIL: "e2e@example.com", WORKSPACE_PROFILE: "studio.workspace.example.json", GH_ENV_FILE: join(dir, "e2e.env") },
   stdio: ["ignore", "pipe", "pipe"], detached: true,
 });
 const stopServer = () => { try { process.kill(-server.pid, "SIGTERM"); } catch { try { server.kill("SIGTERM"); } catch {} } };
@@ -172,6 +173,23 @@ try {
   await page.click("[data-testid=ticket-assume]");
   await page.waitForSelector("[data-testid=studio-save]:not([disabled])", { timeout: 20000 });
   check("terse ticket still yields a Claude Code prompt", ((await page.textContent("[data-testid=studio-rendered]")) ?? "").includes("## 시작점"));
+
+  // 설정 화면: .env 대신 편집 → 저장 → 다시 읽어도 남는다. 프로필 편집기는 잘못된 JSON을 막는다.
+  await page.goto(`http://127.0.0.1:${PORT}/settings`, { waitUntil: "load" });
+  await page.waitForSelector("[data-testid=settings-page]", { timeout: 15000 });
+  check("settings shows backend health line", ((await page.textContent("[data-testid=settings-health]")) ?? "").includes("fake"));
+  await fillUntil(page, "[data-testid=setting-LOG_FILE] input", "/tmp/gh-e2e.log", "[data-testid=settings-save]:not([disabled])");
+  await page.click("[data-testid=settings-save]");
+  await page.waitForSelector("text=저장했습니다", { timeout: 5000 });
+  await page.goto(`http://127.0.0.1:${PORT}/settings`, { waitUntil: "load" });
+  await page.waitForSelector("[data-testid=setting-LOG_FILE] input", { timeout: 15000 });
+  check("saved setting survives reload and is written to the env file", (await page.inputValue("[data-testid=setting-LOG_FILE] input")) === "/tmp/gh-e2e.log" && readFileSync(join(dir, "e2e.env"), "utf8").includes("LOG_FILE=/tmp/gh-e2e.log"));
+  await page.fill("[data-testid=workspace-editor]", "{ not json");
+  await page.click("[data-testid=workspace-save]");
+  await page.waitForSelector("[data-testid=workspace-error]", { timeout: 5000 });
+  check("workspace editor rejects invalid JSON", ((await page.textContent("[data-testid=workspace-error]")) ?? "").includes("JSON"));
+  const health = await (await fetch(`http://127.0.0.1:${PORT}/api/health`)).json();
+  check("health reflects the runtime-updated setting without restart", health.ok === true && (await (await fetch(`http://127.0.0.1:${PORT}/api/settings`)).json()).items.some((i) => i.key === "LOG_FILE" && i.value === "/tmp/gh-e2e.log" && i.source === "file"));
 
   check("no page errors", pageErrors.length === 0);
   if (pageErrors.length) console.log(pageErrors);

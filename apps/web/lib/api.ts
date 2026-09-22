@@ -50,12 +50,25 @@ export const api = {
     event: (body: { promptId: string; versionId?: string | null; action: "copy" | "fill" | "view"; slot?: string | null; payload?: Record<string, unknown> | null }) =>
       fetch("/api/prompts/events", json("POST", body)).then(j<{ ok: true }>).catch(() => ({ ok: true as const })),
   },
+  settings: {
+    get: () => fetch("/api/settings").then(j<SettingsDto>),
+    save: (values: Record<string, string>) => fetch("/api/settings", json("PUT", { values })).then(j<SettingsDto & { ok: true; restart: string[]; changed: string[] }>),
+    workspace: () => fetch("/api/settings/workspace").then(j<WorkspaceFileDto>),
+    saveWorkspace: (text: string) => fetch("/api/settings/workspace", json("PUT", { text })).then(j<WorkspaceFileDto & { ok: true; repos: number }>),
+    health: (probe: boolean) => fetch(`/api/health${probe ? "?probe=1" : ""}`).then(j<HealthDto>),
+  },
   samples: {
     list: () => fetch("/api/samples").then(j<WritingSample[]>),
     add: (body: { text: string; channel?: string; audience?: string; note?: string }) => fetch("/api/samples", json("POST", body)).then(j<WritingSample>),
     remove: (id: string) => fetch(`/api/samples/${id}`, { method: "DELETE" }).then(j<{ ok: true }>),
   },
 };
+
+/** 서버 lib/settings.ts 의 응답 모양 */
+export interface SettingDefDto { key: string; label: string; group: "backend" | "jira" | "behavior"; kind: "text" | "secret" | "select" | "bool"; help: string; options?: { value: string; label: string }[]; placeholder?: string; restart?: boolean; showWhen?: [string, string[]] }
+export interface SettingsDto { items: { key: string; value: string; masked: boolean; set: boolean; source: "file" | "os" | "default" }[]; envFile: string; exists: boolean; defs: SettingDefDto[] }
+export interface WorkspaceFileDto { path: string; exists: boolean; text: string; error: string | null; summary: { repos: number } | null; example: string }
+export interface HealthDto { ok: boolean; cloud: { backend: string; ready: boolean; model: string; cliPath?: string; hasApiKey?: boolean; health: { ok: boolean; detail?: string } | null }; defaultProvider: string; jira: { configured: boolean; baseUrl: string | null }; workspace: { exists: boolean; path: string; error: string | null; repos?: number; conventions?: number }; code: { branch: string | null; head: string | null; committedAt: string | null; dirtyFiles: number | null }; build: { id: string; builtAt: string; staleAgainstHead: boolean | null } | null; node: string }
 
 /** 서버 lib/workspace.ts workspaceStatus()의 응답 모양 */
 export interface WorkspaceStatus {

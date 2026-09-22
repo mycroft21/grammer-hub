@@ -9,9 +9,15 @@ export const PALETTE = {
   cat: { accuracy: "#DC2626", register: "#7C3AED", clarity: "#2563EB", tone: "#C2410C" },
 } as const;
 
+/**
+ * 다크 팔레트 v2. v1(#0A0A0A 바탕·#171717 패널·#262626 선)은 표면끼리 구분이 안 되고 12px 보조 텍스트가 묻혔다.
+ * 바탕과 패널을 두 단계 올리고, 선·테두리를 보이게, 보조 텍스트를 밝게(WCAG AA 4.5:1 이상), 채움(fill) 토큰을 뚜렷하게.
+ */
 export const DARK = {
-  canvas: "#0A0A0A", panel: "#171717", line: "#262626", border: "#404040", ink: "#FAFAFA", muted: "#A3A3A3",
-  primary: "#22C55E", primarySoft: "rgba(34,197,94,.12)", primaryLine: "#16A34A", selection: "rgba(251,191,36,.18)",
+  canvas: "#161618", panel: "#1F1F23", elevated: "#26262B", line: "#34343A", border: "#55555E",
+  ink: "#F4F4F5", muted: "#C6C6CD", tertiary: "#9A9AA3", placeholder: "#80808A",
+  primary: "#34D399", primaryHover: "#6EE7B7", primarySoft: "rgba(52,211,153,.16)", primaryLine: "#10B981", selection: "rgba(251,191,36,.22)",
+  fill: { quaternary: "rgba(255,255,255,.06)", tertiary: "rgba(255,255,255,.10)", secondary: "rgba(255,255,255,.14)" },
   cat: { accuracy: "#F87171", register: "#A78BFA", clarity: "#60A5FA", tone: "#FB923C" },
 } as const;
 
@@ -28,16 +34,18 @@ export function antdTheme(mode: "light" | "dark"): ThemeConfig {
       colorSuccess: dark ? DARK.primary : PALETTE.primary,
       colorError: PALETTE.danger,
       colorWarning: PALETTE.warning,
-      colorInfo: PALETTE.muted,
+      colorInfo: dark ? DARK.tertiary : PALETTE.muted,
       colorLink: dark ? DARK.primary : PALETTE.primary,
       colorText: dark ? DARK.ink : PALETTE.ink,
       colorTextSecondary: dark ? DARK.muted : PALETTE.muted,
-      colorTextTertiary: PALETTE.disabled,
+      colorTextTertiary: dark ? DARK.tertiary : PALETTE.disabled,
+      ...(dark ? { colorTextQuaternary: DARK.placeholder, colorTextPlaceholder: DARK.placeholder } : {}),
       colorBorder: dark ? DARK.border : PALETTE.border,
       colorBorderSecondary: dark ? DARK.line : PALETTE.line,
       colorBgLayout: dark ? DARK.canvas : PALETTE.canvas,
       colorBgContainer: dark ? DARK.panel : PALETTE.panel,
-      colorBgElevated: dark ? DARK.panel : PALETTE.panel,
+      colorBgElevated: dark ? DARK.elevated : PALETTE.panel,
+      ...(dark ? { colorFillQuaternary: DARK.fill.quaternary, colorFillTertiary: DARK.fill.tertiary, colorFillSecondary: DARK.fill.secondary, colorBgSpotlight: DARK.elevated } : {}),
       borderRadius: 6,
       borderRadiusLG: 10,
       fontFamily: FONT,
@@ -51,8 +59,12 @@ export function antdTheme(mode: "light" | "dark"): ThemeConfig {
       Card: { bodyPadding: 16, headerPadding: 12 },
       Layout: { siderBg: dark ? DARK.panel : PALETTE.panel, headerBg: dark ? DARK.panel : PALETTE.panel, bodyBg: dark ? DARK.canvas : PALETTE.canvas },
       Menu: { itemBg: "transparent", itemSelectedBg: dark ? DARK.primarySoft : PALETTE.primarySoft, itemSelectedColor: dark ? DARK.primary : PALETTE.primary, activeBarBorderWidth: 0 },
-      Segmented: { itemSelectedBg: dark ? DARK.panel : PALETTE.panel, trackBg: dark ? DARK.line : "#F5F5F5" },
-      Table: { headerBg: dark ? DARK.panel : PALETTE.canvas, cellPaddingBlock: 8 },
+      Segmented: { itemSelectedBg: dark ? "#3A3A42" : PALETTE.panel, trackBg: dark ? "#2A2A30" : "#F5F5F5", ...(dark ? { itemColor: DARK.muted, itemSelectedColor: DARK.ink } : {}) },
+      Table: { headerBg: dark ? DARK.elevated : PALETTE.canvas, cellPaddingBlock: 8 },
+      Input: dark ? { colorBgContainer: "#18181B", activeBorderColor: DARK.primary, hoverBorderColor: "#6B6B75" } : {},
+      Select: dark ? { colorBgContainer: "#18181B", optionSelectedBg: DARK.primarySoft } : {},
+      Collapse: dark ? { headerBg: "transparent" } : {},
+      Alert: dark ? { colorInfoBg: "rgba(154,154,163,.12)", colorInfoBorder: "#44444C", colorWarningBg: "rgba(251,191,36,.12)", colorWarningBorder: "#6B5A2A", colorErrorBg: "rgba(248,113,113,.12)", colorErrorBorder: "#6B3A3A", colorSuccessBg: DARK.primarySoft, colorSuccessBorder: "#1F6F4E" } : {},
     },
   };
 }

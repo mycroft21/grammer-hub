@@ -14,6 +14,7 @@
 - [학습 데이터 수집과 기록 그래프](docs/08-learning-data.md)
 - [프롬프트 스튜디오 설계·구현](docs/09-prompt-studio-design.md)
 - [프롬프트 스튜디오 근거 자료](docs/10-prompt-engineering-references.md)
+- 처음 설정은 화면의 **설정** 메뉴(`/settings`)에서 — `.env`와 작업 공간 프로필을 폼으로 편집 ([docs/05 §A-3](docs/05-run-deploy.md))
 - [코딩 에이전트 프롬프트 벤치마크](docs/11-coding-agent-prompt-benchmark.md) — Claude Code·Codex용 프롬프트 규칙, 질문 정책, 작업 공간 프로필의 근거
 
 ## 구조

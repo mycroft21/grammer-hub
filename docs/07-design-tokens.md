@@ -57,7 +57,20 @@
 | info | 회색으로 처리 | 파랑을 쓰면 명확성 카테고리와 겹침 |
 
 ## 6. 다크모드 (B안에서)
-AntD `darkAlgorithm` 기준으로 자동 생성하되 다음만 고정: Canvas `#0A0A0A`, Panel `#171717`, Line `#262626`, Ink `#FAFAFA`, muted `#A3A3A3`, primary는 한 단계 밝게 `#22C55E`(어두운 배경 대비), primary-soft는 `rgba(34,197,94,.12)`. 카테고리 4색은 각각 한 단계 밝은 톤(`#F87171` `#A78BFA` `#60A5FA` `#FB923C`).
+**v2 (2026-09-22).** v1(Canvas `#0A0A0A` · Panel `#171717` · Line `#262626` · muted `#A3A3A3`)은 실사용에서 "너무 어두워 글이 안 보인다"는 피드백을 받았다. 화면을 찍어 보니 바탕·패널·선이 서로 구분되지 않고, 12px 보조 텍스트가 묻히고, Segmented의 선택 항목이 트랙과 같은 색이었다. 바꾼 값(`apps/web/lib/theme/tokens.ts` `DARK`):
+
+| 토큰 | v1 | v2 | 이유 |
+|---|---|---|---|
+| Canvas / Panel / Elevated | `#0A0A0A` / `#171717` / — | `#161618` / `#1F1F23` / `#26262B` | 세 표면이 구분되게 두 단계 올림 |
+| Line / Border | `#262626` / `#404040` | `#34343A` / `#55555E` | 카드·입력 테두리가 보이게 |
+| Ink / muted / tertiary / placeholder | `#FAFAFA` / `#A3A3A3` / (라이트와 동일) | `#F4F4F5` / `#C6C6CD` / `#9A9AA3` / `#80808A` | 보조 텍스트 대비 7:1 이상, 3단계 분리 |
+| primary / soft | `#22C55E` / `rgba(34,197,94,.12)` | `#34D399` / `rgba(52,211,153,.16)` | 어두운 바탕에서 채도 낮추고 밝게 |
+| fill quaternary/tertiary/secondary | 알고리즘 기본(거의 안 보임) | 백색 6% / 10% / 14% | pre·code·kbd 배경이 패널과 구분되게 |
+| Segmented 선택/트랙 | Panel / Line | `#3A3A42` / `#2A2A30` | 선택 항목이 보이게 |
+| Input·Select 배경 | Panel과 동일 | `#18181B` | 패널 안 입력칸이 구분되게 |
+| Alert 배경·테두리 | 알고리즘 기본 | info·warning·error·success 각각 저채도 12~16% + 테두리 | 정보 상자가 뜨지 않고 읽히게 |
+
+카테고리 4색은 v1 그대로(`#F87171` `#A78BFA` `#60A5FA` `#FB923C`). 확인 방법: `apps/web/e2e/`에서 playwright로 `colorScheme: "dark"` 스크린샷을 찍어 보는 것이 가장 빠르다.
 
 ## 7. 코드 매핑
 
