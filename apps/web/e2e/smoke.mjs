@@ -191,6 +191,18 @@ try {
   const health = await (await fetch(`http://127.0.0.1:${PORT}/api/health`)).json();
   check("health reflects the runtime-updated setting without restart", health.ok === true && (await (await fetch(`http://127.0.0.1:${PORT}/api/settings`)).json()).items.some((i) => i.key === "LOG_FILE" && i.value === "/tmp/gh-e2e.log" && i.source === "file"));
 
+  // 화면 취향: 글자 크기를 바꾸면 body zoom이 걸리고 새로고침해도 남는다(localStorage)
+  await page.click("[data-testid=pref-scale] >> text=더 크게");
+  await page.waitForTimeout(200);
+  check("font scale applies as body zoom", (await page.evaluate(() => document.body.style.zoom)) === "1.25");
+  await page.click("[data-testid=pref-theme] >> text=다크");
+  await page.waitForTimeout(200);
+  check("theme pref switches to dark", (await page.evaluate(() => document.documentElement.dataset.theme)) === "dark");
+  await page.reload({ waitUntil: "load" });
+  await page.waitForSelector("[data-testid=appearance-card]", { timeout: 15000 });
+  await page.waitForTimeout(300);
+  check("appearance prefs survive reload", (await page.evaluate(() => document.body.style.zoom)) === "1.25" && (await page.evaluate(() => document.documentElement.dataset.theme)) === "dark");
+
   check("no page errors", pageErrors.length === 0);
   if (pageErrors.length) console.log(pageErrors);
   await browser.close();

@@ -23,12 +23,17 @@ export const DARK = {
 
 const FONT = "'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif";
 
-export function antdTheme(mode: "light" | "dark"): ThemeConfig {
+export interface ThemeOptions { density?: "compact" | "comfortable"; contrast?: boolean }
+export function antdTheme(mode: "light" | "dark", opts: ThemeOptions = {}): ThemeConfig {
   const dark = mode === "dark";
+  const compact = (opts.density ?? "compact") === "compact";
+  // 고대비: 보조 텍스트를 본문 색으로 올린다(흐린 12px 안내문이 사라진다)
+  const muted = opts.contrast ? (dark ? DARK.ink : PALETTE.ink) : dark ? DARK.muted : PALETTE.muted;
+  const tertiary = opts.contrast ? (dark ? DARK.muted : PALETTE.muted) : dark ? DARK.tertiary : PALETTE.disabled;
   return {
     cssVar: { key: "gh" },
     hashed: false,
-    algorithm: dark ? [theme.darkAlgorithm, theme.compactAlgorithm] : [theme.compactAlgorithm],
+    algorithm: [...(dark ? [theme.darkAlgorithm] : []), ...(compact ? [theme.compactAlgorithm] : [])],
     token: {
       colorPrimary: dark ? DARK.primary : PALETTE.primary,
       colorSuccess: dark ? DARK.primary : PALETTE.primary,
@@ -37,8 +42,8 @@ export function antdTheme(mode: "light" | "dark"): ThemeConfig {
       colorInfo: dark ? DARK.tertiary : PALETTE.muted,
       colorLink: dark ? DARK.primary : PALETTE.primary,
       colorText: dark ? DARK.ink : PALETTE.ink,
-      colorTextSecondary: dark ? DARK.muted : PALETTE.muted,
-      colorTextTertiary: dark ? DARK.tertiary : PALETTE.disabled,
+      colorTextSecondary: muted,
+      colorTextTertiary: tertiary,
       ...(dark ? { colorTextQuaternary: DARK.placeholder, colorTextPlaceholder: DARK.placeholder } : {}),
       colorBorder: dark ? DARK.border : PALETTE.border,
       colorBorderSecondary: dark ? DARK.line : PALETTE.line,
@@ -51,7 +56,7 @@ export function antdTheme(mode: "light" | "dark"): ThemeConfig {
       fontFamily: FONT,
       fontSize: 14,
       lineHeight: 1.6,
-      controlHeight: 32,
+      controlHeight: compact ? 32 : 36,
       boxShadowTertiary: "0 1px 2px rgba(0,0,0,.04)",
     },
     components: {
