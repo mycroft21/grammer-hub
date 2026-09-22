@@ -13,7 +13,8 @@ const dir = mkdtempSync(join(tmpdir(), "gh-e2e-"));
 // pnpm을 거치지 않고 next 바이너리를 직접 띄우고, 프로세스 그룹 단위로 종료한다(고아 서버 방지).
 const server = spawn(process.execPath, [require.resolve("next/dist/bin/next"), "start", "-p", PORT], {
   cwd: new URL("..", import.meta.url).pathname,
-  env: { ...process.env, DATABASE_URL: `file:${join(dir, "e2e.db")}`, FAKE_PROVIDER: "1", ALLOWED_EMAIL: "e2e@example.com" },
+  // 작업 공간 프로필은 예시 파일을 그대로 쓴다(DEMO-2의 [partner] 태그 → eximbay-partner 확정 경로를 검사)
+  env: { ...process.env, DATABASE_URL: `file:${join(dir, "e2e.db")}`, FAKE_PROVIDER: "1", ALLOWED_EMAIL: "e2e@example.com", WORKSPACE_PROFILE: "studio.workspace.example.json" },
   stdio: ["ignore", "pipe", "pipe"], detached: true,
 });
 const stopServer = () => { try { process.kill(-server.pid, "SIGTERM"); } catch { try { server.kill("SIGTERM"); } catch {} } };
@@ -133,26 +134,44 @@ try {
   await page.click("[data-testid=studio-run]");
   await page.waitForSelector("[data-testid=studio-save]:not([disabled])", { timeout: 20000 });
   const en = await page.textContent("[data-testid=studio-rendered]");
-  check("english prompt forces korean answers", en.includes("## Hard rules") && en.includes("respond in Korean"));
+  check("english prompt forces korean answers", en.includes("## Scope and constraints") && en.includes("## Done when") && en.includes("respond in Korean"));
   check("dev domain defaults to Claude Code runtime (starting points, no variables)", en.includes("## Where to start") && !en.includes("{{"));
 
   // Jira 티켓 → 프롬프트 (DEMO-1: 토큰 없이). 첨부 때문에 질문 1개 → 답변 → 생성 → 보관 → 보관함 태그
   await page.goto(`http://127.0.0.1:${PORT}/prompts`, { waitUntil: "load" });
   await page.click("[data-testid=studio-mode] >> text=Jira 티켓");
   await fillUntil(page, "[data-testid=ticket-input]", "DEMO-1", "[data-testid=ticket-fetch]:not([disabled])");
+  await page.waitForSelector("[data-testid=workspace-status]", { timeout: 10000 });
+  check("workspace profile status is shown", ((await page.textContent("[data-testid=workspace-status]")) ?? "").includes("저장소 3개"));
   await page.click("[data-testid=ticket-fetch]");
   await page.waitForSelector("[data-testid=ticket-review]", { timeout: 15000 });
   check("ticket review shows suggested goal", (await page.inputValue("[data-testid=ticket-goal]")).includes("DEMO-1"));
+  check("profile resolved the repo from the label (no 'where' question)", ((await page.textContent("[data-testid=ticket-review]")) ?? "").includes("코드가 확정") && (await page.locator("[data-testid=ticket-option]").count()) === 2);
+  check("verify-in-repo list is prefilled from the ledger", ((await page.inputValue("[data-testid=ticket-verify]")) ?? "").length > 0);
   await page.locator("label.ant-radio-button-wrapper:has([data-testid=ticket-option])").first().click();
   await page.click("[data-testid=ticket-generate]");
   await page.waitForSelector("[data-testid=studio-save]:not([disabled])", { timeout: 20000 });
   const fromTicket = await page.textContent("[data-testid=studio-rendered]");
-  check("ticket prompt is Claude Code style with starting points", fromTicket.includes("## 시작점") && !fromTicket.includes("{{"));
+  check("ticket prompt is Claude Code style with starting points and a scope line", fromTicket.includes("## 시작점") && fromTicket.includes("## 범위와 제약") && fromTicket.includes("설계안만 낸다") && !fromTicket.includes("{{"));
   await page.click("[data-testid=studio-save]");
   await page.waitForSelector("text=보관함에 저장했습니다", { timeout: 5000 });
   await page.click("[data-testid=studio-tab] >> text=보관함");
   await page.waitForSelector("[data-ticket-tag]", { timeout: 10000 });
   check("library shows ticket tag", (await page.textContent("[data-ticket-tag]")) === "DEMO-1");
+
+  // 제목뿐인 티켓(DEMO-2): 프로필이 [partner] → eximbay-partner를 확정하므로 저장소는 묻지 않고 업무 판단(policy) 하나만 묻는다.
+  await page.goto(`http://127.0.0.1:${PORT}/prompts`, { waitUntil: "load" });
+  await page.click("[data-testid=studio-mode] >> text=Jira 티켓");
+  await fillUntil(page, "[data-testid=ticket-input]", "DEMO-2", "[data-testid=ticket-fetch]:not([disabled])");
+  await page.click("[data-testid=ticket-fetch]");
+  await page.waitForSelector("[data-testid=ticket-review]", { timeout: 15000 });
+  const terseText = (await page.textContent("[data-testid=ticket-review]")) ?? "";
+  check("terse ticket: repo resolved by alias, only the policy question remains", terseText.includes("eximbay-partner") && terseText.includes("[partner]") && !terseText.includes("어느 저장소에서 작업하나요") && (await page.locator("[data-testid=ticket-option]").count()) === 2);
+  await page.click("text=필요 정보 장부");
+  check("needs ledger lists every universal need", (await page.locator("[data-testid=needs-ledger] li").count()) === 6);
+  await page.click("[data-testid=ticket-assume]");
+  await page.waitForSelector("[data-testid=studio-save]:not([disabled])", { timeout: 20000 });
+  check("terse ticket still yields a Claude Code prompt", ((await page.textContent("[data-testid=studio-rendered]")) ?? "").includes("## 시작점"));
 
   check("no page errors", pageErrors.length === 0);
   if (pageErrors.length) console.log(pageErrors);

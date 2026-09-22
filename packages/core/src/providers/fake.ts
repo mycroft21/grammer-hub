@@ -71,35 +71,50 @@ function fakeStudio(input: ProviderInput): unknown | null {
   const props = (input.schema as { properties?: Record<string, unknown> }).properties ?? {};
   const goal = /<goal>\n([\s\S]*?)\n<\/goal>/.exec(input.user)?.[1]?.trim() ?? "";
   const lang = /<language>(ko|en)<\/language>/.exec(input.user)?.[1] ?? "ko";
-  const runtime = /<runtime>(claude_code|chat)<\/runtime>/.exec(input.user)?.[1] ?? "chat";
+  const runtime = /<runtime>(claude_code|codex|chat)<\/runtime>/.exec(input.user)?.[1] ?? "chat";
   const answered = /<answers>|<assumptions>/.test(input.user);
-  if ("purpose" in props && "starting_points" in props && "missing_inputs" in props) {
+  if ("purpose" in props && "starting_points" in props && "needs" in props) {
     const t = /<ticket>\n([\s\S]*?)\n<\/ticket>/.exec(input.user)?.[1] ?? "";
     const key = /키: ([A-Z][A-Z0-9_]+-\d+)/.exec(t)?.[1] ?? "DEMO-1";
     const hasAttachment = /첨부\(/.test(t);
-    return {
+    const resolved = /<repos_resolved>/.test(input.user);
+    const terse = /secure/i.test(t);   // DEMO-2: 부실한 보안 티켓 → 어느 저장소인지 묻는다(프로필이 확정하면 filled)
+    const needs = [
+      { id: "where", label: "대상 저장소·서비스", status: resolved || !terse ? "filled" : "ask", value: resolved ? "프로필로 확정" : terse ? "eximbay-partner" : "reporter-api (본문에 명시)", options: terse && !resolved ? ["eximbay-partner", "reporter-api"] : [], question: terse && !resolved ? "어느 저장소의 쿠키인가요?" : null, why: resolved ? "코드가 확정" : terse ? "[partner] 표기만으로는 저장소를 특정할 수 없다" : "티켓 본문에 저장소가 적혀 있다" },
+      { id: "deliverable", label: "결과물 형태", status: "filled", value: terse ? "누락 지점 목록과 수정 방향" : "설계안(일반화 vs 신설 비교)", options: [], question: null, why: "티켓 유형에서 정해진다" },
+      { id: "done", label: "완료·검증 기준", status: "agent_can_find", value: terse ? "쿠키 설정 코드에 기존 테스트가 있는지 확인" : "updateMasterCardStatus의 기존 테스트 유무를 확인", options: [], question: null, why: "테스트 유무는 코드에서 알 수 있다" },
+      { id: "scope", label: "범위 경계", status: "assume", value: "티켓 범위 밖 리팩터링은 제안만 한다", options: [], question: null, why: "티켓에 범위 언급이 없다" },
+      { id: "external", label: "첨부·외부 문서의 핵심 정보", status: hasAttachment ? "ask" : "filled", value: hasAttachment ? "첨부 screen.png는 참고용으로 가정" : "첨부 없음", options: hasAttachment ? ["화면 캡처(참고용)", "양식·스펙(필수 정보)"] : [], question: hasAttachment ? "첨부 screen.png에 무엇이 있나요?" : null, why: hasAttachment ? "첨부는 읽을 수 없어 핵심 정보면 직접 적어 주셔야 한다" : "첨부가 없다" },
+      { id: "policy", label: "업무 규칙·우선순위 결정", status: terse ? "ask" : "agent_can_find", value: terse ? "세션·인증 쿠키만 우선" : "CardCode.VISA 코드값과 activation() 내부 동작을 코드에서 확인", options: terse ? ["모든 쿠키", "세션·인증 쿠키만 우선"] : [], question: terse ? "모든 쿠키를 대상으로 할까요, 세션·인증 쿠키만 우선할까요?" : null, why: terse ? "조사 범위가 결과물 크기를 바꾼다" : "코드값·내부 동작은 저장소에서 확인할 수 있다" },
+    ];
+    return terse ? {
+      purpose: "investigate", subtype: "source", summary: `${key}: 쿠키 secure 속성 누락 점검`,
+      goal: `${key}: 쿠키를 설정하는 코드 위치를 모두 찾아 secure 속성 적용 여부와 누락 지점·수정 방향을 정리한 목록을 만든다`,
+      starting_points: ["eximbay-partner: Set-Cookie·HttpServletResponse.addCookie 호출부 전체 검색"],
+      context: "보안 스캐너 지적: 쿠키에 secure 속성이 없어 HTTP 전송 시 스니핑 위험. 해결책은 secure 적용과 민감 요청 HTTPS 강제.",
+      needs,
+    } : {
       purpose: "plan", subtype: "spec", summary: `${key}: Visa 상태전환 로직 추가 요청`,
       goal: `${key}: 서브몰 등록 완료 시 마스터카드에만 있는 '정지→정상' 상태전환을 Visa에도 적용하는 설계안을 정한다`,
-      starting_points: ["reporter-api AcquirerSubmallCommandService.updateAcquirerSubmallStatus", "MerchantServiceCommandService.updateMasterCardStatus()", "CardCode enum"],
+      starting_points: ["reporter-api: AcquirerSubmallCommandService.updateAcquirerSubmallStatus", "reporter-api: MerchantServiceCommandService.updateMasterCardStatus()", "reporter-api: CardCode enum"],
       context: "마스터카드는 CardCode.MASTERCARD(\"C001\") 하드코딩. activation() 내부와 VISA 코드값은 미확인.",
-      missing_inputs: hasAttachment ? ["첨부 screen.png의 내용"] : [],
-      mode: hasAttachment ? "ask" : "ready",
-      assumptions: ["reporter-api 저장소에서 작업한다"],
-      questions: hasAttachment ? [{ id: "attachment", question: "첨부 이미지(screen.png)에 무엇이 있나요?", options: [{ value: "screen", label: "화면 캡처(참고용)" }, { value: "spec", label: "양식·스펙(필수 정보)" }], allow_other: true, why: "첨부는 읽을 수 없어 핵심 정보면 직접 적어 주셔야 합니다." }] : [],
+      needs,
     };
   }
-  if ("mode" in props && "questions" in props) {
-    if (!answered && goal.length < 30) {
-      return {
-        mode: "ask", summary: `이해한 목표: ${goal}`, assumptions: [], subtype: null,
-        questions: [{ id: "depth", question: "어느 깊이까지 다룰까요?", options: [{ value: "overview", label: "흐름만" }, { value: "deep", label: "분기·예외까지" }], allow_other: true, why: "깊이에 따라 성공 기준과 분량이 달라집니다." }],
-      };
-    }
-    return { mode: "ready", summary: `이해한 목표: ${goal}`, assumptions: ["독자는 같은 팀의 개발자다", "출력은 마크다운 한 문서로 충분하다"], questions: [], subtype: null };
+  if ("needs" in props && "subtype" in props) {
+    // 의도 정리: 목표가 짧고 답변이 없으면 depth를 묻고, 아니면 전부 filled/assume.
+    const short = !answered && goal.length < 30;
+    return {
+      summary: `이해한 목표: ${goal}`, subtype: null,
+      needs: [
+        { id: "next", label: "파악한 뒤 무엇을 하나요", status: "assume", value: "버그 수정 전 흐름 정리", options: [], question: null, why: "목표 문장에서 유추" },
+        { id: "depth", label: "어느 깊이까지", status: short ? "ask" : "filled", value: short ? "진입점과 흐름만" : "분기·예외까지", options: short ? ["흐름만", "분기·예외까지"] : [], question: short ? "어느 깊이까지 다룰까요?" : null, why: short ? "깊이에 따라 성공 기준과 분량이 달라집니다." : "답변으로 정해졌다" },
+      ],
+    };
   }
   if ("success_criteria" in props && "hard_rules" in props) {
     const en = lang === "en";
-    const cc = runtime === "claude_code";
+    const cc = runtime !== "chat";
     return {
       language: lang,
       runtime,

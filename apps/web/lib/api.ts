@@ -32,8 +32,9 @@ export const api = {
   runs: () => fetch("/api/runs").then(j<RunSummary[]>),
   stats: () => fetch("/api/stats").then(j<Stats>),
   prompts: {
-    ticket: (ticket: string, signal?: AbortSignal) => fetch("/api/prompts/ticket", { ...json("POST", { ticket }), signal: signal ?? null }).then(j<{ ticket: Ticket; plan: TicketPlanResult; usage: StudioUsage; configured: boolean }>),
-    ticketConfigured: () => fetch("/api/prompts/ticket").then(j<{ configured: boolean }>),
+    ticket: (ticket: string, signal?: AbortSignal) => fetch("/api/prompts/ticket", { ...json("POST", { ticket }), signal: signal ?? null }).then(j<{ ticket: Ticket; plan: TicketPlanResult; usage: StudioUsage; configured: boolean; workspace: WorkspaceStatus }>),
+    /** Jira 설정 여부 + 작업 공간 프로필 요약(저장소 이름은 폼 선택지로) */
+    ticketConfigured: () => fetch("/api/prompts/ticket").then(j<{ configured: boolean; workspace: WorkspaceStatus }>),
     plan: (req: StudioRequest, signal?: AbortSignal) => fetch("/api/prompts/plan", { ...json("POST", req), signal: signal ?? null }).then(j<{ plan: PlanResult; usage: StudioUsage }>),
     /** SSE 응답. 파싱은 호출자가 readSseRaw로. */
     generate: (req: StudioRequest, signal?: AbortSignal) => fetch("/api/prompts/generate", { ...json("POST", req), signal: signal ?? null }),
@@ -55,6 +56,15 @@ export const api = {
     remove: (id: string) => fetch(`/api/samples/${id}`, { method: "DELETE" }).then(j<{ ok: true }>),
   },
 };
+
+/** 서버 lib/workspace.ts workspaceStatus()의 응답 모양 */
+export interface WorkspaceStatus {
+  exists: boolean;
+  error: string | null;
+  summary: { repos: number; conventions: number; glossary: number; team: string | null } | null;
+  repoNames: string[];
+  defaults: { runtime?: "claude_code" | "codex" | "chat"; length?: "short" | "standard" | "detailed"; promptLanguage?: "ko" | "en" };
+}
 
 export interface RunSummary {
   id: string; createdAt: number; level: string; provider: string; model: string; latencyMs: number | null;

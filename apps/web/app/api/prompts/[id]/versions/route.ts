@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PromptSpec, SLOT_KEYS, STUDIO_PROMPT_VERSION, renderClaude, runChecks } from "@grammer-hub/core";
+import { PromptSpec, Purpose, SLOT_KEYS, STUDIO_PROMPT_VERSION, renderClaude, runChecks } from "@grammer-hub/core";
 import { addVersion, getPrompt, recordPromptEvent } from "@grammer-hub/db";
 import { getDb, getUser } from "@/lib/db";
 import { bad, parseBody } from "@/lib/json";
@@ -25,7 +25,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!prompt) return bad("프롬프트를 찾을 수 없습니다", 404);
   const spec = body.data.spec;
   const v = addVersion(db, id, {
-    spec, rendered: renderClaude(spec), checks: runChecks(spec), source: body.data.source, slot: body.data.slot ?? null,
+    spec, rendered: renderClaude(spec, { purpose: Purpose.safeParse(prompt.purpose).success ? (prompt.purpose as Purpose) : null }), checks: runChecks(spec), source: body.data.source, slot: body.data.slot ?? null,
     studioVersion: STUDIO_PROMPT_VERSION, provider: body.data.provider ?? null, model: body.data.model ?? null,
   });
   recordPromptEvent(db, { promptId: id, versionId: v.id, action: body.data.source, slot: body.data.slot ?? null });

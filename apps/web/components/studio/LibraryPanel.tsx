@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { App, Button, Drawer, Empty, Input, List, Popconfirm, Segmented, Skeleton, Space, Tag, Tooltip, Typography } from "antd";
 import { CopyOutlined, DeleteOutlined, InboxOutlined } from "@ant-design/icons";
-import { DOMAINS, DOMAIN_LIST, PURPOSES, SLOT_KEYS, SLOT_KO, fillVariables, type Domain, type PromptSpec } from "@grammer-hub/core";
+import { DOMAINS, DOMAIN_LIST, PURPOSES, SLOT_KEYS, SLOT_KO, fillVariables, slotLabel, type Domain, type PromptSpec } from "@grammer-hub/core";
 import { api, type PromptStats, type PromptSummary, type PromptVersion } from "@/lib/api";
 import { errMsg } from "@/components/pages/_shared";
 import { DOMAIN_COLOR, fmtDate } from "./labels";
@@ -112,7 +112,7 @@ function PromptDrawer({ id, onClose, onChanged }: { id: string | null; onClose: 
           <Segmented size="small" value={tab} onChange={(v) => setTab(v as typeof tab)} options={[{ value: "fill", label: "변수 채워 복사" }, { value: "blocks", label: "블록" }, { value: "versions", label: `버전 ${data.versions.length}` }]} />
           {tab === "fill" && (
             <div className="flex flex-col gap-3">
-              {spec.inputs.length === 0 ? <Typography.Text type="secondary">{spec.runtime === "claude_code" ? "Claude Code에서 그대로 붙여 넣어 실행하는 프롬프트입니다(저장소를 직접 읽습니다)." : "입력 변수가 없는 프롬프트입니다. 그대로 복사하세요."}</Typography.Text> : spec.inputs.map((i) => (
+              {spec.inputs.length === 0 ? <Typography.Text type="secondary">{spec.runtime === "claude_code" ? "Claude Code에서 그대로 붙여 넣어 실행하는 프롬프트입니다(저장소를 직접 읽습니다)." : spec.runtime === "codex" ? "Codex CLI에 한 덩어리로 붙여 넣어 실행하는 프롬프트입니다(저장소를 직접 읽습니다)." : "입력 변수가 없는 프롬프트입니다. 그대로 복사하세요."}</Typography.Text> : spec.inputs.map((i) => (
                 <div key={i.name}>
                   <Typography.Text style={{ fontSize: 12 }}>{i.label}{i.required && <span style={{ color: "var(--ant-color-error)" }}> *</span>} <code style={{ fontSize: 11, color: "var(--ant-color-text-tertiary)" }}>{`{{${i.name}}}`}</code></Typography.Text>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }} className="block">{i.description}</Typography.Text>
@@ -130,7 +130,7 @@ function PromptDrawer({ id, onClose, onChanged }: { id: string | null; onClose: 
               <ChecksView checks={ver.checks} />
               {SLOT_KEYS.map((k) => (
                 <div key={k} className="rounded-lg border p-3" style={{ borderColor: "var(--ant-color-border-secondary)" }}>
-                  <div className="mb-1 flex items-center gap-1"><Typography.Text strong style={{ fontSize: 12 }}>{SLOT_KO[k]}</Typography.Text>
+                  <div className="mb-1 flex items-center gap-1"><Typography.Text strong style={{ fontSize: 12 }}>{slotLabel(k, spec.runtime, SLOT_KO)}</Typography.Text>
                     {spec.rationale[k as keyof PromptSpec["rationale"]] && <Typography.Text type="secondary" style={{ fontSize: 11 }} className="ml-2">{spec.rationale[k as keyof PromptSpec["rationale"]]}</Typography.Text>}</div>
                   <SlotValue slot={k} value={spec[k]} />
                 </div>

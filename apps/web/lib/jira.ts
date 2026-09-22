@@ -1,5 +1,5 @@
 import "server-only";
-import { DEMO_TICKET, jiraIssueToTicket, parseIssueKey, type Ticket } from "@grammer-hub/core";
+import { DEMO_TICKET, DEMO_TICKET_TERSE, jiraIssueToTicket, parseIssueKey, type Ticket } from "@grammer-hub/core";
 import { env } from "./env";
 
 const cache = new Map<string, { at: number; ticket: Ticket }>();
@@ -14,12 +14,13 @@ export const jiraConfigured = (): boolean => Boolean(env.jiraBaseUrl && env.jira
 export async function fetchTicket(input: string): Promise<{ ok: true; ticket: Ticket } | { ok: false; status: number; message: string }> {
   const key = parseIssueKey(input);
   if (!key) return { ok: false, status: 400, message: "이슈 키를 찾지 못했습니다. EP-1174 또는 Jira URL을 입력하세요." };
+  if (key === "DEMO-2") return { ok: true, ticket: DEMO_TICKET_TERSE };
   if (key.startsWith("DEMO-")) return { ok: true, ticket: { ...DEMO_TICKET, key } };
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL) return { ok: true, ticket: hit.ticket };
   if (!jiraConfigured()) return { ok: false, status: 503, message: ".env에 JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN이 필요합니다 (id.atlassian.com → 보안 → API 토큰)." };
   const base = env.jiraBaseUrl.replace(/\/$/, "");
-  const url = `${base}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,issuetype,status,priority,labels,components,comment,attachment,issuelinks`;
+  const url = `${base}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,issuetype,status,priority,labels,components,comment,attachment,issuelinks,reporter,assignee,creator`;
   let res: Response;
   try {
     res = await fetch(url, { headers: { Accept: "application/json", Authorization: `Basic ${Buffer.from(`${env.jiraEmail}:${env.jiraApiToken}`).toString("base64")}` }, signal: AbortSignal.timeout(15_000) });

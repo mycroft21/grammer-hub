@@ -1,4 +1,4 @@
-import { StudioRequest, generatePrompt, type StudioEvent } from "@grammer-hub/core";
+import { SLOT_KEYS, StudioRequest, generatePrompt, type StudioEvent } from "@grammer-hub/core";
 import { expectedStudioLatencyMs } from "@grammer-hub/db";
 import { getDb } from "@/lib/db";
 import { runLogger } from "@/lib/log";
@@ -29,7 +29,7 @@ export async function POST(req: Request): Promise<Response> {
     while (!r.done) {
       const ev = r.value;
       if (ev.event === "progress") log(`단계 ${ev.data.stage}`);
-      else if (ev.event === "slot") { slots++; log(`슬롯 ${slots}/13 ${ev.data.key}`); }
+      else if (ev.event === "slot") { slots++; log(`슬롯 ${slots}/${SLOT_KEYS.length} ${ev.data.key}`); }
       else if (ev.event === "checks") log("점검", { passed: ev.data.filter((c) => c.ok).length, total: ev.data.length });
       else if (ev.event === "usage") log("완료", { latencyMs: ev.data.latencyMs, costUsd: ev.data.costUsd, out: ev.data.outputTokens, cached: ev.data.cachedTokens });
       else if (ev.event === "error") log(`오류 ${ev.data.code}: ${ev.data.message.slice(0, 160)}`);

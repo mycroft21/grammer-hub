@@ -78,6 +78,22 @@ if (backend === "claude-cli") {
 const jiraOn = Boolean(get("JIRA_BASE_URL") && get("JIRA_EMAIL") && get("JIRA_API_TOKEN"));
 console.log(`  Jira 연동: ${jiraOn ? `켜짐 (${get("JIRA_BASE_URL")})` : "꺼짐 — JIRA_BASE_URL/JIRA_EMAIL/JIRA_API_TOKEN 세 개가 다 있어야 함. DEMO-1 키는 없이도 됨"}`);
 
+// ── 2′. 작업 공간 프로필 ──
+console.log("\n# 작업 공간 프로필");
+const wsPath = resolve(ROOT, get("WORKSPACE_PROFILE") || "studio.workspace.json");
+if (!existsSync(wsPath)) warn(`없음 (${wsPath}) → cp studio.workspace.example.json studio.workspace.json 후 팀 저장소·규칙을 채우면 티켓의 대상 저장소를 묻지 않게 됨`);
+else {
+  try {
+    const j = JSON.parse(readFileSync(wsPath, "utf8"));
+    const repos = Array.isArray(j.repos) ? j.repos : [];
+    const bad_ = repos.filter((r) => !r?.name || !r?.what);
+    if (j.version !== 1) bad(`version은 1이어야 함 (지금 ${JSON.stringify(j.version)})`);
+    else if (bad_.length) bad(`repos 항목 ${bad_.length}개에 name/what 누락`);
+    else ok(`${wsPath.replace(ROOT + "/", "")} · 저장소 ${repos.length}개 · 팀 규칙 ${(j.conventions ?? []).length}개 · 용어 ${Object.keys(j.glossary ?? {}).length}개`);
+    if ((j.conventions ?? []).length > 5) warn("팀 규칙이 5개를 넘음 — 프롬프트에 다 들어가지 않고 모델이 고름. 정말 매번 지킬 것만 남기세요");
+  } catch (e) { bad(`프로필 JSON 오류: ${e.message}`); }
+}
+
 // ── 3. 빌드 ──
 console.log("\n# 빌드");
 const buildId = resolve(WEB, ".next/BUILD_ID");

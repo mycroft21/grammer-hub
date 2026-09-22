@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import { getProvider } from "@/lib/providers";
 import { env, cloudReady } from "@/lib/env";
 import { jiraConfigured } from "@/lib/jira";
+import { loadWorkspace } from "@/lib/workspace";
+import { profileSummary } from "@grammer-hub/core";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +44,7 @@ export async function GET(req: Request): Promise<Response> {
     },
     defaultProvider: env.defaultProvider,
     jira: { configured: jiraConfigured(), baseUrl: env.jiraBaseUrl || null },
+    workspace: (() => { const w = loadWorkspace(); return { exists: w.exists, path: w.path, error: w.error, ...(profileSummary(w.profile) ?? {}) }; })(),
     local: { url: env.localLlmUrl, model: env.localLlmModel },
     storeDrafts: env.storeDrafts, piiBlock: env.piiBlock, databaseUrl: env.databaseUrl,
     code: { branch, head, committedAt: headTime, dirtyFiles: dirty === null ? null : dirty.split("\n").filter(Boolean).length },

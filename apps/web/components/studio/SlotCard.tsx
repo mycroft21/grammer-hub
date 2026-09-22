@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Button, Input, Popover, Skeleton, Space, Tag, Tooltip, Typography } from "antd";
 import { CheckOutlined, CloseOutlined, EditOutlined, InfoCircleOutlined, ReloadOutlined } from "@ant-design/icons";
-import { SLOT_KO, type PromptSpec, type SlotKey } from "@grammer-hub/core";
+import { SLOT_KO, slotLabel, type PromptSpec, type SlotKey } from "@grammer-hub/core";
 import { CLARIFY_KO } from "./labels";
 
 type Inputs = PromptSpec["inputs"]; type Contract = PromptSpec["output_contract"]; type Examples = NonNullable<PromptSpec["examples"]>;
@@ -40,12 +40,15 @@ const EDITABLE_LIST: SlotKey[] = ["success_criteria", "hard_rules", "process", "
 
 export interface SlotCardProps {
   slot: SlotKey; value: unknown; rationale?: string | undefined; loading?: boolean; busy?: boolean;
+  /** 에이전트 런타임이면 슬롯 이름이 다르게 읽힌다(완료 조건·범위와 제약·보고 형식·검증) */
+  runtime?: PromptSpec["runtime"] | null | undefined;
   onRegenerate?: ((slot: SlotKey, instruction: string | null) => void) | undefined;
   onEdit?: ((slot: SlotKey, value: unknown) => void) | undefined;
 }
 
 /** 블록 카드: 값 + ✎ 직접 수정 / ↻ 재생성(지시 가능) / ⓘ 이유. */
-export function SlotCard({ slot, value, rationale, loading, busy, onRegenerate, onEdit }: SlotCardProps) {
+export function SlotCard({ slot, value, rationale, loading, busy, runtime, onRegenerate, onEdit }: SlotCardProps) {
+  const name = slotLabel(slot, runtime ?? null, SLOT_KO);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [instr, setInstr] = useState("");
@@ -62,17 +65,17 @@ export function SlotCard({ slot, value, rationale, loading, busy, onRegenerate, 
   return (
     <div data-slot={slot} className="rounded-lg border p-3" style={{ borderColor: "var(--ant-color-border-secondary)", background: "var(--ant-color-bg-container)", opacity: busy ? .6 : 1 }}>
       <div className="mb-1.5 flex items-center gap-1">
-        <Typography.Text strong style={{ fontSize: 12 }}>{SLOT_KO[slot]}</Typography.Text>
+        <Typography.Text strong style={{ fontSize: 12 }}>{name}</Typography.Text>
         {rationale && <Tooltip title={rationale}><InfoCircleOutlined style={{ fontSize: 12, color: "var(--ant-color-text-tertiary)" }} /></Tooltip>}
         <span className="ml-auto" />
-        {canEdit && !editing && <Tooltip title="직접 수정"><Button type="text" size="small" icon={<EditOutlined />} onClick={startEdit} aria-label={`${SLOT_KO[slot]} 수정`} /></Tooltip>}
+        {canEdit && !editing && <Tooltip title="직접 수정"><Button type="text" size="small" icon={<EditOutlined />} onClick={startEdit} aria-label={`${name} 수정`} /></Tooltip>}
         {onRegenerate && (
           <Popover trigger="click" open={open} onOpenChange={setOpen} placement="bottomRight" content={
             <div className="flex w-64 flex-col gap-2">
               <Input size="small" placeholder="지시(선택) 예: 더 짧게, 수치 기준 추가" value={instr} onChange={(e) => setInstr(e.target.value)} onPressEnter={() => { onRegenerate(slot, instr.trim() || null); setOpen(false); }} />
               <Button size="small" type="primary" onClick={() => { onRegenerate(slot, instr.trim() || null); setOpen(false); }}>이 블록만 다시</Button>
             </div>}>
-            <Tooltip title="이 블록만 다시 생성"><Button type="text" size="small" icon={<ReloadOutlined spin={Boolean(busy)} />} aria-label={`${SLOT_KO[slot]} 재생성`} /></Tooltip>
+            <Tooltip title="이 블록만 다시 생성"><Button type="text" size="small" icon={<ReloadOutlined spin={Boolean(busy)} />} aria-label={`${name} 재생성`} /></Tooltip>
           </Popover>
         )}
       </div>

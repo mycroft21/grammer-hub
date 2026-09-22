@@ -20,6 +20,8 @@ export const env = {
   jiraApiToken: process.env["JIRA_API_TOKEN"] ?? "",
   /** 진행 로그를 파일에도 남길 경로(선택). 터미널에는 항상 찍힌다. */
   logFile: process.env["LOG_FILE"] || null,
+  /** 작업 공간 프로필 파일 경로(루트 기준). 비우면 루트 studio.workspace.json */
+  workspaceProfile: process.env["WORKSPACE_PROFILE"] || null,
 };
 
 /** cloud provider가 API 키 없이도 동작하는가(fake 또는 claude-cli). */

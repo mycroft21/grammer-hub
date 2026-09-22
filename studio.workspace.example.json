@@ -1,0 +1,46 @@
+{
+  "$comment": "작업 공간 프로필 예시. 루트에 studio.workspace.json 으로 복사해 팀 값으로 바꾸세요(그 파일은 git에 올라가지 않습니다). 티켓·목표에서 '어느 저장소인지'를 코드가 먼저 정하고, 저장소별 검증 명령·주의·팀 규칙이 프롬프트 재료가 됩니다. 필드 설명은 docs/05-run-deploy.md §A-3″.",
+  "version": 1,
+  "team": "결제 플랫폼 개발팀",
+  "repos": [
+    {
+      "name": "reporter-api",
+      "what": "가맹점 어드민(리포터) 백엔드 API. 서브몰·정산·카드사 상태 로직이 여기 있다",
+      "stack": "Java 17 / Spring Boot / MyBatis",
+      "aliases": ["reporter", "리포터", "[reporter]"],
+      "entry": ["어드민 화면 *.do → 같은 이름의 *Controller → *CommandService"],
+      "verify": ["./gradlew test"],
+      "notes": ["reporter-legacy에 있는 화면이라도 실제 로직은 대부분 reporter-api에 있다"]
+    },
+    {
+      "name": "reporter-legacy",
+      "what": "가맹점 어드민 화면(JSP)과 레거시 서비스",
+      "stack": "Java 8 / Spring MVC / JSP",
+      "aliases": ["legacy", "레거시"],
+      "entry": [],
+      "verify": [],
+      "notes": ["신규 비즈니스 로직을 넣지 않는다. 화면·호출부만 고친다"]
+    },
+    {
+      "name": "eximbay-partner",
+      "what": "파트너(제휴사) 포털",
+      "stack": "Java / Spring Boot",
+      "aliases": ["[partner]", "partner", "파트너"],
+      "entry": [],
+      "verify": ["./gradlew test"],
+      "notes": []
+    }
+  ],
+  "projects": { "EP": "결제 플랫폼 개발 요청", "ES": "보안 점검 결과(스캐너 지적 사항)" },
+  "conventions": [
+    "기존 동작은 바꾸지 않고 같은 방식으로 분기를 추가한다",
+    "변경한 파일마다 기존 테스트가 있으면 함께 고친다",
+    "티켓 범위 밖 리팩터링은 제안만 하고 코드로 쓰지 않는다"
+  ],
+  "glossary": {
+    "서브몰": "가맹점 아래의 하위 상점 단위",
+    "PSP": "Payment Service Provider. 결제대행사 모델",
+    "SDD": "Solution Design Document(PayPal 측 설계 문서)"
+  },
+  "defaults": { "runtime": "claude_code", "length": "short" }
+}

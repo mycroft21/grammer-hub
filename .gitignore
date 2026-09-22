@@ -9,3 +9,4 @@ coverage/
 **/data/*.db-*
 **/data/
 .DS_Store
+studio.workspace.json

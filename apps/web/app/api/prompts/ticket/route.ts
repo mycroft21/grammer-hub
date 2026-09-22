@@ -4,6 +4,7 @@ import { parseBody } from "@/lib/json";
 import { fetchTicket, jiraConfigured } from "@/lib/jira";
 import { runLogger } from "@/lib/log";
 import { studioProvider } from "@/lib/studio";
+import { loadWorkspace, workspaceStatus } from "@/lib/workspace";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,13 +20,15 @@ export async function POST(req: Request): Promise<Response> {
   const p = studioProvider(body.data.provider);
   if (!p.ok) return p.res;
   const log = runLogger("ticket", t.ticket.key);
-  log("티켓 가져옴", { type: t.ticket.type, descChars: t.ticket.description.length, comments: t.ticket.comments.length, attachments: t.ticket.attachments.length });
-  const r = await planFromTicket(p.provider, ticketToText(t.ticket), req.signal);
+  const ws = loadWorkspace();
+  log("티켓 가져옴", { type: t.ticket.type, descChars: t.ticket.description.length, comments: t.ticket.comments.length, attachments: t.ticket.attachments.length, redactedPeople: t.ticket.redactedPeople, profile: ws.profile ? "on" : "off" });
+  const r = await planFromTicket(p.provider, ticketToText(t.ticket), { signal: req.signal, profile: ws.profile, ticket: t.ticket });
   if (r.error) { log(`분류 실패 ${r.error.code}`); return Response.json({ error: r.error }, { status: 502 }); }
-  log("분류 완료", { purpose: r.plan?.purpose, subtype: r.plan?.subtype, mode: r.plan?.mode, questions: r.plan?.questions.length, latencyMs: r.usage?.latencyMs });
-  return Response.json({ ticket: t.ticket, plan: r.plan, usage: r.usage, configured: jiraConfigured() });
+  log("분류 완료", { purpose: r.plan?.purpose, subtype: r.plan?.subtype, mode: r.plan?.mode, questions: r.plan?.questions.length, assumptions: r.plan?.assumptions.length, verify: r.plan?.verify_in_repo.length, repos: r.plan?.repos.join("+") || undefined, latencyMs: r.usage?.latencyMs });
+  return Response.json({ ticket: t.ticket, plan: r.plan, usage: r.usage, configured: jiraConfigured(), workspace: workspaceStatus() });
 }
 
+/** 연동 상태: Jira 설정 여부 + 작업 공간 프로필 요약(저장소 이름 목록 포함 — 폼의 선택지로 쓴다). */
 export async function GET(): Promise<Response> {
-  return Response.json({ configured: jiraConfigured() });
+  return Response.json({ configured: jiraConfigured(), workspace: workspaceStatus() });
 }

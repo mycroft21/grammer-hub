@@ -8,6 +8,7 @@ import { SlotCard } from "./SlotCard";
 import { ProgressLine } from "@/components/ProgressLine";
 import { RunLog } from "@/components/RunLog";
 import { SLOT_KEYS as ALL_SLOTS } from "@grammer-hub/core";
+import { RUNTIME_TAG } from "./labels";
 
 const fmtUsd = (v: number) => `$${v.toFixed(4)}`;
 
@@ -26,7 +27,7 @@ export function RenderedView({ rendered, onCopy }: { rendered: RenderedPrompt; o
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <Segmented size="small" value={tab} onChange={(v) => setTab(v as typeof tab)} options={[{ value: "combined", label: "한 덩어리" }, { value: "system", label: "System" }, { value: "user", label: "User" }]} />
-        {rendered.runtime === "claude_code" && <Tag color="green" style={{ fontSize: 11 }}>Claude Code용 · 붙여넣기 없이 실행</Tag>}
+        {RUNTIME_TAG[rendered.runtime] && <Tag color="green" style={{ fontSize: 11 }}>{RUNTIME_TAG[rendered.runtime]}</Tag>}
         {rendered.language === "en" && <Tag color="geekblue" style={{ fontSize: 11 }}>EN 지시문 · 답변 한국어</Tag>}
         {rendered.variables.length > 0 && <Typography.Text type="secondary" style={{ fontSize: 12 }}>변수 {rendered.variables.map((v) => `{{${v}}}`).join(" ")}</Typography.Text>}
         <Button data-testid="studio-copy" data-done={done ? "1" : "0"} className="ml-auto" size="small" type={done ? "primary" : "default"} icon={<CopyOutlined />} onClick={copy}>복사</Button>
@@ -92,7 +93,7 @@ export function ResultPanel({ state, onRegenerate, onEdit, onSave, onReset }: {
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-2">
           {SLOT_KEYS.map((k) => (
-            <SlotCard key={k} slot={k} value={spec[k]} rationale={state.spec?.rationale[k as keyof PromptSpec["rationale"]]} loading={generating && !(k in spec)} busy={state.busySlot === k}
+            <SlotCard key={k} slot={k} value={spec[k]} runtime={(spec.runtime as PromptSpec["runtime"] | undefined) ?? state.request?.runtime ?? null} rationale={state.spec?.rationale[k as keyof PromptSpec["rationale"]]} loading={generating && !(k in spec)} busy={state.busySlot === k}
               onRegenerate={state.spec && !generating ? onRegenerate : undefined} onEdit={state.spec && !generating ? onEdit : undefined} />
           ))}
         </div>

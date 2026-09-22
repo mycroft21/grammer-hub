@@ -35,6 +35,8 @@ export function AskStep({ plan, busy, onAnswer, onBack }: { plan: PlanResult; bu
           </div>
         </div>
       ))}
+      {plan.verify_in_repo.length > 0 && <Typography.Text type="secondary" style={{ fontSize: 12 }}>묻지 않고 코드에서 확인하도록 넘김: {plan.verify_in_repo.join(" · ")}</Typography.Text>}
+      {plan.assumptions.length > 0 && <Typography.Text type="secondary" style={{ fontSize: 12 }}>가정: {plan.assumptions.join(" · ")}</Typography.Text>}
       <Space wrap>
         <Button data-testid="studio-answer" type="primary" loading={busy} disabled={!allAnswered} onClick={() => onAnswer(merged(), false)}>답변으로 생성</Button>
         <Button data-testid="studio-assume" loading={busy} onClick={() => onAnswer(merged(), true)}>가정으로 진행</Button>

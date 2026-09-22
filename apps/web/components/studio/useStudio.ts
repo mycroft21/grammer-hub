@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useRef, useState } from "react";
-import { SLOT_KO, parseIssueKey, type CheckResult, type PlanResult, type PromptSpec, type RenderedPrompt, type SlotKey, type StudioRequest, type Ticket, type TicketPlanResult } from "@grammer-hub/core";
-import { api, type StudioUsage } from "@/lib/api";
+import { SLOT_KEYS, SLOT_KO, parseIssueKey, type CheckResult, type PlanResult, type PromptSpec, type RenderedPrompt, type SlotKey, type StudioRequest, type Ticket, type TicketPlanResult } from "@grammer-hub/core";
+import { api, type StudioUsage, type WorkspaceStatus } from "@/lib/api";
 import { readSseRaw } from "@/lib/sse-client";
 
 export type Phase = "form" | "planning" | "ask" | "ticket_review" | "generating" | "result";
@@ -21,8 +21,8 @@ export interface StudioState {
   error: string | null;
   progress: { stage: "requesting" | "thinking" | "writing"; startedAt: number; expectedMs: number | null };
   log: { t: number; msg: string }[];
-  /** 티켓 흐름: 가져온 티켓과 분류 결과 */
-  ticket: { ticket: Ticket; plan: TicketPlanResult } | null;
+  /** 티켓 흐름: 가져온 티켓과 분류 결과(+작업 공간 프로필 요약) */
+  ticket: { ticket: Ticket; plan: TicketPlanResult; workspace: WorkspaceStatus | null } | null;
 }
 const STAGE_MSG: Record<StudioState["progress"]["stage"], string> = { requesting: "요청 보냄", thinking: "모델 검토 시작", writing: "슬롯 작성 시작(첫 토큰)" };
 const withLog = (s: StudioState, msg: string): StudioState => ({ ...s, log: [...s.log, { t: Date.now() - s.progress.startedAt, msg }] });
@@ -53,7 +53,7 @@ export function useStudio() {
           switch (ev.event) {
             case "progress": { const d = ev.data as { stage: StudioState["progress"]["stage"]; expectedMs?: number | null }; return withLog({ ...s, progress: { ...s.progress, stage: d.stage, expectedMs: d.expectedMs ?? s.progress.expectedMs } }, `${STAGE_MSG[d.stage]}${d.stage === "requesting" && d.expectedMs ? ` · 보통 ${Math.round(d.expectedMs / 1000)}초` : ""}`); }
             case "meta": { const d = ev.data as NonNullable<StudioState["meta"]>; return withLog({ ...s, meta: d }, `서버 준비 · ${d.model} · 스튜디오 v${d.promptVersion}`); }
-            case "slot": { const d = ev.data as { key: SlotKey; value: unknown }; const n = Object.keys(s.slots).length + 1; return withLog({ ...s, slots: { ...s.slots, [d.key]: d.value } }, `슬롯 ${n}/13 · ${SLOT_KO[d.key] ?? d.key}`); }
+            case "slot": { const d = ev.data as { key: SlotKey; value: unknown }; const n = Object.keys(s.slots).length + 1; return withLog({ ...s, slots: { ...s.slots, [d.key]: d.value } }, `슬롯 ${n}/${SLOT_KEYS.length} · ${SLOT_KO[d.key] ?? d.key}`); }
             case "spec": return withLog({ ...s, spec: ev.data as PromptSpec }, "스펙 검증 통과");
             case "rendered": return withLog({ ...s, rendered: ev.data as RenderedPrompt }, "프롬프트 렌더 완료");
             case "checks": { const c = ev.data as CheckResult[]; return withLog({ ...s, checks: c }, `규격 점검 ${c.filter((x) => x.ok).length}/${c.length}`); }
@@ -80,8 +80,10 @@ export function useStudio() {
     try {
       const r = await api.prompts.plan(req, ac.signal);
       if (ac.signal.aborted) return;
-      setState((s) => withLog(s, `의도 정리 ${r.plan.mode === "ask" ? `→ 질문 ${r.plan.questions.length}개` : `→ 바로 생성(가정 ${r.plan.assumptions.length}개)`} · ${(r.usage.latencyMs / 1000).toFixed(1)}초`));
-      const next: StudioRequest = { ...req, ...(r.plan.subtype ? { subtype: r.plan.subtype } : {}) };
+      setState((s) => withLog(s, `의도 정리 ${r.plan.mode === "ask" ? `→ 질문 ${r.plan.questions.length}개` : `→ 바로 생성(가정 ${r.plan.assumptions.length}개)`}${r.plan.verify_in_repo.length ? ` · 코드에서 확인 ${r.plan.verify_in_repo.length}개` : ""} · ${(r.usage.latencyMs / 1000).toFixed(1)}초`));
+      // 장부에서 나온 대상 저장소·코드에서 확인할 것은 생성 단계의 힌트가 된다(사용자에게 묻지 않는다)
+      const hints = { ...(req.hints ?? {}), ...(r.plan.repos.length ? { repos: r.plan.repos } : {}), ...(r.plan.verify_in_repo.length ? { verifyInRepo: r.plan.verify_in_repo } : {}) };
+      const next: StudioRequest = { ...req, ...(r.plan.subtype ? { subtype: r.plan.subtype } : {}), ...(Object.keys(hints).length ? { hints } : {}) };
       if (r.plan.mode === "ask" && r.plan.questions.length > 0) { setState((s) => ({ ...s, phase: "ask", plan: r.plan, request: next })); return; }
       setState((s) => ({ ...s, plan: r.plan }));
       await generate({ ...next, assumptions: r.plan.assumptions });
@@ -107,8 +109,8 @@ export function useStudio() {
     try {
       const r = await api.prompts.ticket(input, ac.signal);
       if (ac.signal.aborted) return;
-      setState((s) => withLog({ ...s, phase: "ticket_review", ticket: { ticket: r.ticket, plan: r.plan } },
-        `${r.ticket.key} 분류 → ${r.plan.purpose}/${r.plan.subtype ?? "-"} · ${r.plan.mode === "ask" ? `질문 ${r.plan.questions.length}개` : "바로 생성 가능"} · ${(r.usage.latencyMs / 1000).toFixed(1)}초`));
+      setState((s) => withLog({ ...s, phase: "ticket_review", ticket: { ticket: r.ticket, plan: r.plan, workspace: r.workspace ?? null } },
+        `${r.ticket.key} 분류 → ${r.plan.purpose}/${r.plan.subtype ?? "-"} · ${r.plan.repos.length ? `저장소 ${r.plan.repos.join(", ")} · ` : ""}${r.plan.mode === "ask" ? `질문 ${r.plan.questions.length}개` : "바로 생성 가능"} · 가정 ${r.plan.assumptions.length} · 코드에서 확인 ${r.plan.verify_in_repo.length} · ${(r.usage.latencyMs / 1000).toFixed(1)}초`));
     } catch (e) {
       if (!ac.signal.aborted) setState((s) => ({ ...s, phase: "form", error: e instanceof Error ? e.message : String(e) }));
     }

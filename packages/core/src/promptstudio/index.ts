@@ -6,3 +6,6 @@ export * from "./checks";
 export * from "./partial";
 export * from "./pipeline";
 export * from "./ticket";
+export * from "./needs";
+export * from "./workspace";
+export * from "./agent-defaults";

@@ -673,7 +673,7 @@ export const LIFECYCLE: Purpose[] = ["investigate", "plan", "build", "review"];
 
 export const domainOf = (purpose: Purpose): Domain => PURPOSES[purpose].domain;
 /** 대분류별 기본 실행 환경·길이. 개발은 Claude Code가 저장소를 직접 보므로 붙여넣기 없이, 짧게. */
-export const defaultRuntime = (purpose: Purpose): "claude_code" | "chat" => (domainOf(purpose) === "dev" ? "claude_code" : "chat");
+export const defaultRuntime = (purpose: Purpose): "claude_code" | "codex" | "chat" => (domainOf(purpose) === "dev" ? "claude_code" : "chat");
 export const defaultLength = (purpose: Purpose): "short" | "standard" => (domainOf(purpose) === "dev" ? "short" : "standard");
 
 export function findSubtype(purpose: Purpose, subtypeId: string | null | undefined): Subtype {
