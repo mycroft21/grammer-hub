@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Input, Segmented, Select, Space, Switch, Tooltip, Typography } from "antd";
 import { ArrowRightOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { DOMAINS, DOMAIN_LIST, PURPOSES, defaultLength, defaultRuntime, type ClarifyPolicy, type Domain, type PromptLanguage, type PromptLength, type Purpose, type Runtime, type StudioRequest } from "@grammer-hub/core";
+import { AGENT_DEFAULTS, DOMAINS, DOMAIN_LIST, PURPOSES, defaultLength, defaultRuntime, isAgentRuntime, type ClarifyPolicy, type Domain, type PromptLanguage, type PromptLength, type Purpose, type Runtime, type StudioRequest } from "@grammer-hub/core";
 import { api, type WorkspaceStatus } from "@/lib/api";
 import { CLARIFY_KO, LANG_LABEL, LENGTH_KO, RUNTIME_LABEL_LONG as RUNTIME_LABEL } from "./labels";
 
@@ -100,6 +100,7 @@ export function CreateForm({ busy, error, initial, onSubmit, onTicket }: { busy:
             {def.short}{def.next ? <> <ArrowRightOutlined style={{ fontSize: 10 }} /> {PURPOSES[def.next].label}</> : null}
           </Typography.Text>
         </div>
+        {isAgentRuntime(runtime) && AGENT_DEFAULTS[purpose] && <Typography.Text type="secondary" style={{ fontSize: 12 }} className="mt-1 block">이 분류의 첫 규칙: “{AGENT_DEFAULTS[purpose]!.scope.ko}”</Typography.Text>}
       </div>
 
       <div>

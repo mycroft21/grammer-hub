@@ -1,4 +1,5 @@
-import { isAgentRuntime, type CheckResult, type PromptSpec } from "./spec";
+import { isAgentRuntime, type CheckResult, type PromptSpec, type Purpose } from "./spec";
+import { PURPOSES } from "./taxonomy";
 
 const VAGUE = /(좋은|적절한|잘|충분히|알맞게|괜찮은)\s|\b(good|appropriate|proper|nice|well|sufficiently|adequate)\b/i;
 const BARE_NEG = /(않는다|않을 것|말 것|금지|마라|말라)\.?$|^\s*(do not|don't|never|avoid)\b/i;
@@ -7,12 +8,26 @@ const OUTCOME = /(문서|표|코드|목록|보고|초안|계획|리뷰|답변|�
 /** 시작점이 토큰 하나뿐인가(cookie, AuthController): 공백·콜론·경로 구분자가 없다. '저장소: 대상', 경로, URL, 'X·Y 검색'은 통과 */
 const BARE_KEYWORD = /^[^\s:/·(]+$/;
 /** 실행할 수 있는 확인: 명령·테스트·빌드·화면·출력·상태 코드 등. 완료 조건이나 검증 중 하나에는 있어야 에이전트가 스스로 끝을 안다(Claude Code·Codex 공통 권고) */
+/** 목표·완료 조건·진행에 '구현'이 들어 있는가. 코드를 수정하지 않는 목적(조사·계획·검토)과 모순되면 잡는다 */
+const IMPLEMENTS = /(구현한다|구현하고|코드 변경|코드를 변경|코드를 수정|수정한다|변경한다|변경된다|갱신된다|갱신한다|패치|리팩터링한다|추가한다|삭제한다|diff를|PR을)|\b(implement|modify|refactor|patch|change the code|add the|update the code|commit|open a PR)\b/i;
+const READ_ONLY_PURPOSES: Purpose[] = ["investigate", "plan", "review"];
+export interface CheckOptions { purpose?: Purpose | null | undefined }
 const RUNNABLE = /(테스트|빌드|컴파일|실행|명령|출력|화면|스크린샷|응답|상태 코드|로그|통과|실패|재현|curl|http|exit|lint|typecheck|pnpm|npm|yarn|gradle|gradlew|mvn|pytest|vitest|jest|go test|cargo|make\b|docker|sql|select |grep|diff|git )|\b(test|tests|build|compile|run|command|output|screenshot|response|status code|logs?|pass|passes|fails?|reproduce|exit code)\b/i;
 
 /** 코드 규칙 점검. LLM 판단이 아니라 결정적 검사라 일관된다. */
-export function runChecks(spec: PromptSpec): CheckResult[] {
+export function runChecks(spec: PromptSpec, opts: CheckOptions = {}): CheckResult[] {
   const out: CheckResult[] = [];
   const add = (id: string, label: string, ok: boolean, detail: string) => out.push({ id, label, ok, detail });
+  // 분류가 뜻하는 범위(코드 수정 없음)와 스펙 내용(구현)이 어긋나면 에이전트가 모순된 지시를 받는다. 목적을 알 때만(파이프라인·보관함) 본다.
+  if (opts.purpose && isAgentRuntime(spec.runtime)) {
+    const text = [spec.goal, ...spec.success_criteria, ...(spec.process ?? [])].join("\n");
+    const readOnly = READ_ONLY_PURPOSES.includes(opts.purpose);
+    const implementing = IMPLEMENTS.test(text);
+    add("scope_consistent", "분류의 범위(조사·설계·검토는 코드 수정 없음)와 목표·진행이 어긋나지 않는다", !(readOnly && implementing),
+      readOnly && implementing
+        ? `분류가 '${PURPOSES[opts.purpose].label}'이라 첫 규칙이 "코드를 수정하지 않는다"인데 목표·완료 조건·진행에 구현이 있습니다. 분류를 '구현'으로 바꾸거나(진행에 설계 단계를 넣어도 됩니다) 목표에서 구현을 빼세요.`
+        : "분류와 내용이 맞습니다.");
+  }
 
   add("goal_is_outcome", "목표가 결과물로 쓰였다", OUTCOME.test(spec.goal) && spec.goal.length >= 10,
     "목표에 '무엇을 손에 쥐는지'가 드러나야 합니다.");

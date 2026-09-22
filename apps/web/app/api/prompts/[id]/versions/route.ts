@@ -24,8 +24,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const prompt = getPrompt(db, user.id, id);
   if (!prompt) return bad("프롬프트를 찾을 수 없습니다", 404);
   const spec = body.data.spec;
+  const purpose = Purpose.safeParse(prompt.purpose).success ? (prompt.purpose as Purpose) : null;
   const v = addVersion(db, id, {
-    spec, rendered: renderClaude(spec, { purpose: Purpose.safeParse(prompt.purpose).success ? (prompt.purpose as Purpose) : null }), checks: runChecks(spec), source: body.data.source, slot: body.data.slot ?? null,
+    spec, rendered: renderClaude(spec, { purpose }), checks: runChecks(spec, { purpose }), source: body.data.source, slot: body.data.slot ?? null,
     studioVersion: STUDIO_PROMPT_VERSION, provider: body.data.provider ?? null, model: body.data.model ?? null,
   });
   recordPromptEvent(db, { promptId: id, versionId: v.id, action: body.data.source, slot: body.data.slot ?? null });

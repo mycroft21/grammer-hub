@@ -138,6 +138,14 @@ describe("checks", () => {
     expect(runChecks(dup).find((c) => c.id === "no_duplicates")?.ok).toBe(false);
     expect(runChecks(baseSpec()).find((c) => c.id === "no_duplicates")?.ok).toBe(true);
   });
+  it("flags a read-only purpose whose goal/process implement code (contradicts the injected scope line)", () => {
+    const agent = { ...baseSpec(), runtime: "claude_code" as const, inputs: [], starting_points: ["reporter-api: Foo"], goal: "설계안과 그에 따른 코드 변경을 만든다", process: ["구조를 읽는다", "코드 변경을 구현한다"] };
+    expect(runChecks(agent, { purpose: "plan" }).find((c) => c.id === "scope_consistent")?.ok).toBe(false);
+    expect(runChecks(agent, { purpose: "build" }).find((c) => c.id === "scope_consistent")?.ok).toBe(true);
+    expect(runChecks({ ...agent, goal: "설계안 문서를 만든다", process: null }, { purpose: "plan" }).find((c) => c.id === "scope_consistent")?.ok).toBe(true);
+    expect(runChecks(agent).find((c) => c.id === "scope_consistent")).toBeUndefined();            // 목적을 모르면 보지 않는다
+    expect(runChecks(baseSpec(), { purpose: "plan" }).find((c) => c.id === "scope_consistent")).toBeUndefined();  // chat 런타임은 범위 문장이 없다
+  });
   it("flags rule sets that are only prohibitions, passes 'X instead of Y' forms", () => {
     const neg = { ...baseSpec(), hard_rules: ["추측하지 않는다", "코드를 쓰지 않는다"], failure_guards: ["단정하지 않는다"] };
     expect(runChecks(neg).find((c) => c.id === "rules_actionable")?.ok).toBe(false);

@@ -221,7 +221,7 @@ export function buildTicketPlanPrompt(ticketText: string, opts: TicketPlanOption
     "티켓(이슈 트래커 카드)을 읽고 이 앱의 분류 체계에서 purpose(중분류 id)와 subtype(세부 유형 id)을 고른다. 목록:",
     taxonomyList(),
     "",
-    "- 코드 조사·수정이 필요한 티켓은 개발 대분류. 이미 조사가 끝나 파일·메서드가 적혀 있으면 plan(설계 판단이 남았을 때) 또는 build. 원인만 묻는 버그면 investigate/logic. 보안 스캐너 결과처럼 위치를 모르면 investigate/source.",
+    "- 코드 조사·수정이 필요한 티켓은 개발 대분류. 이미 조사가 끝나 파일·메서드가 적혀 있으면 plan(설계 판단만 남았고 코드는 고치지 않을 때) 또는 build(코드를 고칠 때. 설계와 구현을 함께 요구해도 build — 진행의 앞 단계에 설계를 넣는다). 원인만 묻는 버그면 investigate/logic. 보안 스캐너 결과처럼 위치를 모르면 investigate/source. 조사·계획·검토 프롬프트는 코드를 수정하지 않는다는 규칙이 자동으로 붙는다.",
     "- '검토 요청', '연동 가능 여부', '일정 산정'처럼 코드보다 조사·판단이 핵심이면 리서치 또는 기획.",
     "- goal: 티켓 표현을 살려 한두 문장. 결과물이 무엇인지 드러나게. 사람 이름·인사말·담당자 의견은 빼고 핵심만.",
     "- starting_points: '저장소: 대상' 형태로 한 줄에 하나(예: 'reporter-api: MerchantServiceCommandService.updateMasterCardStatus', 'eximbay-partner: Set-Cookie·addCookie 호출부 전체 검색'). 티켓에 적힌 클래스·메서드·파일·URL·화면을 그대로 옮기고, 없으면 검색어를 한 줄로 묶는다. 'cookie', 'session'처럼 단어만 나열하지 않는다.",

@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { Alert, Button, Collapse, Input, Radio, Segmented, Select, Space, Tag, Typography } from "antd";
 import { ThunderboltOutlined } from "@ant-design/icons";
-import { DOMAINS, DOMAIN_LIST, PURPOSES, defaultLength, defaultRuntime, type Need, type PromptLanguage, type PromptLength, type Purpose, type Runtime, type StudioRequest, type Ticket, type TicketPlanResult } from "@grammer-hub/core";
+import { AGENT_DEFAULTS, DOMAINS, DOMAIN_LIST, PURPOSES, defaultLength, defaultRuntime, isAgentRuntime, type Need, type PromptLanguage, type PromptLength, type Purpose, type Runtime, type StudioRequest, type Ticket, type TicketPlanResult } from "@grammer-hub/core";
 import type { WorkspaceStatus } from "@/lib/api";
 import { LANG_LABEL, LENGTH_KO, NEED_STATUS_KO, RUNTIME_LABEL } from "./labels";
 
@@ -78,6 +78,7 @@ export function TicketReview({ ticket, plan, workspace, busy, onGenerate, onBack
         <div>
           <Typography.Text type="secondary" style={label(12)}>분류</Typography.Text>
           <Select className="mt-1 w-full" value={purpose} onChange={(v) => { setPurpose(v); setSubtype(null); setRuntime(rtFor(v)); setLength(lenFor(v)); }} options={purposeOptions} />
+          {isAgentRuntime(runtime) && AGENT_DEFAULTS[purpose] && <Typography.Text type="secondary" style={label(12)} className="mt-1 block" data-testid="scope-hint">이 분류의 첫 규칙: “{AGENT_DEFAULTS[purpose]!.scope.ko}” — 코드까지 고치게 하려면 분류를 <b>구현</b>으로.</Typography.Text>}
         </div>
         <div>
           <Typography.Text type="secondary" style={label(12)}>세부 유형</Typography.Text>

@@ -140,7 +140,7 @@ export async function* generatePrompt(provider: CorrectionProvider, ctxIn: Studi
   spec = normalizeSpec(unmaskDeep(spec, m), ctxIn);
 
   const rendered = renderClaude(spec, { purpose: ctxIn.purpose });
-  const checks = runChecks(spec);
+  const checks = runChecks(spec, { purpose: ctxIn.purpose });
   const u = r.usage ?? { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
   const usage: StudioUsage = { ...u, costUsd: provider.cost(u), latencyMs: Date.now() - t0 };
   yield { event: "spec", data: spec };
@@ -189,5 +189,5 @@ export async function regenerateSlot(provider: CorrectionProvider, ctxIn: Studio
   if (!next) return { spec: null, rendered: null, checks: [] as CheckResult[], error: { code: "schema_invalid", message: "재생성 결과가 스키마와 맞지 않습니다." } };
   // 고정 슬롯은 원본 유지, 요청한 슬롯과 그 rationale만 채택
   const merged = normalizeSpec({ ...spec, [slot]: unmaskDeep(next[slot], m), rationale: { ...spec.rationale, ...(slot in next.rationale ? { [slot]: unmaskDeep((next.rationale as Record<string, string>)[slot] ?? "", m) } : {}) } } as PromptSpec, ctxIn);
-  return { spec: merged, rendered: renderClaude(merged, { purpose: ctxIn.purpose }), checks: runChecks(merged), error: null };
+  return { spec: merged, rendered: renderClaude(merged, { purpose: ctxIn.purpose }), checks: runChecks(merged, { purpose: ctxIn.purpose }), error: null };
 }
