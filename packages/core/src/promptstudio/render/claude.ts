@@ -1,5 +1,5 @@
 import { isAgentRuntime, type PromptLanguage, type PromptSpec, type Purpose, type Runtime } from "../spec";
-import { AGENT_REPORT_LINE, AGENT_START_LINE, agentDefaultsFor } from "../agent-defaults";
+import { AGENT_REPORT_LINE, AGENT_START_LINE, AGENT_START_LINE_BARE, agentDefaultsFor } from "../agent-defaults";
 
 export interface RenderedPrompt {
   /** claude = Claude(채팅·Claude Code, system/user 분리 가능) · codex = Codex CLI(한 덩어리만) */
@@ -120,7 +120,7 @@ export function renderClaude(spec: PromptSpec, opts: RenderOptions = {}): Render
 
   const startGuide = agent && spec.starting_points.length
     ? `${t.start}\n${list(spec.starting_points)}\n\n${AGENT_START_LINE[lang]}`
-    : agent ? AGENT_START_LINE[lang] : "";
+    : agent ? `${t.start}\n${AGENT_START_LINE_BARE[lang]}` : "";
 
   const user = [
     `${t.goal}\n${spec.goal.trim()}`,

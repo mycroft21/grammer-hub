@@ -68,7 +68,7 @@ export interface DerivedNeeds {
  * - ask가 상한을 넘으면 우선순위 뒤쪽을 assume으로 내린다(value가 기본값이 된다).
  * - agent_can_find는 어떤 경우에도 질문이 되지 않는다.
  */
-export function deriveNeeds(raw: Need[], opts: { profile?: WorkspaceProfile | null | undefined; repoMatches?: RepoMatch[] | undefined; allowedIds?: string[] | undefined } = {}): DerivedNeeds {
+export function deriveNeeds(raw: Need[], opts: { profile?: WorkspaceProfile | null | undefined; repoMatches?: RepoMatch[] | undefined; allowedIds?: string[] | undefined; /** 목표 문장 흐름처럼 모델이 본 텍스트를 코드도 봤을 때만 true */ trustModelWhere?: boolean | undefined } = {}): DerivedNeeds {
   const allowed = opts.allowedIds ? new Set(opts.allowedIds) : null;
   const seen = new Set<string>();
   const needs: Need[] = [];
@@ -87,11 +87,13 @@ export function deriveNeeds(raw: Need[], opts: { profile?: WorkspaceProfile | nu
     else needs.unshift({ id: "where", label: "대상 저장소·서비스", status: "filled", value, options: [], question: null, why: "프로필의 저장소 이름·별칭이 티켓에 있어 코드가 확정했다." });
   } else if (where?.status === "filled" && where.value) {
     repos = extractRepoNames(where.value, opts.profile);
+    // 프로필이 있는데 코드가 제목·라벨·본문 어디서도 찾지 못한 저장소를 모델이 '확정'했다면 믿지 않는다(티켓 텍스트가 유도했을 수 있다) → 선택지로 묻는다
+    if (opts.profile?.repos.length && opts.trustModelWhere !== true) { where.status = "ask"; where.question = where.question ?? null; where.why = `모델은 "${where.value}"로 봤지만 티켓의 제목·라벨·본문에서 프로필의 저장소 이름·별칭을 찾지 못해 확인이 필요하다.`; repos = []; }
   }
   if (where?.status === "ask" && opts.profile?.repos.length) {
     where.options = opts.profile.repos.map((r) => r.name);
   }
-  if (where && where.status === "agent_can_find") { where.status = "ask"; where.why = where.why || "어느 저장소에서 시작할지는 저장소를 읽기 전에 정해져야 한다."; if (opts.profile?.repos.length) where.options = opts.profile.repos.map((r) => r.name); }
+  if (where && where.status === "agent_can_find") { where.status = "ask"; where.value = null; where.why = "어느 저장소에서 시작할지는 저장소를 읽기 전에 정해져야 한다."; if (opts.profile?.repos.length) where.options = opts.profile.repos.map((r) => r.name); }
 
   const asks = needs.filter((n) => n.status === "ask").sort((a, b) => rank(a.id) - rank(b.id));
   for (const n of asks.slice(MAX_QUESTIONS)) { n.status = "assume"; n.value = n.value || `${n.label}: 기본값으로 가정`; n.why = `질문 상한(${MAX_QUESTIONS}개)을 넘어 가정으로 둔다. ${n.why}`.trim(); }

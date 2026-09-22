@@ -57,6 +57,11 @@ export const AGENT_START_LINE: Record<PromptLanguage, string> = {
   ko: "저장소를 직접 읽는다. 위 시작점부터 따라가되 어떤 파일을 읽고 어떤 명령을 실행할지는 스스로 정한다. 읽지 않은 파일의 동작은 단정하지 않는다.",
   en: "Read the repository directly. Start from the points above, but decide yourself which files to read and which commands to run. Do not assert the behavior of files you have not read.",
 };
+/** 시작점이 하나도 없을 때(점검은 실패로 표시되지만 렌더는 된다): 위를 가리키는 말 없이. */
+export const AGENT_START_LINE_BARE: Record<PromptLanguage, string> = {
+  ko: "저장소를 직접 읽고 목표에 나온 이름·화면·키워드로 시작점을 찾는다. 어떤 파일을 읽고 어떤 명령을 실행할지는 스스로 정하고, 읽지 않은 파일의 동작은 단정하지 않는다.",
+  en: "Read the repository directly and locate the starting points from the names, screens and keywords in the goal. Decide yourself which files to read and which commands to run; do not assert the behavior of files you have not read.",
+};
 
 /** 슬롯 이름은 런타임에 따라 다르게 읽힌다(에이전트: 완료 조건·범위와 제약·보고 형식·검증). 값의 스키마는 같다. */
 const AGENT_SLOT_KO: Partial<Record<SlotKey, string>> = { success_criteria: "완료 조건", hard_rules: "범위와 제약", output_contract: "보고 형식", self_check: "검증", process: "진행" };

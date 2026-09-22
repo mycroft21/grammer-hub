@@ -100,6 +100,10 @@ describe("render", () => {
     const chat = renderClaude(baseSpec(), { purpose: "build" });
     expect(chat.system).toContain("## 절대 규칙");
     expect(chat.system).not.toContain("요청된 변경만");
+    // 시작점이 없으면 '위 시작점부터'라고 가리키지 않는다
+    const empty = renderClaude({ ...baseSpec(), runtime: "claude_code", inputs: [], starting_points: [] }, { purpose: "build" });
+    expect(empty.user).not.toContain("위 시작점부터");
+    expect(empty.user).toContain("## 시작점\n저장소를 직접 읽고 목표에 나온");
   });
   it("fillVariables reports missing required vars", () => {
     const r = fillVariables("<code>\n{{code}}\n</code>\n{{note}}", { note: "x" }, ["code"]);
@@ -121,6 +125,8 @@ describe("checks", () => {
     const bare = { ...cc, starting_points: ["cookie", "session"] };
     expect(runChecks(bare).find((c) => c.id === "starting_points")?.ok).toBe(false);
     expect(runChecks(bare).find((c) => c.id === "starting_points")?.detail).toContain("'cookie', 'session'");
+    expect(runChecks({ ...cc, starting_points: ["updateMasterCardStatus"] }).find((c) => c.id === "starting_points")?.ok).toBe(false);   // 길어도 이름 하나면 실패
+    expect(runChecks({ ...cc, starting_points: ["src/auth/AuthController.java"] }).find((c) => c.id === "starting_points")?.ok).toBe(true);   // 경로는 통과
     const good = { ...cc, starting_points: ["eximbay-partner: Set-Cookie·addCookie 호출부 전체 검색"] };
     expect(runChecks(good).find((c) => c.id === "starting_points")?.ok).toBe(true);
     // 완료 조건·검증에 실행 가능한 확인이 있어야 한다(에이전트만)
@@ -225,6 +231,12 @@ describe("pipeline with fake provider", () => {
     expect(r.spec?.hard_rules).not.toEqual(spec.hard_rules);
     expect(r.spec?.role).toBe(spec.role);
     expect(r.spec?.success_criteria).toEqual(spec.success_criteria);
+  });
+  it("regenerate re-applies the code guarantees (agent report length, short caps)", async () => {
+    const spec = { ...baseSpec(), runtime: "claude_code" as const, inputs: [], starting_points: ["reporter-api: Foo"] };
+    const r = await regenerateSlot(provider, ctx({ runtime: "claude_code", length: "short" }), spec, "output_contract", null);
+    expect(r.spec?.output_contract.length).toBe("20~40줄. 목록 위주, 코드는 붙이지 말고 파일·메서드 이름으로 가리킨다");
+    expect(r.spec?.runtime).toBe("claude_code");
   });
   it("masks PII in the goal and restores it", async () => {
     const goal = "홍길동(010-1234-5678) 고객 문의 응대 스크립트 초안을 만든다. 정중하고 간결하게.";

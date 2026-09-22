@@ -17,12 +17,15 @@ let cache: { mtime: number; profile: WorkspaceProfile | null; error: string | nu
 export function loadWorkspace(): { profile: WorkspaceProfile | null; error: string | null; path: string; exists: boolean } {
   const path = workspacePath();
   if (!existsSync(path)) { cache = null; return { profile: null, error: null, path, exists: false }; }
-  const mtime = statSync(path).mtimeMs;
-  if (cache && cache.mtime === mtime) return { profile: cache.profile, error: cache.error, path, exists: true };
-  const r = parseWorkspaceProfile(readFileSync(path, "utf8"));
-  cache = r.ok ? { mtime, profile: r.profile, error: null } : { mtime, profile: null, error: r.message };
+  let mtime: number; let raw: string;
+  try { mtime = statSync(path).mtimeMs; if (cache && cache.mtime === mtime) return { profile: cache.profile, error: cache.error, path, exists: true }; raw = readFileSync(path, "utf8"); }
+  catch (e) { const msg = `프로필 파일을 읽을 수 없습니다 (${(e as NodeJS.ErrnoException).code ?? "읽기 오류"})`; cache = { mtime: -1, profile: null, error: msg }; serverLog("workspace", msg); return { profile: null, error: msg, path, exists: true }; }
+  const r = parseWorkspaceProfile(raw);
+  // JSON 문법 오류 메시지에는 파일 내용 일부가 섞이므로 위치만 남긴다
+  const safeErr = r.ok ? null : r.message.startsWith("JSON 문법 오류") ? `JSON 문법 오류${/position (\d+)/.exec(r.message) ? ` (position ${/position (\d+)/.exec(r.message)![1]})` : ""}` : r.message;
+  cache = r.ok ? { mtime, profile: r.profile, error: null } : { mtime, profile: null, error: safeErr };
   if (r.ok) serverLog("workspace", "프로필 로드", { ...profileSummary(r.profile), team: undefined });
-  else serverLog("workspace", `프로필 오류: ${r.message.slice(0, 200)}`);
+  else serverLog("workspace", `프로필 오류: ${safeErr}`);
   return { profile: cache.profile, error: cache.error, path, exists: true };
 }
 

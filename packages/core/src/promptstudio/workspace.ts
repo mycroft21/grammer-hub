@@ -52,7 +52,8 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** 이름·별칭이 텍스트에 나오는지. 영문은 단어 경계, 그 외(한글·괄호 태그)는 포함 여부. */
 function mentions(text: string, term: string): boolean {
   if (!term.trim()) return false;
-  if (/^[A-Za-z0-9_.-]+$/.test(term)) return new RegExp(`(^|[^A-Za-z0-9_])${escapeRe(term)}(?![A-Za-z0-9_])`, "i").test(text);
+  // 경계에 - 와 . 도 포함: 별칭 "reporter"가 "reporter-legacy" 안에서 걸리지 않게
+  if (/^[A-Za-z0-9_.-]+$/.test(term)) return new RegExp(`(^|[^A-Za-z0-9_.-])${escapeRe(term)}(?![A-Za-z0-9_.-])`, "i").test(text);
   return text.toLowerCase().includes(term.toLowerCase());
 }
 

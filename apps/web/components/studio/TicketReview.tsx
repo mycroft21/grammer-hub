@@ -20,8 +20,11 @@ export function TicketReview({ ticket, plan, workspace, busy, onGenerate, onBack
   const [starts, setStarts] = useState(plan.starting_points.join("\n"));
   const [context, setContext] = useState(plan.context);
   const [verify, setVerify] = useState(plan.verify_in_repo.join("\n"));
-  const [runtime, setRuntime] = useState<Runtime>(workspace?.defaults.runtime ?? defaultRuntime(plan.purpose));
-  const [length, setLength] = useState<PromptLength>(workspace?.defaults.length ?? defaultLength(plan.purpose));
+  // 프로필 기본값(실행 환경·분량)은 개발 목적에만. 리서치·글쓰기 티켓에 Claude Code 런타임을 물려주지 않는다.
+  const rtFor = (p: Purpose) => (PURPOSES[p].domain === "dev" ? workspace?.defaults.runtime ?? defaultRuntime(p) : defaultRuntime(p));
+  const lenFor = (p: Purpose) => (PURPOSES[p].domain === "dev" ? workspace?.defaults.length ?? defaultLength(p) : defaultLength(p));
+  const [runtime, setRuntime] = useState<Runtime>(rtFor(plan.purpose));
+  const [length, setLength] = useState<PromptLength>(lenFor(plan.purpose));
   const [language, setLanguage] = useState<PromptLanguage>(workspace?.defaults.promptLanguage ?? "ko");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [other, setOther] = useState<Record<string, string>>({});
@@ -74,7 +77,7 @@ export function TicketReview({ ticket, plan, workspace, busy, onGenerate, onBack
       <div className="grid gap-3 md:grid-cols-2">
         <div>
           <Typography.Text type="secondary" style={label(12)}>분류</Typography.Text>
-          <Select className="mt-1 w-full" value={purpose} onChange={(v) => { setPurpose(v); setSubtype(null); setRuntime(workspace?.defaults.runtime ?? defaultRuntime(v)); setLength(workspace?.defaults.length ?? defaultLength(v)); }} options={purposeOptions} />
+          <Select className="mt-1 w-full" value={purpose} onChange={(v) => { setPurpose(v); setSubtype(null); setRuntime(rtFor(v)); setLength(lenFor(v)); }} options={purposeOptions} />
         </div>
         <div>
           <Typography.Text type="secondary" style={label(12)}>세부 유형</Typography.Text>

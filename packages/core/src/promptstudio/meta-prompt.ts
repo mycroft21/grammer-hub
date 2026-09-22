@@ -158,6 +158,7 @@ export function buildPlanPrompt(ctx: StudioContext): { system: SystemBlock[]; us
   const ws = workspaceFor(ctx);
   const user = [
     `<goal>`, ctx.goal, `</goal>`,
+    hintsBlock(ctx),
     answersBlock(ctx),
     "",
     "다음을 판단하라.",

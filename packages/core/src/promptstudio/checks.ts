@@ -4,8 +4,8 @@ const VAGUE = /(좋은|적절한|잘|충분히|알맞게|괜찮은)\s|\b(good|ap
 const BARE_NEG = /(않는다|않을 것|말 것|금지|마라|말라)\.?$|^\s*(do not|don't|never|avoid)\b/i;
 const ALT = /(대신|먼저|경우|때는|→|;|instead|rather|first|unless|when|if)/i;
 const OUTCOME = /(문서|표|코드|목록|보고|초안|계획|리뷰|답변|요약|스펙|테스트|diff|비교|추천|정리|설명|설계안|변경)|\b(document|table|code|list|report|draft|plan|review|answer|summary|spec|specification|tests?|diff|comparison|recommendation|analysis|explanation|patch|checklist|design|change)\b/i;
-/** 시작점이 검색어 하나뿐인가: 공백·구분자 없이 짧은 토큰(cookie, session). '저장소: 대상' 형태면 통과 */
-const BARE_KEYWORD = /^[A-Za-z0-9_-]{1,16}$|^[가-힣]{1,6}$/;
+/** 시작점이 토큰 하나뿐인가(cookie, AuthController): 공백·콜론·경로 구분자가 없다. '저장소: 대상', 경로, URL, 'X·Y 검색'은 통과 */
+const BARE_KEYWORD = /^[^\s:/·(]+$/;
 /** 실행할 수 있는 확인: 명령·테스트·빌드·화면·출력·상태 코드 등. 완료 조건이나 검증 중 하나에는 있어야 에이전트가 스스로 끝을 안다(Claude Code·Codex 공통 권고) */
 const RUNNABLE = /(테스트|빌드|컴파일|실행|명령|출력|화면|스크린샷|응답|상태 코드|로그|통과|실패|재현|curl|http|exit|lint|typecheck|pnpm|npm|yarn|gradle|gradlew|mvn|pytest|vitest|jest|go test|cargo|make\b|docker|sql|select |grep|diff|git )|\b(test|tests|build|compile|run|command|output|screenshot|response|status code|logs?|pass|passes|fails?|reproduce|exit code)\b/i;
 
@@ -21,7 +21,7 @@ export function runChecks(spec: PromptSpec): CheckResult[] {
   if (isAgentRuntime(spec.runtime)) {
     const bare = spec.starting_points.filter((s) => BARE_KEYWORD.test(s.trim()));
     add("starting_points", "저장소에서 어디부터 볼지 시작점이 있다(검색어 하나만은 아니다)", spec.starting_points.length > 0 && bare.length === 0 && spec.inputs.every((i) => /^[a-z][a-z0-9_]*$/.test(i.name)),
-      spec.starting_points.length === 0 ? "URL·경로·클래스명·검색어 중 하나는 있어야 모델이 헤매지 않습니다." : bare.length ? `'${bare.join("', '")}'는 검색어 한 단어입니다. '저장소: 클래스·메서드' 또는 '저장소: X·Y 호출부 검색'처럼 어디를 어떻게 볼지 적으세요.` : "변수명은 영문 snake_case여야 합니다.");
+      spec.starting_points.length === 0 ? "URL·경로·클래스명·검색어 중 하나는 있어야 모델이 헤매지 않습니다." : bare.length ? `'${bare.join("', '")}'는 이름 하나뿐입니다. '저장소: 클래스·메서드' 또는 '저장소: X·Y 호출부 검색'처럼 어느 저장소의 어디를 어떻게 볼지 적으세요.` : "변수명은 영문 snake_case여야 합니다.");
     const pool = [...spec.success_criteria, ...spec.self_check];
     add("verification_runnable", "완료 조건이나 검증에 에이전트가 직접 실행할 확인(테스트·명령·화면)이 있다", pool.some((x) => RUNNABLE.test(x)),
       "'문서가 정리된다'만으로는 에이전트가 끝을 모릅니다. 테스트 명령, 빌드, 재현 절차, 화면 확인처럼 실행해서 보일 수 있는 항목이 하나는 있어야 합니다.");

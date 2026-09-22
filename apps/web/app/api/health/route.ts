@@ -44,7 +44,7 @@ export async function GET(req: Request): Promise<Response> {
     },
     defaultProvider: env.defaultProvider,
     jira: { configured: jiraConfigured(), baseUrl: env.jiraBaseUrl || null },
-    workspace: (() => { const w = loadWorkspace(); return { exists: w.exists, path: w.path, error: w.error, ...(profileSummary(w.profile) ?? {}) }; })(),
+    workspace: (() => { const w = loadWorkspace(); return { exists: w.exists, path: w.path.startsWith(ROOT) ? w.path.slice(ROOT.length + 1) : "(루트 밖)", error: w.error, ...(profileSummary(w.profile) ?? {}) }; })(),
     local: { url: env.localLlmUrl, model: env.localLlmModel },
     storeDrafts: env.storeDrafts, piiBlock: env.piiBlock, databaseUrl: env.databaseUrl,
     code: { branch, head, committedAt: headTime, dirtyFiles: dirty === null ? null : dirty.split("\n").filter(Boolean).length },

@@ -57,9 +57,14 @@ export async function planPrompt(provider: CorrectionProvider, ctxIn: StudioCont
   if (!raw) return { plan: null, usage: null, error: { code: "schema_invalid", message: "의도 정리 결과가 스키마와 맞지 않습니다." } };
   // 세부 유형 검증: 목록에 없으면 기본으로. 장부는 허용된 항목(where + 이 세부 유형의 mustKnow)만 남긴다.
   const sub = findSubtype(ctxIn.purpose, raw.subtype);
+  const shown = findSubtype(ctxIn.purpose, ctxIn.subtype);   // 모델이 본 장부 목록은 요청 시점의 세부 유형 기준
   const dev = DOMAINS[PURPOSES[ctxIn.purpose].domain].id === "dev";
-  const allowed = [...(dev && ctxIn.profile?.repos.length ? ["where"] : []), ...sub.mustKnow.map((mk) => mk.id)];
-  const d = deriveNeeds(raw.needs, { profile: dev ? ctxIn.profile : null, allowedIds: allowed });
+  const allowed = [...new Set([...(dev && ctxIn.profile?.repos.length ? ["where"] : []), ...shown.mustKnow.map((mk) => mk.id), ...sub.mustKnow.map((mk) => mk.id)])];
+  // 사용자가 폼에서 저장소를 골랐으면 그것이 확정값(다시 묻지 않는다). 아니면 목표 문장에서 프로필 별칭을 찾는다.
+  const profile = dev ? ctxIn.profile ?? null : null;
+  const picked = (ctxIn.hints?.repos ?? []).map((n) => profile?.repos.find((r) => r.name === n)).filter((r): r is NonNullable<typeof r> => Boolean(r)).map((repo) => ({ repo, evidence: "사용자가 선택" }));
+  const repoMatches = picked.length ? picked : profile ? resolveRepos(profile, { title: ctxIn.goal }) : [];
+  const d = deriveNeeds(raw.needs, { profile, allowedIds: allowed, repoMatches, trustModelWhere: true });
   const plan: PlanResult = { summary: raw.summary, subtype: sub.id, needs: d.needs, mode: d.mode, questions: d.questions, assumptions: d.assumptions, verify_in_repo: d.verify_in_repo, repos: d.repos };
   const u = r.usage ?? { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
   return { plan: unmaskDeep(plan, m), usage: { ...u, costUsd: provider.cost(u), latencyMs: Date.now() - t0 }, error: null };
@@ -132,26 +137,7 @@ export async function* generatePrompt(provider: CorrectionProvider, ctxIn: Studi
     spec = strict.success ? strict.data : (PromptSpec.safeParse(j).success ? PromptSpec.parse(j) : null);
   } catch { spec = null; }
   if (!spec) { yield { event: "error", data: { code: "schema_invalid", message: "생성 결과가 스키마와 맞지 않습니다." } }; return { spec: null, rendered: null, checks: [], usage: null }; }
-  spec = unmaskDeep(spec, m);
-  spec.language = ctxIn.language;
-  spec.runtime = ctxIn.runtime;
-  if (!isAgentRuntime(spec.runtime)) spec.starting_points = [];
-  // short는 길이가 곧 품질이다. 모델이 넘치게 쓰면 앞쪽(중요도 순)만 남긴다.
-  if (ctxIn.length === "short") {
-    spec.success_criteria = spec.success_criteria.slice(0, 4);
-    spec.hard_rules = spec.hard_rules.slice(0, 3);
-    spec.process = spec.process && spec.process.length > 4 ? spec.process.slice(0, 4) : spec.process;
-    spec.self_check = spec.self_check.slice(0, 3);
-    spec.failure_guards = spec.failure_guards.slice(0, 2);
-    spec.examples = null;
-  }
-  spec.inputs = spec.inputs.map((i) => ({ ...i, name: i.name.toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/^_+|_+$/g, "") || "input" }));
-  // 결과물 분량은 목적으로 정해진다(설계안·조사 목록·변경 요약·검토 항목). 모델이 매번 다른 분량을 쓰지 않게 표의 값으로 통일한다.
-  const ad = agentDefaultsFor(ctxIn.purpose, spec.runtime);
-  if (ad) {
-    spec.output_contract.length = ad.report.length[spec.language];
-    if (spec.output_contract.structure.trim().length < 5) spec.output_contract.structure = ad.report.structure[spec.language];
-  }
+  spec = normalizeSpec(unmaskDeep(spec, m), ctxIn);
 
   const rendered = renderClaude(spec, { purpose: ctxIn.purpose });
   const checks = runChecks(spec);
@@ -165,6 +151,33 @@ export async function* generatePrompt(provider: CorrectionProvider, ctxIn: Studi
   return { spec, rendered, checks, usage };
 }
 
+/**
+ * 모델 출력 뒤에 코드가 보장하는 것(생성·재생성 공통): 언어·런타임은 요청값, chat이면 시작점 없음, short 상한, 변수명 정규화,
+ * 에이전트 런타임의 결과물 분량은 목적별 표. 재생성 뒤에도 같은 규칙이 다시 적용돼야 "코드가 보장"이 유지된다.
+ */
+export function normalizeSpec(spec: PromptSpec, ctx: StudioContext): PromptSpec {
+  spec.language = ctx.language;
+  spec.runtime = ctx.runtime;
+  if (!isAgentRuntime(spec.runtime)) spec.starting_points = [];
+  // short는 길이가 곧 품질이다. 모델이 넘치게 쓰면 앞쪽(중요도 순)만 남긴다.
+  if (ctx.length === "short") {
+    spec.success_criteria = spec.success_criteria.slice(0, 4);
+    spec.hard_rules = spec.hard_rules.slice(0, 3);
+    spec.process = spec.process && spec.process.length > 4 ? spec.process.slice(0, 4) : spec.process;
+    spec.self_check = spec.self_check.slice(0, 3);
+    spec.failure_guards = spec.failure_guards.slice(0, 2);
+    spec.examples = null;
+  }
+  spec.inputs = spec.inputs.map((i) => ({ ...i, name: i.name.toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/^_+|_+$/g, "") || "input" }));
+  // 결과물 분량은 목적으로 정해진다(설계안·조사 목록·변경 요약·검토 항목). 모델이 매번 다른 분량을 쓰지 않게 표의 값으로 통일한다.
+  const ad = agentDefaultsFor(ctx.purpose, spec.runtime);
+  if (ad) {
+    spec.output_contract.length = ad.report.length[spec.language];
+    if (spec.output_contract.structure.trim().length < 5) spec.output_contract.structure = ad.report.structure[spec.language];
+  }
+  return spec;
+}
+
 /** 블록 재생성: 한 슬롯만 다시 만들고 전체를 다시 렌더·점검한다. */
 export async function regenerateSlot(provider: CorrectionProvider, ctxIn: StudioContext, spec: PromptSpec, slot: SlotKey, instruction: string | null, signal?: AbortSignal) {
   const { ctx, m } = maskCtx(ctxIn);
@@ -175,6 +188,6 @@ export async function regenerateSlot(provider: CorrectionProvider, ctxIn: Studio
   try { const j = PromptSpec.safeParse(JSON.parse(r.raw)); next = j.success ? j.data : null; } catch { next = null; }
   if (!next) return { spec: null, rendered: null, checks: [] as CheckResult[], error: { code: "schema_invalid", message: "재생성 결과가 스키마와 맞지 않습니다." } };
   // 고정 슬롯은 원본 유지, 요청한 슬롯과 그 rationale만 채택
-  const merged: PromptSpec = { ...spec, [slot]: unmaskDeep(next[slot], m), rationale: { ...spec.rationale, ...(slot in next.rationale ? { [slot]: unmaskDeep((next.rationale as Record<string, string>)[slot] ?? "", m) } : {}) } } as PromptSpec;
+  const merged = normalizeSpec({ ...spec, [slot]: unmaskDeep(next[slot], m), rationale: { ...spec.rationale, ...(slot in next.rationale ? { [slot]: unmaskDeep((next.rationale as Record<string, string>)[slot] ?? "", m) } : {}) } } as PromptSpec, ctxIn);
   return { spec: merged, rendered: renderClaude(merged, { purpose: ctxIn.purpose }), checks: runChecks(merged), error: null };
 }
