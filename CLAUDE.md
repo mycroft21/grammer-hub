@@ -4,8 +4,8 @@
 
 ## 명령 (루트에서)
 - 설치·빌드: `pnpm install` → `pnpm build` (E2E는 빌드 결과를 쓴다)
-- 타입: `pnpm typecheck` · 단위 테스트: `pnpm test` (core 129, db 2) · 한 패키지만: `pnpm --filter @grammer-hub/core test`
-- E2E(빌드 후): `cd apps/web && CHROMIUM_PATH=<chrome 실행 파일> node e2e/smoke.mjs` — FAKE_PROVIDER로 서버를 직접 띄우고 35개 항목을 본다. 실제 `.env`는 건드리지 않는다(GH_ENV_FILE 임시 파일)
+- 타입: `pnpm typecheck` · 단위 테스트: `pnpm test` (core 132, db 2) · 한 패키지만: `pnpm --filter @grammer-hub/core test`
+- E2E(빌드 후): `cd apps/web && CHROMIUM_PATH=<chrome 실행 파일> node e2e/smoke.mjs` — FAKE_PROVIDER로 서버를 직접 띄우고 46개 항목을 본다. 실제 `.env`·프로필 파일은 건드리지 않는다(GH_ENV_FILE·WORKSPACE_PROFILE 임시 파일)
 - 상태 진단: `pnpm health` (`--probe`로 백엔드 실제 호출). `pnpm doctor`는 pnpm 자체 명령이라 쓰지 않는다
 - DB 스키마를 바꾸면 `pnpm --filter @grammer-hub/db generate`로 마이그레이션 파일을 만든다(손으로 SQL 쓰지 않기)
 

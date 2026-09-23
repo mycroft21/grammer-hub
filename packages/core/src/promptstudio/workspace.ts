@@ -139,3 +139,99 @@ export const EXAMPLE_PROFILE: WorkspaceProfile = WorkspaceProfile.parse({
   glossary: { "서브몰": "가맹점 아래의 하위 상점 단위", "PSP": "Payment Service Provider. 결제대행사 모델", "SDD": "Solution Design Document(PayPal 측 설계 문서)" },
   defaults: { runtime: "claude_code", length: "short" },
 });
+
+// ─────────────────────────── 프로필 편집(설정 폼·검토 화면의 "프로필에 추가") ───────────────────────────
+/** 파일에 쓰는 표준 형태. 폼·가져오기·자동 추가가 모두 이 형태로 저장해 diff가 깔끔하다. */
+export function formatProfile(profile: WorkspaceProfile): string {
+  return JSON.stringify(profile, null, 2) + "\n";
+}
+
+const trimList = (xs: string[]) => Array.from(new Set(xs.map((x) => x.trim()).filter(Boolean)));
+const trimRecord = (r: Record<string, string>) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k.trim(), v.trim()]).filter(([k, v]) => k && v));
+/**
+ * 폼 초안 정리: 공백만 있는 항목·빈 줄·빈 키를 버린다. 폼은 "추가" 버튼으로 빈 칸을 만들기 때문에 저장 직전에 한 번 거친다.
+ * 이름이나 설명이 비어 있는 저장소는 남겨 두어 스키마 검증이 그 칸을 가리키게 한다.
+ */
+export function cleanProfileDraft(p: WorkspaceProfile): WorkspaceProfile {
+  const team = p.team?.trim();
+  return {
+    version: 1,
+    ...(team ? { team } : {}),
+    repos: p.repos.map((r) => {
+      const stack = r.stack?.trim();
+      return { name: r.name.trim(), what: r.what.trim(), ...(stack ? { stack } : {}), aliases: trimList(r.aliases), entry: trimList(r.entry), verify: trimList(r.verify), notes: trimList(r.notes) };
+    }),
+    projects: trimRecord(p.projects),
+    conventions: trimList(p.conventions),
+    glossary: trimRecord(p.glossary),
+    defaults: { ...(p.defaults.runtime ? { runtime: p.defaults.runtime } : {}), ...(p.defaults.length ? { length: p.defaults.length } : {}), ...(p.defaults.promptLanguage ? { promptLanguage: p.defaults.promptLanguage } : {}) },
+  };
+}
+
+/** 검증 실패를 폼 칸 옆에 붙이기 위한 경로 → 메시지. 경로는 zod path("repos.1.name"). 이름 중복은 그 저장소의 name 칸에 붙인다. */
+export function profileIssues(p: unknown): Record<string, string> {
+  const r = WorkspaceProfile.safeParse(p);
+  const out: Record<string, string> = {};
+  if (!r.success) { for (const i of r.error.issues) { const k = i.path.join(".") || "(root)"; if (!out[k]) out[k] = i.message; } return out; }
+  const seen = new Map<string, number>();
+  r.data.repos.forEach((repo, idx) => { const key = repo.name.toLowerCase(); if (seen.has(key)) out[`repos.${idx}.name`] = `이름 중복: ${repo.name}`; else seen.set(key, idx); });
+  return out;
+}
+
+/** 검토 화면에서 한 번 클릭으로 프로필에 넣는 작은 변경. 파일 전체를 다시 쓰지 않고 이 연산만 서버에 보낸다. */
+export const ProfileOp = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("add_repo"), name: z.string().min(1).max(80), what: z.string().min(1).max(200), aliases: z.array(z.string().max(80)).max(10).default([]), verify: z.array(z.string().max(200)).max(5).default([]) }),
+  z.object({ op: z.literal("add_alias"), repo: z.string().min(1), alias: z.string().min(1).max(80) }),
+  z.object({ op: z.literal("add_verify"), repo: z.string().min(1), command: z.string().min(1).max(200) }),
+]);
+export type ProfileOp = z.infer<typeof ProfileOp>;
+
+const sameTerm = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+/** 연산을 순서대로 적용한다. 이미 있는 값은 건너뛰고(changes에 안 남음), 없는 저장소를 가리키면 실패. 원본은 바꾸지 않는다. */
+export function applyProfileOps(profile: WorkspaceProfile, ops: ProfileOp[]): { ok: true; profile: WorkspaceProfile; changes: string[] } | { ok: false; message: string } {
+  const next: WorkspaceProfile = { ...profile, repos: profile.repos.map((r) => ({ ...r, aliases: [...r.aliases], entry: [...r.entry], verify: [...r.verify], notes: [...r.notes] })) };
+  const changes: string[] = [];
+  const find = (name: string) => next.repos.find((r) => sameTerm(r.name, name));
+  for (const op of ops) {
+    if (op.op === "add_repo") {
+      const name = op.name.trim(), what = op.what.trim();
+      if (find(name)) continue;
+      next.repos.push({ name, what, aliases: trimList(op.aliases).filter((a) => !sameTerm(a, name)), entry: [], verify: trimList(op.verify), notes: [] });
+      changes.push(`저장소 ${name} 추가`);
+    } else if (op.op === "add_alias") {
+      const repo = find(op.repo);
+      if (!repo) return { ok: false, message: `프로필에 없는 저장소: ${op.repo}` };
+      const alias = op.alias.trim();
+      if (sameTerm(alias, repo.name) || repo.aliases.some((a) => sameTerm(a, alias))) continue;
+      const taken = next.repos.find((r) => r !== repo && (sameTerm(r.name, alias) || r.aliases.some((a) => sameTerm(a, alias))));
+      if (taken) return { ok: false, message: `"${alias}"는 이미 ${taken.name}의 이름·별칭입니다` };
+      repo.aliases.push(alias);
+      changes.push(`${repo.name} 별칭 "${alias}"`);
+    } else {
+      const repo = find(op.repo);
+      if (!repo) return { ok: false, message: `프로필에 없는 저장소: ${op.repo}` };
+      const cmd = op.command.trim();
+      if (repo.verify.some((v) => sameTerm(v, cmd))) continue;
+      repo.verify.push(cmd);
+      changes.push(`${repo.name} 검증 명령 "${cmd}"`);
+    }
+  }
+  return { ok: true, profile: next, changes };
+}
+
+/**
+ * 코드가 저장소를 못 정해 사용자가 직접 골랐을 때, 다음엔 묻지 않게 해 줄 별칭 후보.
+ * 티켓 제목의 대괄호 태그([partner]) → 라벨 → 컴포넌트 순. 이미 어떤 저장소의 이름·별칭인 것은 뺀다(그랬다면 코드가 확정했을 것이다).
+ */
+export function suggestAliases(profile: { repos: { name: string; aliases: string[] }[] }, ticket: { summary: string; labels: string[]; components: string[] }, max = 3): string[] {
+  const known = (t: string) => profile.repos.some((r) => sameTerm(r.name, t) || r.aliases.some((a) => sameTerm(a, t)));
+  const tags = (ticket.summary.match(/\[[^\]\n]{1,40}\]/g) ?? []).map((t) => t.trim());
+  const out: string[] = [];
+  for (const c of [...tags, ...ticket.labels, ...ticket.components]) {
+    const t = c.trim();
+    if (!t || t.length > 40 || known(t) || out.some((o) => sameTerm(o, t))) continue;
+    out.push(t);
+    if (out.length >= max) break;
+  }
+  return out;
+}

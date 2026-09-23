@@ -5,6 +5,7 @@ import { CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, SaveOutlined 
 import { api, type HealthDto, type SettingDefDto, type SettingsDto, type WorkspaceFileDto } from "@/lib/api";
 import { PageHeader, errMsg } from "./_shared";
 import { useThemeMode } from "@/components/providers/AppProviders";
+import { WorkspaceEditor } from "@/components/settings/WorkspaceEditor";
 import { SCALES, type Density, type Scale, type ThemePref } from "@/lib/theme/prefs";
 
 const GROUP: Record<SettingDefDto["group"], { title: string; desc: string }> = {
@@ -15,7 +16,7 @@ const GROUP: Record<SettingDefDto["group"], { title: string; desc: string }> = {
 
 /**
  * 설정 화면. 루트 .env를 대신 편집한다(비밀값은 끝 4자만 보임). 저장하면 대부분 즉시 반영, 재시작이 필요한 항목은 표시.
- * 아래 작업 공간 프로필 편집기는 studio.workspace.json을 검증해서 저장한다.
+ * 아래 작업 공간 프로필 편집기(WorkspaceEditor)는 studio.workspace.json을 폼·JSON·가져오기로 편집해 검증 후 저장한다.
  */
 export function SettingsPage() {
   const { message } = App.useApp();
@@ -26,14 +27,11 @@ export function SettingsPage() {
   const [health, setHealth] = useState<HealthDto | null>(null);
   const [probing, setProbing] = useState(false);
   const [ws, setWs] = useState<WorkspaceFileDto | null>(null);
-  const [wsText, setWsText] = useState("");
-  const [wsSaving, setWsSaving] = useState(false);
-  const [wsErr, setWsErr] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
       const [s, w, h] = await Promise.all([api.settings.get(), api.settings.workspace(), api.settings.health(false)]);
-      setData(s); setWs(w); setWsText(w.text || ""); setHealth(h);
+      setData(s); setWs(w); setHealth(h);
     } catch (e) { message.error(`설정을 불러오지 못했습니다: ${errMsg(e)}`); }
   }, [message]);
   useEffect(() => { void reload(); }, [reload]);
@@ -56,14 +54,8 @@ export function SettingsPage() {
     setProbing(true);
     try { setHealth(await api.settings.health(true)); } catch (e) { message.error(`연결 확인 실패: ${errMsg(e)}`); } finally { setProbing(false); }
   };
-  const saveWs = async () => {
-    setWsSaving(true); setWsErr(null);
-    try { const r = await api.settings.saveWorkspace(wsText); setWs(r); message.success(`프로필을 저장했습니다 · 저장소 ${r.repos}개`); }
-    catch (e) { setWsErr(errMsg(e)); } finally { setWsSaving(false); }
-  };
-  const validateWs = () => {
-    try { JSON.parse(wsText); setWsErr(null); message.success("JSON 문법은 맞습니다. 저장하면 스키마까지 검증합니다."); } catch (e) { setWsErr(`JSON 문법 오류: ${errMsg(e)}`); }
-  };
+  /** 프로필 저장 후 상단 상태 줄(프로필 n개 저장소)도 맞춘다 */
+  const onWorkspaceSaved = async (f: WorkspaceFileDto) => { setWs(f); try { setHealth(await api.settings.health(false)); } catch { /* 상태 줄만 */ } };
 
   if (!data) return <div><PageHeader title="설정" description="모델 연결·Jira·저장 위치를 화면에서 바꿉니다. 루트 .env 파일을 대신 편집합니다." /><AppearanceCard /><Skeleton active /></div>;
 
@@ -119,21 +111,7 @@ export function SettingsPage() {
         </Card>
       ))}
 
-      <Card size="small" title="작업 공간 프로필" extra={<Typography.Text type="secondary" style={small}>{ws?.path ?? "studio.workspace.json"} · {ws?.exists ? (ws.summary ? `저장소 ${ws.summary.repos}개` : "오류") : "없음"}</Typography.Text>}>
-        <Typography.Paragraph type="secondary" style={{ ...small, marginBottom: 8 }}>
-          팀의 저장소(이름·별칭·검증 명령·주의), Jira 프로젝트 뜻, 팀 규칙, 용어를 적어 두면 티켓마다 "어느 저장소?"를 묻지 않고 프롬프트에 검증 명령·규칙이 들어갑니다. 예시로 시작해 팀 값으로 바꾸세요. 필드 설명은 docs/05 §A-3″.
-        </Typography.Paragraph>
-        {ws?.error && !wsErr && <Alert type="error" showIcon message={`현재 파일 오류: ${ws.error}`} className="mb-2" />}
-        {wsErr && <Alert type="error" showIcon message={wsErr} className="mb-2" data-testid="workspace-error" />}
-        <Input.TextArea data-testid="workspace-editor" value={wsText} onChange={(e) => setWsText(e.target.value)} autoSize={{ minRows: 10, maxRows: 30 }} spellCheck={false}
-          style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12.5 }} placeholder='{ "version": 1, "repos": [ … ] }' />
-        <Space wrap className="mt-2">
-          <Button data-testid="workspace-save" type="primary" loading={wsSaving} disabled={!wsText.trim()} onClick={() => void saveWs()}>검증 후 저장</Button>
-          <Button onClick={validateWs} disabled={!wsText.trim()}>문법만 확인</Button>
-          <Button onClick={() => { if (ws) setWsText(ws.example); }}>예시 불러오기</Button>
-          {ws?.exists && <Button type="text" onClick={() => setWsText(ws.text)}>파일 내용으로 되돌리기</Button>}
-        </Space>
-      </Card>
+      <WorkspaceEditor file={ws} onSaved={(f) => void onWorkspaceSaved(f)} />
 
       <Typography.Text type="secondary" style={small}>
         비밀값(API 키·토큰)은 이 컴퓨터의 .env에만 저장되고 화면에는 끝 4자만 보입니다. 이 앱은 인증 없이 로컬에서 쓰는 단일 사용자용이므로, 다른 사람에게 줄 때는 각자 자기 컴퓨터에서 설정하게 하세요. 터미널에서 확인하려면 <code>pnpm health</code>.

@@ -116,6 +116,11 @@ export function useStudio() {
     }
   }, [cancel]);
 
+  /** 검토 화면의 "프로필에 추가"가 프로필을 바꾸면 선택지·별칭 정보를 최신으로 */
+  const setWorkspace = useCallback((ws: WorkspaceStatus) => {
+    setState((s) => (s.ticket ? { ...s, ticket: { ...s.ticket, workspace: ws } } : s));
+  }, []);
+
   /** 티켓 검토 화면에서 확정 → 생성 */
   const generateFromTicket = useCallback(async (req: StudioRequest) => {
     await generate(req);
@@ -161,5 +166,5 @@ export function useStudio() {
   const reset = useCallback(() => { cancel(); setState(initial); }, [cancel]);
   const backToForm = useCallback(() => { cancel(); setState((s) => ({ ...s, phase: "form", plan: null, ticket: null, error: null })); }, [cancel]);
 
-  return { state, start, startFromTicket, generateFromTicket, answer, generate, regenerate, editSlot, save, reset, backToForm, cancel };
+  return { state, start, startFromTicket, generateFromTicket, setWorkspace, answer, generate, regenerate, editSlot, save, reset, backToForm, cancel };
 }

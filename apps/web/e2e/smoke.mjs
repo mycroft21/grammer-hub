@@ -1,7 +1,7 @@
 // E2E 스모크: FAKE_PROVIDER=1 서버를 대상으로 에디터 → 카드 → 수락 → 복사 → 실행 기록까지.
 // 실행: pnpm --filter @grammer-hub/web e2e  (서버는 스크립트가 직접 띄운다)
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
@@ -10,12 +10,16 @@ const require = createRequire(import.meta.url);
 
 const PORT = process.env.E2E_PORT ?? "3199";
 const dir = mkdtempSync(join(tmpdir(), "gh-e2e-"));
+const ROOT = new URL("../../..", import.meta.url).pathname;
+// 작업 공간 프로필은 예시를 임시 폴더에 복사해 쓴다: 검토 화면의 "프로필에 추가"와 설정 폼 저장이 실제 파일에 쓰기 때문
+const profilePath = join(dir, "studio.workspace.json");
+copyFileSync(join(ROOT, "studio.workspace.example.json"), profilePath);
 // pnpm을 거치지 않고 next 바이너리를 직접 띄우고, 프로세스 그룹 단위로 종료한다(고아 서버 방지).
 const server = spawn(process.execPath, [require.resolve("next/dist/bin/next"), "start", "-p", PORT], {
   cwd: new URL("..", import.meta.url).pathname,
-  // 작업 공간 프로필은 예시 파일을 그대로 쓴다(DEMO-2의 [partner] 태그 → eximbay-partner 확정 경로를 검사)
+  // 작업 공간 프로필은 예시의 임시 복사본(DEMO-2의 [partner] 태그 → eximbay-partner 확정 경로를 검사)
   // 설정 화면 검사는 실제 .env를 건드리지 않도록 GH_ENV_FILE을 임시 파일로 돌린다
-  env: { ...process.env, DATABASE_URL: `file:${join(dir, "e2e.db")}`, FAKE_PROVIDER: "1", ALLOWED_EMAIL: "e2e@example.com", WORKSPACE_PROFILE: "studio.workspace.example.json", GH_ENV_FILE: join(dir, "e2e.env") },
+  env: { ...process.env, DATABASE_URL: `file:${join(dir, "e2e.db")}`, FAKE_PROVIDER: "1", ALLOWED_EMAIL: "e2e@example.com", WORKSPACE_PROFILE: profilePath, GH_ENV_FILE: join(dir, "e2e.env") },
   stdio: ["ignore", "pipe", "pipe"], detached: true,
 });
 const stopServer = () => { try { process.kill(-server.pid, "SIGTERM"); } catch { try { server.kill("SIGTERM"); } catch {} } };
@@ -149,6 +153,25 @@ try {
   check("ticket review shows suggested goal", (await page.inputValue("[data-testid=ticket-goal]")).includes("DEMO-1"));
   check("profile resolved the repo from the label (no 'where' question)", ((await page.textContent("[data-testid=ticket-review]")) ?? "").includes("코드가 확정") && (await page.locator("[data-testid=ticket-option]").count()) === 2);
   check("verify-in-repo list is prefilled from the ledger", ((await page.inputValue("[data-testid=ticket-verify]")) ?? "").length > 0);
+  // "프로필에 추가": 코드가 확정한 저장소(reporter-api, 검증 명령 있음)에는 힌트가 없다. 사용자가 reporter-legacy로 바꾸면
+  // 별칭 후보([Feature]·feature — 이미 아는 reporter-api 라벨은 제외)와 검증 명령 입력이 나오고, 클릭하면 임시 프로필 파일에 쓰인다.
+  check("no profile hints while the code-resolved repo is selected", (await page.locator("[data-testid=profile-hints]").count()) === 0);
+  await page.click("[data-testid=ticket-repos] .ant-select-selection-item[title=reporter-api] .ant-select-selection-item-remove");
+  await page.click("[data-testid=ticket-repos]");
+  await page.click(".ant-select-dropdown .ant-select-item-option[title=reporter-legacy]");
+  await page.keyboard.press("Escape");
+  await page.waitForSelector("[data-testid=profile-hints]", { timeout: 5000 });
+  const aliasButtons = await page.locator("[data-testid=profile-hint-alias]").allTextContents();
+  check("hints offer unknown title tag and label as aliases, not the known one", aliasButtons.some((t) => t.includes("[Feature]")) && aliasButtons.some((t) => t.includes("feature")) && !aliasButtons.some((t) => t.includes("reporter-api")));
+  check("hints ask for a verify command when the repo has none", (await page.locator("[data-testid=profile-hint-verify]").count()) === 1);
+  await page.click("[data-testid=profile-hint-alias]:has-text('[Feature]')");
+  await page.waitForFunction(() => !Array.from(document.querySelectorAll("[data-testid=profile-hint-alias]")).some((b) => b.textContent?.includes("[Feature]")), null, { timeout: 5000 });
+  await page.fill("[data-testid=profile-hint-cmd]", "./gradlew test");
+  await page.click("[data-testid=profile-hint-add-verify]");
+  await page.waitForSelector("[data-testid=profile-hint-verify]", { state: "detached", timeout: 5000 });
+  const patched = JSON.parse(readFileSync(profilePath, "utf8"));
+  const legacy = patched.repos.find((r) => r.name === "reporter-legacy");
+  check("one-click additions are written to the profile file", legacy.aliases.includes("[Feature]") && legacy.verify.includes("./gradlew test") && patched.repos.length === 3);
   await page.locator("label.ant-radio-button-wrapper:has([data-testid=ticket-option])").first().click();
   await page.click("[data-testid=ticket-generate]");
   await page.waitForSelector("[data-testid=studio-save]:not([disabled])", { timeout: 20000 });
@@ -184,6 +207,34 @@ try {
   await page.goto(`http://127.0.0.1:${PORT}/settings`, { waitUntil: "load" });
   await page.waitForSelector("[data-testid=setting-LOG_FILE] input", { timeout: 15000 });
   check("saved setting survives reload and is written to the env file", (await page.inputValue("[data-testid=setting-LOG_FILE] input")) === "/tmp/gh-e2e.log" && readFileSync(join(dir, "e2e.env"), "utf8").includes("LOG_FILE=/tmp/gh-e2e.log"));
+  // 프로필 폼: 파일이 폼으로 열리고(검토 화면에서 추가한 별칭이 보인다), 빈 저장소는 칸 옆 오류로 막히며, 채우면 저장된다
+  await page.waitForSelector("[data-testid=workspace-form]", { timeout: 10000 });
+  check("profile opens as a form with the file's repos", (await page.locator("[data-testid=ws-repo-0]").count()) === 1 && (await page.inputValue("[data-testid=ws-repo-name-0]")) === "reporter-api");
+  check("form shows the alias added from the ticket review", ((await page.textContent("[data-testid=ws-repo-aliases-1]")) ?? "").includes("[Feature]"));
+  await page.click("[data-testid=ws-repo-add]");
+  await page.click("[data-testid=workspace-save]");
+  await page.waitForSelector("[data-testid=ws-field-error]", { timeout: 5000 });
+  check("empty repo row is rejected with a field-level error", (await page.locator("[data-testid=ws-field-error]").count()) >= 2 && ((await page.textContent("[data-testid=workspace-error]")) ?? "").includes("칸"));
+  await page.fill("[data-testid=ws-repo-name-3]", "billing-batch");
+  await page.fill("[data-testid=ws-repo-what-3]", "정산 배치");
+  await page.click("[data-testid=workspace-save]");
+  await page.waitForSelector("text=프로필을 저장했습니다 · 저장소 4개", { timeout: 5000 });
+  const savedProfile = JSON.parse(readFileSync(profilePath, "utf8"));
+  check("form save writes a valid profile with the new repo", savedProfile.repos.length === 4 && savedProfile.repos[3].name === "billing-batch" && savedProfile.repos[1].aliases.includes("[Feature]"));
+  // 내보내기: 현재 내용이 studio.workspace.json 으로 내려온다
+  const [download] = await Promise.all([page.waitForEvent("download", { timeout: 5000 }), page.click("[data-testid=workspace-export]")]);
+  check("export downloads studio.workspace.json", download.suggestedFilename() === "studio.workspace.json");
+  // 가져오기: 팀에서 받은 파일을 고르면 폼이 그 내용으로 바뀌고(저장 전), 저장하면 파일에 쓰인다
+  const importPath = join(dir, "team.workspace.json");
+  writeFileSync(importPath, JSON.stringify({ ...savedProfile, team: "가져온 팀", repos: savedProfile.repos.slice(0, 2) }, null, 2));
+  await page.setInputFiles("[data-testid=workspace-import]", importPath);
+  await page.waitForFunction(() => document.querySelector("[data-testid=ws-team]")?.value === "가져온 팀", null, { timeout: 5000 });
+  check("import fills the form without saving yet", (await page.locator("[data-testid^=ws-repo-name-]").count()) === 2 && JSON.parse(readFileSync(profilePath, "utf8")).repos.length === 4);
+  await page.click("[data-testid=workspace-save]");
+  await page.waitForSelector("text=프로필을 저장했습니다 · 저장소 2개", { timeout: 5000 });
+  check("saving the imported profile writes it to the file", JSON.parse(readFileSync(profilePath, "utf8")).team === "가져온 팀");
+  // JSON 탭은 남아 있고, 잘못된 JSON은 서버가 막는다
+  await page.click("[data-testid=workspace-card] .ant-tabs-tab:has-text('JSON')");
   await page.fill("[data-testid=workspace-editor]", "{ not json");
   await page.click("[data-testid=workspace-save]");
   await page.waitForSelector("[data-testid=workspace-error]", { timeout: 5000 });

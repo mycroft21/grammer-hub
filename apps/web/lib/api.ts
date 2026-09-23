@@ -1,4 +1,4 @@
-import type { CheckResult, DictionaryEntry, PlanResult, PromptSpec, RenderedPrompt, SituationProfile, SlotKey, StudioRequest, StyleRule, Ticket, TicketPlanResult } from "@grammer-hub/core";
+import type { CheckResult, DictionaryEntry, PlanResult, ProfileOp, PromptSpec, RenderedPrompt, SituationProfile, SlotKey, StudioRequest, StyleRule, Ticket, TicketPlanResult, WorkspaceProfile } from "@grammer-hub/core";
 
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -55,6 +55,9 @@ export const api = {
     save: (values: Record<string, string>) => fetch("/api/settings", json("PUT", { values })).then(j<SettingsDto & { ok: true; restart: string[]; changed: string[] }>),
     workspace: () => fetch("/api/settings/workspace").then(j<WorkspaceFileDto>),
     saveWorkspace: (text: string) => fetch("/api/settings/workspace", json("PUT", { text })).then(j<WorkspaceFileDto & { ok: true; repos: number }>),
+    saveWorkspaceProfile: (profile: WorkspaceProfile) => fetch("/api/settings/workspace", json("PUT", { profile })).then(j<WorkspaceFileDto & { ok: true; repos: number }>),
+    /** 검토 화면의 "프로필에 추가" — 별칭·검증 명령·저장소를 파일에 병합 */
+    patchWorkspace: (ops: ProfileOp[]) => fetch("/api/settings/workspace", json("PATCH", { ops })).then(j<{ ok: true; changes: string[]; repos: number; workspace: WorkspaceStatus }>),
     health: (probe: boolean) => fetch(`/api/health${probe ? "?probe=1" : ""}`).then(j<HealthDto>),
   },
   samples: {
@@ -67,7 +70,7 @@ export const api = {
 /** 서버 lib/settings.ts 의 응답 모양 */
 export interface SettingDefDto { key: string; label: string; group: "backend" | "jira" | "behavior"; kind: "text" | "secret" | "select" | "bool"; help: string; options?: { value: string; label: string }[]; placeholder?: string; restart?: boolean; showWhen?: [string, string[]] }
 export interface SettingsDto { items: { key: string; value: string; masked: boolean; set: boolean; source: "file" | "os" | "default" }[]; envFile: string; exists: boolean; defs: SettingDefDto[] }
-export interface WorkspaceFileDto { path: string; exists: boolean; text: string; error: string | null; summary: { repos: number } | null; example: string }
+export interface WorkspaceFileDto { path: string; exists: boolean; text: string; profile: WorkspaceProfile | null; error: string | null; summary: { repos: number } | null; example: string }
 export interface HealthDto { ok: boolean; cloud: { backend: string; ready: boolean; model: string; cliPath?: string; hasApiKey?: boolean; health: { ok: boolean; detail?: string } | null }; defaultProvider: string; jira: { configured: boolean; baseUrl: string | null }; workspace: { exists: boolean; path: string; error: string | null; repos?: number; conventions?: number }; code: { branch: string | null; head: string | null; committedAt: string | null; dirtyFiles: number | null }; build: { id: string; builtAt: string; staleAgainstHead: boolean | null } | null; node: string }
 
 /** 서버 lib/workspace.ts workspaceStatus()의 응답 모양 */
@@ -76,6 +79,7 @@ export interface WorkspaceStatus {
   error: string | null;
   summary: { repos: number; conventions: number; glossary: number; team: string | null } | null;
   repoNames: string[];
+  repos: { name: string; aliases: string[]; verify: string[] }[];
   defaults: { runtime?: "claude_code" | "codex" | "chat"; length?: "short" | "standard" | "detailed"; promptLanguage?: "ko" | "en" };
 }
 

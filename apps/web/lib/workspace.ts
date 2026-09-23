@@ -32,6 +32,12 @@ export function loadWorkspace(): { profile: WorkspaceProfile | null; error: stri
 /** 클라이언트에 보여 줄 요약(비밀값 없음). */
 export function workspaceStatus() {
   const w = loadWorkspace();
-  return { exists: w.exists, error: w.error, summary: profileSummary(w.profile), repoNames: w.profile?.repos.map((r) => r.name) ?? [], defaults: w.profile?.defaults ?? {} };
+  return {
+    exists: w.exists, error: w.error, summary: profileSummary(w.profile),
+    repoNames: w.profile?.repos.map((r) => r.name) ?? [],
+    // 검토 화면의 "프로필에 추가"가 이미 있는 별칭·검증 명령을 알아야 중복 제안을 안 한다
+    repos: w.profile?.repos.map((r) => ({ name: r.name, aliases: r.aliases, verify: r.verify })) ?? [],
+    defaults: w.profile?.defaults ?? {},
+  };
 }
 export type WorkspaceStatus = ReturnType<typeof workspaceStatus>;

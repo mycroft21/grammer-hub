@@ -1,7 +1,7 @@
 import "server-only";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { EXAMPLE_PROFILE, parseWorkspaceProfile } from "@grammer-hub/core";
+import { EMPTY_PROFILE, EXAMPLE_PROFILE, applyProfileOps, formatProfile, parseWorkspaceProfile, type ProfileOp, type WorkspaceProfile } from "@grammer-hub/core";
 import { resetProviders } from "./providers";
 import { serverLog } from "./log";
 import { loadWorkspace, workspacePath } from "./workspace";
@@ -107,18 +107,48 @@ export function saveSettings(changes: Record<string, string>): { ok: true; resta
   return { ok: true, restart, changed };
 }
 
-/** 작업 공간 프로필 편집기 뒷단: 현재 파일 원문 + 상태, 예시 원문. */
-export function getWorkspaceFile(): { path: string; exists: boolean; text: string; error: string | null; summary: { repos: number } | null; example: string } {
+/** 작업 공간 프로필 편집기 뒷단: 현재 파일 원문 + 파싱된 프로필(폼 초기값) + 상태, 예시. */
+export interface WorkspaceFile { path: string; exists: boolean; text: string; profile: WorkspaceProfile | null; error: string | null; summary: { repos: number } | null; example: string }
+export function getWorkspaceFile(): WorkspaceFile {
   const w = loadWorkspace();
   let text = "";
   if (w.exists) { try { text = readFileSync(workspacePath(), "utf8"); } catch { /* 읽기 실패는 error에 있음 */ } }
-  return { path: w.path.startsWith(ROOT) ? w.path.slice(ROOT.length + 1) : w.path, exists: w.exists, text, error: w.error, summary: w.profile ? { repos: w.profile.repos.length } : null, example: JSON.stringify(EXAMPLE_PROFILE, null, 2) };
+  return { path: w.path.startsWith(ROOT) ? w.path.slice(ROOT.length + 1) : w.path, exists: w.exists, text, profile: w.profile, error: w.error, summary: w.profile ? { repos: w.profile.repos.length } : null, example: formatProfile(EXAMPLE_PROFILE) };
 }
+function writeWorkspace(text: string): string | null {
+  try { mkdirSync(dirname(workspacePath()), { recursive: true }); writeFileSync(workspacePath(), text.endsWith("\n") ? text : text + "\n"); return null; }
+  catch (e) { return `파일 쓰기 실패: ${(e as Error).message}`; }
+}
+/** JSON 탭·가져오기: 원문을 검증(스키마·중복 이름)해 그대로 쓴다(사용자의 들여쓰기·주석 필드 보존). */
 export function saveWorkspaceFile(text: string): { ok: true; repos: number } | { ok: false; message: string } {
   const r = parseWorkspaceProfile(text);
   if (!r.ok) return { ok: false, message: r.message };
-  try { mkdirSync(dirname(workspacePath()), { recursive: true }); writeFileSync(workspacePath(), text.endsWith("\n") ? text : text + "\n"); }
-  catch (e) { return { ok: false, message: `파일 쓰기 실패: ${(e as Error).message}` }; }
-  serverLog("settings", "프로필 저장", { repos: r.profile.repos.length });
+  const err = writeWorkspace(text);
+  if (err) return { ok: false, message: err };
+  serverLog("settings", "프로필 저장", { repos: r.profile.repos.length, via: "text" });
   return { ok: true, repos: r.profile.repos.length };
+}
+/** 폼 탭: 구조화된 값을 받아 표준 형태로 쓴다. 검증은 원문 경로와 같은 parseWorkspaceProfile을 거친다. */
+export function saveWorkspaceProfile(profile: unknown): { ok: true; repos: number } | { ok: false; message: string } {
+  const r = parseWorkspaceProfile(JSON.stringify(profile));
+  if (!r.ok) return { ok: false, message: r.message };
+  const err = writeWorkspace(formatProfile(r.profile));
+  if (err) return { ok: false, message: err };
+  serverLog("settings", "프로필 저장", { repos: r.profile.repos.length, via: "form" });
+  return { ok: true, repos: r.profile.repos.length };
+}
+/**
+ * 검토 화면의 "프로필에 추가": 파일이 없으면 빈 프로필에서 시작하고, 파일에 오류가 있으면 덮어쓰지 않고 거절한다(사용자가 손으로 고친 파일을 날리지 않기 위해).
+ */
+export function patchWorkspaceProfile(ops: ProfileOp[]): { ok: true; changes: string[]; repos: number } | { ok: false; message: string } {
+  const w = loadWorkspace();
+  if (w.exists && !w.profile) return { ok: false, message: `현재 프로필 파일에 오류가 있어 자동으로 추가할 수 없습니다 (${w.error ?? "알 수 없는 오류"}). 설정 화면에서 먼저 고쳐 주세요.` };
+  const r = applyProfileOps(w.profile ?? EMPTY_PROFILE, ops);
+  if (!r.ok) return r;
+  if (r.changes.length) {
+    const err = writeWorkspace(formatProfile(r.profile));
+    if (err) return { ok: false, message: err };
+    serverLog("settings", "프로필 자동 추가", { ops: ops.map((o) => o.op).join(","), changes: r.changes.length, repos: r.profile.repos.length });
+  }
+  return { ok: true, changes: r.changes, repos: r.profile.repos.length };
 }

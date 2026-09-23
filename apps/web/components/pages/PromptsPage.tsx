@@ -33,7 +33,7 @@ export function PromptsPage() {
         <div className="flex flex-col gap-4">
           {state.phase === "form" && <CreateForm busy={false} error={state.error} initial={state.request} onSubmit={(req) => void studio.start(req)} onTicket={(input) => void studio.startFromTicket(input)} />}
           {state.phase === "ticket_review" && state.ticket && (
-            <TicketReview ticket={state.ticket.ticket} plan={state.ticket.plan} workspace={state.ticket.workspace} busy={busy} onGenerate={(req) => void studio.generateFromTicket(req)} onBack={studio.backToForm} />
+            <TicketReview ticket={state.ticket.ticket} plan={state.ticket.plan} workspace={state.ticket.workspace} busy={busy} onGenerate={(req) => void studio.generateFromTicket(req)} onBack={studio.backToForm} onWorkspaceChanged={studio.setWorkspace} />
           )}
           {state.phase === "planning" && (
             <div className="flex flex-col gap-2 py-6">
