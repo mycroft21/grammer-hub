@@ -16,7 +16,7 @@ export async function POST(req: Request): Promise<Response> {
   const { text, profileId, level } = body.data;
 
   const db = getDb();
-  const user = getUser();
+  const user = await getUser();
   const profile = getProfile(db, user.id, profileId);
   if (!profile) return bad(`프로필을 찾을 수 없습니다: ${profileId}`, 404);
 

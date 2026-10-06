@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await ctx.params;
-  const user = getUser();
+  const user = await getUser();
   const body = await parseBody(req, SituationProfile.omit({ userId: true, id: true }));
   if (!body.ok) return body.res;
   return Response.json(upsertProfile(getDb(), { ...body.data, id, userId: user.id }));
@@ -15,6 +15,6 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await ctx.params;
-  const ok = deleteProfile(getDb(), getUser().id, id);
+  const ok = deleteProfile(getDb(), (await getUser()).id, id);
   return ok ? Response.json({ ok: true }) : Response.json({ error: { code: "not_found" } }, { status: 404 });
 }

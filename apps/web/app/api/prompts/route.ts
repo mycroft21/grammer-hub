@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request): Promise<Response> {
-  const db = getDb(); const user = getUser();
+  const db = getDb(); const user = await getUser();
   const includeArchived = new URL(req.url).searchParams.get("archived") === "1";
   return Response.json({ items: listPrompts(db, user.id, { includeArchived }), stats: promptStats(db, user.id) });
 }
@@ -19,7 +19,7 @@ export async function POST(req: Request): Promise<Response> {
   if (!body.ok) return body.res;
   const spec = PromptSpec.safeParse({ ...body.data.spec, language: body.data.language });
   if (!spec.success) return bad("spec이 스키마와 맞지 않습니다");
-  const db = getDb(); const user = getUser();
+  const db = getDb(); const user = await getUser();
   const r = createPrompt(db, {
     userId: user.id, purpose: body.data.purpose, subtype: body.data.subtype ?? null, language: body.data.language, goal: body.data.goal, ticketKey: body.data.ticketKey ?? null,
     spec: spec.data, rendered: renderClaude(spec.data, { purpose: body.data.purpose }), checks: runChecks(spec.data, { purpose: body.data.purpose }), source: "generate",

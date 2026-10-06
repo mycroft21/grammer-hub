@@ -5,16 +5,23 @@ import { App as AntApp, ConfigProvider } from "antd";
 import koKR from "antd/locale/ko_KR";
 import { antdTheme } from "@/lib/theme/tokens";
 import { DEFAULT_PREFS, loadPrefs, savePrefs, type Prefs } from "@/lib/theme/prefs";
+import { api, type MeDto } from "@/lib/api";
 
 type Mode = "light" | "dark";
 interface ThemeCtxValue { mode: Mode; toggle: () => void; prefs: Prefs; setPrefs: (patch: Partial<Prefs>) => void }
 const ThemeCtx = createContext<ThemeCtxValue>({ mode: "light", toggle: () => {}, prefs: DEFAULT_PREFS, setPrefs: () => {} });
 export const useThemeMode = () => useContext(ThemeCtx);
 
+/** 로그인 상태. 로그인 모드가 아니면 authEnabled=false·admin=true. 아직 모르면 null(메뉴는 기본값으로 그린다). */
+const AuthCtx = createContext<MeDto | null>(null);
+export const useAuth = () => useContext(AuthCtx);
+
 /** AntD 레지스트리(SSR 스타일) + ConfigProvider(팔레트·한국어·밀도) + App(message 컨텍스트) + 화면 취향(테마·크기·밀도·대비). */
 export function AppProviders({ children }: { children: React.ReactNode }) {
   const [prefs, setPrefsState] = useState<Prefs>(DEFAULT_PREFS);
   const [systemDark, setSystemDark] = useState(false);
+  const [me, setMe] = useState<MeDto | null>(null);
+  useEffect(() => { api.auth.me().then(setMe).catch(() => setMe(null)); }, []);
   useEffect(() => {
     setPrefsState(loadPrefs());
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -39,7 +46,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     <AntdRegistry>
       <ConfigProvider locale={koKR} theme={theme}>
         <AntApp>
-          <ThemeCtx.Provider value={value}>{children}</ThemeCtx.Provider>
+          <ThemeCtx.Provider value={value}><AuthCtx.Provider value={me}>{children}</AuthCtx.Provider></ThemeCtx.Provider>
         </AntApp>
       </ConfigProvider>
     </AntdRegistry>

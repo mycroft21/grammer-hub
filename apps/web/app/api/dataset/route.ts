@@ -32,12 +32,12 @@ function toRecords(ctx: RunContext) {
 
 export async function GET(): Promise<Response> {
   const db = getDb();
-  const user = getUser();
+  const user = await getUser();
   const lines: string[] = [];
   for (const s of listSamples(db, user.id)) {
     lines.push(JSON.stringify({ type: "sample", id: s.id, at: new Date(s.createdAt).toISOString(), channel: s.channel, audience: s.audience, note: s.note, text: s.text }));
   }
-  for (const id of listOkRunIds(db)) {
+  for (const id of listOkRunIds(db, 5000, user.id)) {
     const ctx = getRunContext(db, id);
     if (!ctx) continue;
     const rec = toRecords(ctx);

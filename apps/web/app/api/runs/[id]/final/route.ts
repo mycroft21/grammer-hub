@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { applyEdits, type Suggestion } from "@grammer-hub/core";
 import { getRunContext, newId, recordFinal, upsertEditFeedback } from "@grammer-hub/db";
-import { getDb } from "@/lib/db";
-import { parseBody } from "@/lib/json";
+import { getDb, getUser } from "@/lib/db";
+import { bad, parseBody } from "@/lib/json";
 
 export const runtime = "nodejs";
 
@@ -15,11 +15,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const body = await parseBody(req, z.object({ finalText: z.string().max(20000) }));
   if (!body.ok) return body.res;
   const db = getDb();
+  const user = await getUser();
+  const run = getRunContext(db, id);
+  if (!run || run.userId !== user.id) return bad("실행을 찾을 수 없습니다", 404);   // 남의 실행에는 기록하지 않는다
   const finalText = body.data.finalText;
   recordFinal(db, id, finalText);
 
   let edited = false;
-  const run = getRunContext(db, id);
   const base = run?.textMasked ?? run?.textNfc ?? null;
   if (run && base) {
     const acceptedIds = new Set(run.feedback.filter((f) => f.action === "accept" && f.suggestionId).map((f) => f.suggestionId));

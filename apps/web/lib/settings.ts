@@ -15,8 +15,9 @@ const ROOT = resolve(process.cwd(), "..", "..");
 export const envFilePath = (): string => (process.env["GH_ENV_FILE"] ? resolve(ROOT, process.env["GH_ENV_FILE"]) : resolve(ROOT, ".env"));
 
 export type SettingKind = "text" | "secret" | "select" | "bool";
+export type SettingGroup = "backend" | "jira" | "team" | "behavior";
 export interface SettingDef {
-  key: string; label: string; group: "backend" | "jira" | "behavior";
+  key: string; label: string; group: SettingGroup;
   kind: SettingKind; help: string; options?: { value: string; label: string }[]; placeholder?: string;
   /** 첫 사용 때 고정되는 값이라 바꾸면 서버 재시작이 필요 */
   restart?: boolean;
@@ -34,6 +35,15 @@ export const SETTINGS: SettingDef[] = [
   { key: "JIRA_BASE_URL", label: "Jira 주소", group: "jira", kind: "text", help: "예: https://xxx.atlassian.net", placeholder: "https://xxx.atlassian.net" },
   { key: "JIRA_EMAIL", label: "Atlassian 이메일", group: "jira", kind: "text", help: "API 토큰을 발급한 계정.", placeholder: "you@company.com" },
   { key: "JIRA_API_TOKEN", label: "Jira API 토큰", group: "jira", kind: "secret", help: "id.atlassian.com → 보안 → API 토큰. 읽기 전용으로만 쓴다." },
+  // 팀 서버 로그인(OIDC). 셋이 다 있어야 켜진다. 켜지면 설정 화면은 관리자만 — 자기 이메일을 관리자에 먼저 넣고 저장할 것.
+  { key: "OIDC_ISSUER", label: "IdP 발급자(issuer) 주소", group: "team", kind: "text", help: "discovery 문서가 있는 주소. 구글: https://accounts.google.com · Okta: https://xxx.okta.com · Azure: https://login.microsoftonline.com/<tenant>/v2.0", placeholder: "https://accounts.google.com" },
+  { key: "OIDC_CLIENT_ID", label: "클라이언트 ID", group: "team", kind: "text", help: "IdP에 등록한 웹 앱의 ID. 콜백 URL은 <APP_URL>/api/auth/callback 으로 등록." },
+  { key: "OIDC_CLIENT_SECRET", label: "클라이언트 시크릿", group: "team", kind: "secret", help: "IdP가 발급한 시크릿. 저장하면 끝 4자만 보인다." },
+  { key: "AUTH_SECRET", label: "세션 서명 키", group: "team", kind: "secret", help: "세션 쿠키 서명용 임의 문자열(32자 이상 권장, `openssl rand -base64 32`). 바꾸면 모두 다시 로그인." },
+  { key: "APP_URL", label: "외부 접속 주소", group: "team", kind: "text", help: "콜백 URL의 기준. 리버스 프록시 뒤에 있으면 반드시 적는다. 비우면 요청의 origin.", placeholder: "https://grammar.example.internal" },
+  { key: "AUTH_ALLOWED_DOMAINS", label: "허용 도메인", group: "team", kind: "text", help: "이 도메인 이메일은 모두 로그인 가능. 쉼표로 여러 개.", placeholder: "example.com" },
+  { key: "AUTH_ALLOWED_EMAILS", label: "허용 이메일", group: "team", kind: "text", help: "도메인 밖에서 예외로 들일 사람. 쉼표로.", placeholder: "guest@partner.com" },
+  { key: "AUTH_ADMIN_EMAILS", label: "관리자 이메일", group: "team", kind: "text", help: "설정 화면·프로필 전체 편집이 가능한 사람. 비어 있으면 로그인 모드에서는 아무도 설정을 못 바꾼다(.env 직접 편집).", placeholder: "me@example.com" },
   { key: "STORE_DRAFTS", label: "교정 원문 저장", group: "behavior", kind: "bool", help: "끄면 교정 기록에 원문을 남기지 않는다(카드·통계만)." },
   { key: "PII_BLOCK", label: "차단할 개인정보 종류", group: "behavior", kind: "text", help: "감지되면 전송을 막을 종류. 쉼표로: EMAIL,PHONE,CARD,ACCT,RRN. 비우면 마스킹만.", placeholder: "CARD,RRN" },
   { key: "LOG_FILE", label: "로그 파일", group: "behavior", kind: "text", help: "비우면 터미널에만. 경로를 주면 진행 로그를 파일에도 덧붙인다.", placeholder: "/tmp/grammer-hub.log" },
@@ -80,6 +90,12 @@ const VALIDATORS: Record<string, (v: string) => string | null> = {
   LOCAL_LLM_URL: (v) => (!v || /^https?:\/\/[^\s/]+/.test(v) ? null : "http(s)://로 시작하는 주소"),
   PII_BLOCK: (v) => (v.split(",").map((x) => x.trim()).filter(Boolean).every((x) => ["EMAIL", "PHONE", "CARD", "ACCT", "RRN", "DICT"].includes(x)) ? null : "EMAIL,PHONE,CARD,ACCT,RRN,DICT 중에서"),
   ANTHROPIC_API_KEY: (v) => (!v || /^[A-Za-z0-9_-]{20,}$/.test(v) ? null : "키 형식이 아닙니다"),
+  OIDC_ISSUER: (v) => (!v || /^https?:\/\/[^\s/]+/.test(v) ? null : "https://로 시작하는 주소"),
+  APP_URL: (v) => (!v || /^https?:\/\/[^\s/]+/.test(v) ? null : "https://로 시작하는 주소"),
+  AUTH_ALLOWED_DOMAINS: (v) => (v.split(",").map((x) => x.trim()).filter(Boolean).every((x) => /^@?[a-z0-9.-]+\.[a-z]{2,}$/i.test(x)) ? null : "도메인만(example.com), 쉼표로 구분"),
+  AUTH_ALLOWED_EMAILS: (v) => (v.split(",").map((x) => x.trim()).filter(Boolean).every((x) => x.includes("@")) ? null : "이메일 주소를 쉼표로"),
+  AUTH_ADMIN_EMAILS: (v) => (v.split(",").map((x) => x.trim()).filter(Boolean).every((x) => x.includes("@")) ? null : "이메일 주소를 쉼표로"),
+  AUTH_SECRET: (v) => (!v || v.length >= 16 ? null : "16자 이상"),
 };
 
 /**

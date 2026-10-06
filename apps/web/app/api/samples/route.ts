@@ -14,11 +14,11 @@ const Body = z.object({
 });
 
 export async function GET(): Promise<Response> {
-  return Response.json(listSamples(getDb(), getUser().id));
+  return Response.json(listSamples(getDb(), (await getUser()).id));
 }
 
 export async function POST(req: Request): Promise<Response> {
   const body = await parseBody(req, Body);
   if (!body.ok) return body.res;
-  return Response.json(addSample(getDb(), { userId: getUser().id, ...body.data }));
+  return Response.json(addSample(getDb(), { userId: (await getUser()).id, ...body.data }));
 }

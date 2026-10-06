@@ -11,6 +11,7 @@ import { SCALES, type Density, type Scale, type ThemePref } from "@/lib/theme/pr
 const GROUP: Record<SettingDefDto["group"], { title: string; desc: string }> = {
   backend: { title: "모델 연결", desc: "교정·프롬프트 생성을 어느 모델로, 무엇으로 인증해 돌릴지." },
   jira: { title: "Jira", desc: "티켓 → 프롬프트에 쓰는 읽기 전용 연결. 셋 다 있어야 켜진다. 없어도 DEMO-1·DEMO-2로 흐름은 볼 수 있다." },
+  team: { title: "팀 서버 로그인 (OIDC)", desc: "발급자·클라이언트 ID·시크릿이 다 있으면 로그인이 켜지고, 그때부터 이 화면은 관리자만 연다. 자기 이메일을 관리자에 먼저 넣고 저장할 것." },
   behavior: { title: "동작·저장", desc: "기록·로그·파일 위치." },
 };
 
@@ -59,7 +60,7 @@ export function SettingsPage() {
 
   if (!data) return <div><PageHeader title="설정" description="모델 연결·Jira·저장 위치를 화면에서 바꿉니다. 루트 .env 파일을 대신 편집합니다." /><AppearanceCard /><Skeleton active /></div>;
 
-  const groups = (["backend", "jira", "behavior"] as const);
+  const groups = (["backend", "jira", "team", "behavior"] as const);
   const small = { fontSize: 12 } as const;
   return (
     <div className="flex flex-col gap-4" data-testid="settings-page">
@@ -68,7 +69,7 @@ export function SettingsPage() {
 
       {health && (
         <Alert type={health.cloud.ready ? "success" : "warning"} showIcon
-          message={<span data-testid="settings-health">클라우드 자리: <b>{health.cloud.backend}</b> · 모델 {health.cloud.model} · {health.cloud.ready ? "준비됨" : "준비 안 됨 — API 키를 넣거나 클라우드 방식을 바꾸세요"} · Jira {health.jira.configured ? "켜짐" : "꺼짐"} · 프로필 {health.workspace.exists ? `${health.workspace.repos ?? 0}개 저장소` : "없음"}{health.cloud.health ? <> · 실제 호출 {health.cloud.health.ok ? <CheckCircleOutlined style={{ color: "var(--color-primary)" }} /> : <CloseCircleOutlined style={{ color: "var(--color-danger)" }} />} {health.cloud.health.detail ?? ""}</> : null}</span>}
+          message={<span data-testid="settings-health">클라우드 자리: <b>{health.cloud.backend}</b> · 모델 {health.cloud.model} · {health.cloud.ready ? "준비됨" : "준비 안 됨 — API 키를 넣거나 클라우드 방식을 바꾸세요"} · Jira {health.jira.configured ? "켜짐" : "꺼짐"} · 로그인 {health.auth?.enabled ? `켜짐 (관리자 ${health.auth.admins}명${health.auth.sessionSecretSet ? "" : " · AUTH_SECRET 없음"})` : "꺼짐(단일 사용자)"} · 프로필 {health.workspace.exists ? `${health.workspace.repos ?? 0}개 저장소` : "없음"}{health.cloud.health ? <> · 실제 호출 {health.cloud.health.ok ? <CheckCircleOutlined style={{ color: "var(--color-primary)" }} /> : <CloseCircleOutlined style={{ color: "var(--color-danger)" }} />} {health.cloud.health.detail ?? ""}</> : null}</span>}
           action={<Button size="small" loading={probing} onClick={() => void probe()}>연결 확인</Button>} />
       )}
       {restart.length > 0 && <Alert type="info" showIcon message={`재시작 필요: ${restart.join(", ")} — 터미널에서 서버를 다시 띄우면(pnpm start) 반영됩니다.`} closable onClose={() => setRestart([])} />}

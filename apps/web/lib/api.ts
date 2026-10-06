@@ -50,6 +50,10 @@ export const api = {
     event: (body: { promptId: string; versionId?: string | null; action: "copy" | "fill" | "view"; slot?: string | null; payload?: Record<string, unknown> | null }) =>
       fetch("/api/prompts/events", json("POST", body)).then(j<{ ok: true }>).catch(() => ({ ok: true as const })),
   },
+  auth: {
+    me: () => fetch("/api/auth/me").then(j<MeDto>),
+    logout: () => fetch("/api/auth/logout", { method: "POST" }).then(j<{ ok: true }>),
+  },
   settings: {
     get: () => fetch("/api/settings").then(j<SettingsDto>),
     save: (values: Record<string, string>) => fetch("/api/settings", json("PUT", { values })).then(j<SettingsDto & { ok: true; restart: string[]; changed: string[] }>),
@@ -68,10 +72,11 @@ export const api = {
 };
 
 /** 서버 lib/settings.ts 의 응답 모양 */
-export interface SettingDefDto { key: string; label: string; group: "backend" | "jira" | "behavior"; kind: "text" | "secret" | "select" | "bool"; help: string; options?: { value: string; label: string }[]; placeholder?: string; restart?: boolean; showWhen?: [string, string[]] }
+export interface MeDto { authEnabled: boolean; email: string; name: string | null; admin: boolean }
+export interface SettingDefDto { key: string; label: string; group: "backend" | "jira" | "team" | "behavior"; kind: "text" | "secret" | "select" | "bool"; help: string; options?: { value: string; label: string }[]; placeholder?: string; restart?: boolean; showWhen?: [string, string[]] }
 export interface SettingsDto { items: { key: string; value: string; masked: boolean; set: boolean; source: "file" | "os" | "default" }[]; envFile: string; exists: boolean; defs: SettingDefDto[] }
 export interface WorkspaceFileDto { path: string; exists: boolean; text: string; profile: WorkspaceProfile | null; error: string | null; summary: { repos: number } | null; example: string }
-export interface HealthDto { ok: boolean; cloud: { backend: string; ready: boolean; model: string; cliPath?: string; hasApiKey?: boolean; health: { ok: boolean; detail?: string } | null }; defaultProvider: string; jira: { configured: boolean; baseUrl: string | null }; workspace: { exists: boolean; path: string; error: string | null; repos?: number; conventions?: number }; code: { branch: string | null; head: string | null; committedAt: string | null; dirtyFiles: number | null }; build: { id: string; builtAt: string; staleAgainstHead: boolean | null } | null; node: string }
+export interface HealthDto { ok: boolean; cloud: { backend: string; ready: boolean; model: string; cliPath?: string; hasApiKey?: boolean; health: { ok: boolean; detail?: string } | null }; defaultProvider: string; jira: { configured: boolean; baseUrl: string | null }; auth?: { enabled: boolean; issuer: string | null; appUrl: string | null; allowedDomains: number; allowedEmails: number; admins: number; sessionSecretSet: boolean }; workspace: { exists: boolean; path: string; error: string | null; repos?: number; conventions?: number }; code: { branch: string | null; head: string | null; committedAt: string | null; dirtyFiles: number | null }; build: { id: string; builtAt: string; staleAgainstHead: boolean | null } | null; node: string }
 
 /** 서버 lib/workspace.ts workspaceStatus()의 응답 모양 */
 export interface WorkspaceStatus {

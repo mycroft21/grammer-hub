@@ -20,7 +20,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const body = await parseBody(req, Body);
   if (!body.ok) return body.res;
-  const db = getDb(); const user = getUser();
+  const db = getDb(); const user = await getUser();
   const prompt = getPrompt(db, user.id, id);
   if (!prompt) return bad("프롬프트를 찾을 수 없습니다", 404);
   const spec = body.data.spec;

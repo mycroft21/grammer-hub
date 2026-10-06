@@ -1,6 +1,6 @@
-import { desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import type { Db } from "../client";
-import { correctionRuns, feedbackEvents, runFinals, suggestions, writingSamples } from "../schema";
+import { correctionRuns, drafts, feedbackEvents, runFinals, suggestions, writingSamples } from "../schema";
 
 export interface WeeklyPoint { weekStart: number; runs: number; accepted: number; rejected: number; costUsd: number; edits: number }
 export interface CategoryPoint { category: string; accepted: number; rejected: number }
@@ -15,15 +15,19 @@ function weekStartOf(ts: number): number {
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day);
 }
 
-export function getStats(db: Db, weeks = 8, recentN = 30): Stats {
+/** 기록 그래프 재료. userId를 주면 그 사람의 실행·피드백·샘플만 센다(팀 서버). 모든 집계는 실행 → 초안 → userId로 잇는다. */
+export function getStats(db: Db, weeks = 8, recentN = 30, userId?: string): Stats {
   const since = weekStartOf(Date.now()) - (weeks - 1) * WEEK;
+  const mine = userId ? eq(drafts.userId, userId) : undefined;
 
   const runs = db.select({ id: correctionRuns.id, createdAt: correctionRuns.createdAt, costUsd: correctionRuns.costUsd, status: correctionRuns.status })
-    .from(correctionRuns).where(gte(correctionRuns.createdAt, since)).all();
+    .from(correctionRuns).innerJoin(drafts, eq(drafts.id, correctionRuns.draftId)).where(and(gte(correctionRuns.createdAt, since), mine)).all();
   const fb = db.select({ runId: feedbackEvents.runId, action: feedbackEvents.action, createdAt: feedbackEvents.createdAt })
-    .from(feedbackEvents).where(gte(feedbackEvents.createdAt, since)).all();
+    .from(feedbackEvents).innerJoin(correctionRuns, eq(correctionRuns.id, feedbackEvents.runId)).innerJoin(drafts, eq(drafts.id, correctionRuns.draftId))
+    .where(and(gte(feedbackEvents.createdAt, since), mine)).all();
   const editCounts = db.select({ runId: suggestions.runId, n: sql<number>`count(*)` }).from(suggestions)
-    .where(sql`${suggestions.kind} = 'edit' and ${suggestions.dropped} = 0`).groupBy(suggestions.runId).all();
+    .innerJoin(correctionRuns, eq(correctionRuns.id, suggestions.runId)).innerJoin(drafts, eq(drafts.id, correctionRuns.draftId))
+    .where(and(sql`${suggestions.kind} = 'edit' and ${suggestions.dropped} = 0`, mine)).groupBy(suggestions.runId).all();
   const editByRun = new Map(editCounts.map((r) => [r.runId, r.n]));
 
   const buckets = new Map<number, WeeklyPoint>();
@@ -42,17 +46,20 @@ export function getStats(db: Db, weeks = 8, recentN = 30): Stats {
     accepted: sql<number>`sum(case when ${feedbackEvents.action} = 'accept' then 1 else 0 end)`,
     rejected: sql<number>`sum(case when ${feedbackEvents.action} = 'reject' then 1 else 0 end)`,
   }).from(feedbackEvents).innerJoin(suggestions, eq(suggestions.id, feedbackEvents.suggestionId))
-    .where(sql`${suggestions.category} is not null`).groupBy(suggestions.category).all()
+    .innerJoin(correctionRuns, eq(correctionRuns.id, suggestions.runId)).innerJoin(drafts, eq(drafts.id, correctionRuns.draftId))
+    .where(and(sql`${suggestions.category} is not null`, mine)).groupBy(suggestions.category).all()
     .map((r) => ({ category: r.category ?? "", accepted: r.accepted, rejected: r.rejected }))
     .sort((a, b) => (b.accepted + b.rejected) - (a.accepted + a.rejected));
 
   const recent = db.select({ id: correctionRuns.id, createdAt: correctionRuns.createdAt, latencyMs: correctionRuns.latencyMs, costUsd: correctionRuns.costUsd, level: correctionRuns.level, cachedTokens: correctionRuns.cachedTokens, inputTokens: correctionRuns.inputTokens })
-    .from(correctionRuns).where(eq(correctionRuns.status, "ok")).orderBy(desc(correctionRuns.createdAt)).limit(recentN).all().reverse();
+    .from(correctionRuns).innerJoin(drafts, eq(drafts.id, correctionRuns.draftId)).where(and(eq(correctionRuns.status, "ok"), mine)).orderBy(desc(correctionRuns.createdAt)).limit(recentN).all().reverse();
 
-  const s = db.select({ n: sql<number>`count(*)`, chars: sql<number>`coalesce(sum(${writingSamples.chars}), 0)` }).from(writingSamples).get();
-  const fbAll = db.select({ action: feedbackEvents.action, n: sql<number>`count(*)` }).from(feedbackEvents).groupBy(feedbackEvents.action).all();
-  const finals = db.select({ n: sql<number>`count(*)` }).from(runFinals).get();
-  const runsOk = db.select({ n: sql<number>`count(*)` }).from(correctionRuns).where(eq(correctionRuns.status, "ok")).get();
+  const s = db.select({ n: sql<number>`count(*)`, chars: sql<number>`coalesce(sum(${writingSamples.chars}), 0)` }).from(writingSamples).where(userId ? eq(writingSamples.userId, userId) : undefined).get();
+  const fbAll = db.select({ action: feedbackEvents.action, n: sql<number>`count(*)` }).from(feedbackEvents)
+    .innerJoin(correctionRuns, eq(correctionRuns.id, feedbackEvents.runId)).innerJoin(drafts, eq(drafts.id, correctionRuns.draftId)).where(mine).groupBy(feedbackEvents.action).all();
+  const finals = db.select({ n: sql<number>`count(*)` }).from(runFinals)
+    .innerJoin(correctionRuns, eq(correctionRuns.id, runFinals.runId)).innerJoin(drafts, eq(drafts.id, correctionRuns.draftId)).where(mine).get();
+  const runsOk = db.select({ n: sql<number>`count(*)` }).from(correctionRuns).innerJoin(drafts, eq(drafts.id, correctionRuns.draftId)).where(and(eq(correctionRuns.status, "ok"), mine)).get();
   const feedback: Record<string, number> = {};
   for (const f of fbAll) feedback[f.action] = f.n;
   const collection: Collection = {

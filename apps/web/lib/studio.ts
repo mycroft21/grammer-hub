@@ -10,7 +10,7 @@ import { getProvider } from "./providers";
 
 /** 요청 → StudioContext. 어투 규칙은 사용자가 켰을 때만(기본 중립). 티켓 키가 있으면 가져와 <ticket>으로 넣는다. */
 export async function toStudioContext(req: StudioRequest): Promise<{ ok: true; ctx: StudioContext } | { ok: false; res: Response }> {
-  const ctx = baseContext(req);
+  const ctx = await baseContext(req);
   ctx.profile = loadWorkspace().profile;
   if (req.ticket) {
     const t = await fetchTicket(req.ticket);
@@ -21,13 +21,13 @@ export async function toStudioContext(req: StudioRequest): Promise<{ ok: true; c
   return { ok: true, ctx };
 }
 
-function baseContext(req: StudioRequest): StudioContext {
+async function baseContext(req: StudioRequest): Promise<StudioContext> {
   const ctx: StudioContext = { purpose: req.purpose, subtype: req.subtype ?? null, goal: req.goal.normalize("NFC"), length: req.length, language: req.promptLanguage, runtime: req.runtime ?? defaultRuntime(req.purpose) };
   if (req.answers) ctx.answers = req.answers;
   if (req.hints) ctx.hints = req.hints;
   if (req.assumptions) ctx.assumptions = req.assumptions;
   if (req.includeStyleRules) {
-    const rules = listRules(getDb(), getUser().id);
+    const rules = listRules(getDb(), (await getUser()).id);
     if (rules.some((r) => r.status !== "demoted")) ctx.styleRules = renderRulesSnapshot(rules, null);
   }
   return ctx;

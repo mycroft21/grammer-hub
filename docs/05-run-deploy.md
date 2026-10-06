@@ -1,7 +1,7 @@
 # 구동 · 배포 가이드 (v0.1, 2026-09-16)
 
 > 대상: macOS(M5 32GB) 개인 사용. 슬랙 보고용.
-> 결론부터: **내 Mac에서 로컬 실행이 정답**입니다. 인증이 없고 업무 메시지가 들어가므로 외부에 그대로 올리면 안 됩니다.
+> 결론부터: 혼자 쓰면 **내 Mac에서 로컬 실행**, 팀이 같이 쓰면 **사내 서버 + 회사 계정 로그인(§D)**. 로그인 없이 외부에 노출하면 안 됩니다(업무 메시지와 API 키가 그대로 쓰입니다).
 
 ---
 
@@ -12,8 +12,8 @@
 | **A. 내 Mac 로컬 실행** | 기본. 지금 바로 | 낮음 | 데이터가 Mac 밖으로 안 나감(클라우드 provider 쓸 때는 마스킹된 본문만 Anthropic으로) |
 | **B. A + 로그인 시 자동 시작** | 매일 쓰기 시작하면 | 낮음 | launchd 등록, 브라우저 즐겨찾기로 바로 접속 |
 | **C. A + 로컬 LLM** | 데이터를 아예 밖으로 안 보내고 싶을 때 | 중간 | llama-server + Gemma 4, 15GB 다운로드 |
-| **D. 집 안 다른 기기에서도 접속** | 아이패드·다른 노트북에서 쓸 때 | 중간 | **인증 추가 후에만.** 현재는 비권장 |
-| **E. 인터넷 배포(Vercel 등)** | 남에게 보여줄 때 | 높음 | 인증·Postgres 전환 필요. Phase 2 이후 |
+| **D. 팀 서버 (사내 한 대 + OIDC 로그인)** | 팀이 같이 쓸 때 | 중간 | 회사 계정(구글·Okta·Azure)으로 로그인. 사람별로 기록·프로필이 나뉘고 데이터가 한 DB에 모인다. §D |
+| **E. 인터넷 배포(Vercel 등)** | 외부에 공개할 때 | 높음 | 서버리스는 SQLite가 안 돼 Postgres 전환 필요. 보류 |
 
 ---
 
@@ -45,7 +45,7 @@ cp .env.example .env
 
 ### A-3. `.env` 채우기 — 또는 화면의 **설정** 메뉴에서
 
-터미널이 낯선 사람에게 줄 때는 `.env`를 손으로 만들지 않아도 됩니다. 서버를 띄우고(A-4) 왼쪽 메뉴 **설정**에 들어가면 아래 항목을 폼으로 바꿀 수 있고, 저장하면 루트 `.env`에 쓰이며 대부분 즉시 반영됩니다(DB 파일·사용자 이메일만 재시작 필요). API 키·토큰은 저장 후 끝 4자만 보입니다. 같은 화면 아래에 **작업 공간 프로필**(A-3″) 편집기가 있어 팀에서 받은 파일을 가져오거나, 폼으로 채우거나, 예시를 불러와 고쳐 저장하면 됩니다. "연결 확인" 버튼은 `pnpm health --probe`와 같은 일을 합니다. 이 앱은 인증 없이 로컬에서 쓰는 단일 사용자용이라, 다른 사람에게 줄 때는 각자 자기 컴퓨터에서 설정하게 하세요.
+터미널이 낯선 사람에게 줄 때는 `.env`를 손으로 만들지 않아도 됩니다. 서버를 띄우고(A-4) 왼쪽 메뉴 **설정**에 들어가면 아래 항목을 폼으로 바꿀 수 있고, 저장하면 루트 `.env`에 쓰이며 대부분 즉시 반영됩니다(DB 파일·사용자 이메일만 재시작 필요). API 키·토큰은 저장 후 끝 4자만 보입니다. 같은 화면 아래에 **작업 공간 프로필**(A-3″) 편집기가 있어 팀에서 받은 파일을 가져오거나, 폼으로 채우거나, 예시를 불러와 고쳐 저장하면 됩니다. "연결 확인" 버튼은 `pnpm health --probe`와 같은 일을 합니다. 로그인 없이 쓰는 로컬 모드에서는 단일 사용자이므로, 각자 자기 컴퓨터에서 설정하게 하거나 §D의 팀 서버로 띄우세요.
 
 같은 화면 맨 위 **화면** 카드에는 테마(시스템/라이트/다크), 글자 크기(90~140%), 간격(촘촘/여유), 글자 대비 높이기가 있습니다. 이건 서버 설정이 아니라 브라우저별 취향이라 `.env`가 아닌 브라우저 저장소에 남고, 바꾸는 즉시 반영됩니다.
 
@@ -279,31 +279,79 @@ CLAUDE_CLI_MODEL=claude-sonnet-5
 
 ---
 
-## D. 집 안 다른 기기에서 쓰기 — 지금은 하지 마세요
+## D. 팀 서버 — 사내에 한 대 띄우고 회사 계정으로 로그인
 
-현재 인증이 없습니다. `pnpm start`는 기본적으로 모든 인터페이스에 바인딩되므로, 같은 와이파이에 있는 사람이 `http://내맥주소:3000`으로 들어오면 **내 업무 메시지와 API 키로 하는 호출을 그대로 쓸 수 있습니다.**
+`.env`에 OIDC 세 값(발급자·클라이언트 ID·시크릿)이 모두 있으면 **로그인 모드**가 켜집니다. 비어 있으면 지금까지처럼 로그인 없는 단일 사용자 모드입니다(코드 경로가 같아서 로컬 사용은 아무것도 바뀌지 않습니다).
 
-당장 필요하면 최소한 이것만:
+로그인 모드에서 달라지는 것:
+
+- 세션 쿠키가 없으면 화면은 `/login`으로, API는 401. 로그인은 IdP(회사 계정)로 넘겼다가 돌아옵니다. 비밀번호는 이 서버를 거치지 않습니다.
+- **사람별 분리**: 교정 기록·통계·데이터셋·프로필·사전·어투 규칙·보관함이 로그인한 사람 것만 보입니다(초안의 `userId` 기준). 남의 실행에는 피드백·최종본을 남길 수 없습니다.
+- **관리자만** 설정 화면(`.env` 편집)과 작업 공간 프로필 전체 편집을 엽니다. 티켓 검토 화면의 "프로필에 추가"(별칭·검증 명령·저장소 추가)는 팀원 누구나 할 수 있습니다 — 추가만 되고 검증을 거칩니다.
+- 작업 공간 프로필(`studio.workspace.json`)과 Jira 연결·모델 키는 **팀 공용**입니다. 비용은 실행마다 기록되므로 사람별 집계가 됩니다.
+- `/api/health`는 로그인 없이도 열립니다(`pnpm health`용. 비밀값은 원래 내지 않습니다).
+
+### D-1. IdP에 앱 등록
+
+콜백 URL은 항상 `<외부 접속 주소>/api/auth/callback` 입니다.
+
+| IdP | 어디서 | `OIDC_ISSUER` |
+|---|---|---|
+| Google Workspace | Google Cloud 콘솔 › API 및 서비스 › 사용자 인증 정보 › OAuth 클라이언트 ID(웹 애플리케이션). 승인된 리디렉션 URI에 콜백 URL | `https://accounts.google.com` |
+| Okta | Applications › Create App Integration › OIDC · Web Application. Sign-in redirect URI에 콜백 URL | `https://<org>.okta.com` (커스텀 인증 서버면 `/oauth2/<id>`까지) |
+| Azure AD(Entra) | 앱 등록 › 웹 플랫폼 리디렉션 URI에 콜백 URL › 인증서 및 암호에서 클라이언트 시크릿. 토큰 구성에서 `email` 선택적 클레임 | `https://login.microsoftonline.com/<tenant-id>/v2.0` |
+| Keycloak 등 | OIDC 클라이언트(confidential) 생성, Valid redirect URIs에 콜백 URL | `https://<host>/realms/<realm>` |
+
+스코프는 `openid email profile`을 씁니다. 이메일 클레임이 없으면(`email` 또는 `preferred_username`) 로그인이 "no_email"로 실패합니다.
+
+### D-2. `.env`
 
 ```bash
-# 루프백에만 바인딩 (외부에서 접속 불가)
-pnpm --filter @grammer-hub/web start -H 127.0.0.1
+APP_URL=https://grammar.internal.example.com   # 리버스 프록시 뒤면 필수(콜백·쿠키의 기준). 직접 노출이면 비워도 됨
+OIDC_ISSUER=https://accounts.google.com
+OIDC_CLIENT_ID=…
+OIDC_CLIENT_SECRET=…
+AUTH_SECRET=$(openssl rand -base64 32)         # 세션 쿠키 서명 키. 바꾸면 전원 재로그인
+AUTH_ALLOWED_DOMAINS=example.com               # 이 도메인은 모두 허용
+AUTH_ALLOWED_EMAILS=                           # 도메인 밖 예외(쉼표)
+AUTH_ADMIN_EMAILS=me@example.com               # 설정 화면을 열 사람. 비우면 아무도 못 연다
+ANTHROPIC_API_KEY=…                            # 팀 공용. claude-cli·로컬 LLM은 서버에서 쓰지 않는다
+CLOUD_BACKEND=api
+STORE_DRAFTS=true                              # 팀 데이터 수집이 목적이면 켬. 끄면 카드·통계만 남는다
 ```
 
-다른 기기에서 정말 써야 하면 Tailscale 같은 사설망을 쓰거나, Phase 2에서 Auth.js 이메일 로그인을 붙인 뒤에 하세요.
+허용 목록이 둘 다 비어 있으면 **아무도 못 들어옵니다**(닫힌 기본값). 관리자 이메일은 자동으로 허용됩니다. 설정 화면의 **팀 서버 로그인** 카드에서도 같은 값을 바꿀 수 있는데, 켜는 순간 그 화면은 관리자만 열리므로 **자기 이메일을 관리자에 먼저 넣고** 저장하세요.
+
+### D-3. 띄우기
+
+```bash
+pnpm install && pnpm build
+pnpm --filter @grammer-hub/web start -p 3000 -H 127.0.0.1     # 앞단 프록시가 있을 때
+```
+
+- **HTTPS**: 리버스 프록시(nginx·Caddy)에서 종료하고 `X-Forwarded-Proto`·`X-Forwarded-Host`를 넘기세요. 앱은 그 헤더로 콜백 주소와 `Secure` 쿠키를 정하며, `APP_URL`이 있으면 그것이 우선입니다. Caddy 한 줄: `grammar.internal.example.com { reverse_proxy 127.0.0.1:3000 }`.
+- **프로세스**: systemd나 pm2로 `pnpm --filter @grammer-hub/web start`를 돌립니다. 작업 디렉터리는 저장소 루트의 `apps/web`이어야 `.env`와 `studio.workspace.json`을 찾습니다.
+- **DB**: SQLite 파일 하나(`apps/web/data/grammer.db`). 소규모 팀이면 충분합니다. 백업은 운영 메모 참고.
+- 상태는 `curl -s localhost:3000/api/health | jq .auth`로 봅니다. `enabled`·`admins`·`sessionSecretSet`이 기대와 같아야 합니다.
+
+### D-4. 로그인이 안 될 때
+
+| `/login?error=` | 뜻 | 확인할 것 |
+|---|---|---|
+| `not_allowed` | 로그인은 됐지만 허용 목록에 없음 | `AUTH_ALLOWED_DOMAINS` / `AUTH_ALLOWED_EMAILS` |
+| `state` | 임시 쿠키가 없거나 만료(10분) | 콜백 주소의 호스트가 로그인 시작 호스트와 같은지(`APP_URL`), 쿠키가 `Secure`인데 http로 접속하지 않았는지 |
+| `exchange` | 토큰 교환 실패 | 클라이언트 ID·시크릿, IdP에 등록한 콜백 URL이 `<APP_URL>/api/auth/callback`과 글자까지 같은지 |
+| `token` | id_token 검증 실패 | `OIDC_ISSUER`가 discovery 문서의 `issuer`와 같은지(Azure는 `/v2.0`까지) |
+| `no_email` | 이메일 클레임 없음 | IdP의 email 스코프·클레임 설정 |
+| `idp` | discovery를 못 가져옴 | 서버에서 IdP 주소로 나가는 연결 |
+
+서버 로그(`auth` 스코프)에는 실패 코드만 남고 이메일은 남지 않습니다.
 
 ---
 
-## E. 인터넷 배포 — Phase 2 이후
+## E. 인터넷 배포(Vercel 등) — 보류
 
-지금 구조로는 바로 안 됩니다. 필요한 작업:
-
-1. **인증**: Auth.js 매직링크 + 이메일 화이트리스트.
-2. **DB 교체**: `better-sqlite3`는 서버리스에서 못 씁니다. Supabase/Neon Postgres로. Drizzle 스키마는 그대로 쓰고 드라이버만 바꾸면 됩니다(`packages/db/src/client.ts`).
-3. **스트리밍**: Vercel 함수 타임아웃이 SSE 응답보다 짧지 않은지 확인(Pro 기준 여유 있음).
-4. **개인정보**: 다른 사람 데이터를 받게 되면 처리방침과 보관 기간이 필요합니다.
-
-남에게 보여주기만 할 거면 `FAKE_PROVIDER=1`로 띄운 데모가 더 안전합니다.
+서버리스에서는 `better-sqlite3`를 못 씁니다. 공개 배포가 필요해지면 Postgres로 드라이버만 바꾸고(`packages/db/src/client.ts`, Drizzle 스키마는 그대로) D의 로그인을 그대로 씁니다. 다른 회사 사람 데이터를 받게 되면 처리방침과 보관 기간이 필요합니다. 남에게 보여주기만 할 거면 `FAKE_PROVIDER=1`로 띄운 데모가 더 안전합니다.
 
 ---
 
