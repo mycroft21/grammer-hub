@@ -1,0 +1,1 @@
+ALTER TABLE `situation_profiles` ADD `temporary` integer DEFAULT false NOT NULL;

@@ -156,6 +156,35 @@ try {
   await page.waitForFunction(() => document.querySelector("aside input#name")?.value === "고객 · 이메일 안내", null, { timeout: 5000 }).catch(() => {});
   check("profile editor follows the selected card", firstName === "상급자 · 메시지" && (await page.inputValue("aside input#name")) === "고객 · 이메일 안내");
 
+  // 에디터에서 새 상황 만들기: 드롭다운 맨 아래 → 지금 프로필 값으로 채운 서랍 → 저장하고 쓰기 / 이번만 쓰기 → 다음에 열면 저장·삭제를 묻는다
+  // antd v6 단일 선택은 고른 값을 .ant-select-content의 title로 보여 준다
+  const selectedProfile = async () => ((await page.getAttribute("[data-testid=profile-select] .ant-select-content", "title")) ?? "").trim();
+  const openNewSituation = async () => {
+    await page.click("[data-testid=profile-select]");
+    await page.click("[data-testid=new-situation]");
+    await page.waitForSelector(".ant-drawer [data-testid=situation-save]", { timeout: 5000 });
+  };
+  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "load" });
+  await page.waitForSelector("[data-testid=profile-select]");
+  await openNewSituation();
+  await page.click("[data-testid=situation-save]");
+  await page.waitForSelector("text=저장하려면 이름이 필요합니다", { timeout: 5000 });
+  await page.fill(".ant-drawer input#name", "협력사 · 메일");
+  await page.click("[data-testid=situation-save]");
+  await page.waitForSelector(".ant-drawer [data-testid=situation-save]", { state: "detached", timeout: 5000 }).catch(() => {});
+  check("new situation from the editor is saved and selected", (await selectedProfile()) === "협력사 · 메일");
+  await openNewSituation();
+  const reopenedName = await page.inputValue(".ant-drawer input#name");
+  await page.click("[data-testid=situation-temp]");
+  await page.waitForSelector(".ant-drawer [data-testid=situation-temp]", { state: "detached", timeout: 5000 }).catch(() => {});
+  check("'use once' creates a temporary profile, selected, without asking yet (drawer reopens empty)", reopenedName === "" && (await selectedProfile()).startsWith("임시 · ") && (await selectedProfile()).endsWith("(임시)") && (await page.locator("[data-testid=temp-profiles]").count()) === 0);
+  await page.reload({ waitUntil: "load" });
+  await page.waitForSelector("[data-testid=temp-profiles]", { timeout: 5000 });
+  await page.click("[data-testid=drop-temp]");
+  await page.waitForSelector("[data-testid=temp-profiles]", { state: "detached", timeout: 5000 }).catch(() => {});
+  const profilesNow = await (await fetch(`http://127.0.0.1:${PORT}/api/profiles`)).json();
+  check("next visit asks about the temporary profile and dropping it deletes it", profilesNow.every((p) => !p.temporary) && profilesNow.some((p) => p.name === "협력사 · 메일" && p.temporary === false));
+
   await page.goto(`http://127.0.0.1:${PORT}/prompts`, { waitUntil: "load" });
   await fillUntil(page, "[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]", "재시도 로직 조사", "[data-testid=studio-run]:not([disabled])");
   await page.click("[data-testid=studio-runtime] >> text=채팅");   // 변수 채우기 흐름을 보려고 붙여넣기 모드로

@@ -23,6 +23,7 @@ export const situationProfiles = sqliteTable("situation_profiles", {
   tone: text("tone").notNull(),
   notes: text("notes"),
   isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  temporary: integer("temporary", { mode: "boolean" }).notNull().default(false),   // 에디터 '이번만 쓰기'
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
 }, (t) => [primaryKey({ columns: [t.userId, t.id] })]);

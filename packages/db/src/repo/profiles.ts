@@ -17,7 +17,9 @@ export function getProfile(db: Db, userId: string, id: string): SituationProfile
 }
 
 export function upsertProfile(db: Db, input: SituationProfileInput): SituationProfile {
-  const p = SituationProfile.parse(input);
+  const parsed = SituationProfile.parse(input);
+  // 임시 프로필은 기본 프로필이 될 수 없다(다음에 지워질 수 있으므로)
+  const p = parsed.temporary ? { ...parsed, isDefault: false } : parsed;
   const values = { ...p, notes: p.notes ?? null, updatedAt: Date.now() };
   // 키가 (user_id, id)라서 다른 사람의 같은 id 프로필을 덮어쓰지 않는다
   db.insert(situationProfiles).values(values)

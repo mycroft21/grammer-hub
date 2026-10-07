@@ -24,6 +24,8 @@ export const SituationProfile = z.object({
   tone: Tone,
   notes: z.string().max(500).optional(),
   isDefault: z.boolean().default(false),
+  /** 에디터의 '이번만 쓰기'로 만든 임시 프로필. 다음에 에디터를 열면 저장할지 지울지 묻는다. 기본 프로필이 될 수 없다 */
+  temporary: z.boolean().default(false),
 });
 export type SituationProfile = z.infer<typeof SituationProfile>;
 export type SituationProfileInput = z.input<typeof SituationProfile>;

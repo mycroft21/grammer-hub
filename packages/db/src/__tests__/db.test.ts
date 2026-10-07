@@ -141,6 +141,15 @@ describe("db", () => {
     expect(mb.lastActiveAt).not.toBeNull();
   });
 
+  it("임시 프로필은 기본 프로필이 될 수 없다", () => {
+    const db = openDb(":memory:");
+    const u = ensureUser(db, "t@team.com");
+    seedDefaultProfiles(db, u.id);
+    upsertProfile(db, { id: "tmp-1", userId: u.id, name: "임시 · 10:00", audience: "peer", channel: "messenger", lang: "ko", honorific: "haeyo", formality: 3, length: "concise", intent: "request", tone: "polite", isDefault: true, temporary: true });
+    expect(listProfiles(db, u.id).find((p) => p.id === "tmp-1")).toMatchObject({ temporary: true, isDefault: false });
+    expect(listProfiles(db, u.id).filter((p) => p.isDefault).map((p) => p.id)).toEqual(["boss-slack"]);
+  });
+
   it("설정 프리셋은 사람별로 나뉘고, 남의 프리셋은 바꾸거나 지울 수 없다", () => {
     const db = openDb(":memory:");
     const a = ensureUser(db, "a@team.com"), b = ensureUser(db, "b@team.com");

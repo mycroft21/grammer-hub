@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, App, Button, Segmented, Select, Splitter, Tooltip } from "antd";
-import { CopyOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { Alert, App, Button, Divider, Segmented, Select, Space, Splitter, Tooltip } from "antd";
+import { CopyOutlined, PlusOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { applyEdits, type Level, type ProviderId, type SituationProfile } from "@grammer-hub/core";
 import { ProgressLine } from "@/components/ProgressLine";
 import { RunLog } from "@/components/RunLog";
@@ -10,6 +10,7 @@ import { useMediaQuery } from "@/lib/useMediaQuery";
 import { HighlightView } from "./HighlightView";
 import { SuggestionCard } from "./SuggestionCard";
 import { useCorrection } from "./useCorrection";
+import { NewSituationDrawer } from "./NewSituationDrawer";
 
 const LEVELS: { value: Level; label: string; hint: string }[] = [
   { value: "L1", label: "맞춤법만", hint: "맞춤법·띄어쓰기·문장부호만 고칩니다" },
@@ -24,6 +25,12 @@ const divider: React.CSSProperties = { borderColor: "var(--ant-color-border-seco
 
 export function Editor({ profiles, defaultProvider, initialProfileId }: { profiles: SituationProfile[]; defaultProvider: ProviderId; initialProfileId?: string }) {
   const { message } = App.useApp();
+  // 프로필 목록은 에디터에서 새 상황을 만들거나 임시 프로필을 정리하면 바뀐다
+  const [list, setList] = useState<SituationProfile[]>(profiles);
+  const [creating, setCreating] = useState(false);
+  const [selectOpen, setSelectOpen] = useState(false);
+  // 이번 화면에서 '이번만 쓰기'로 만든 임시는 묻지 않는다(다음에 열 때 묻는다)
+  const [madeHere, setMadeHere] = useState<ReadonlySet<string>>(new Set());
   const isDesktop = useMediaQuery("(min-width: 1024px)", true);
   const [text, setText] = useState("");
   const [profileId, setProfileId] = useState(initialProfileId ?? profiles.find((p) => p.isDefault)?.id ?? profiles[0]?.id ?? "");
@@ -38,7 +45,22 @@ export function Editor({ profiles, defaultProvider, initialProfileId }: { profil
   const { state, run, cancel, setCard, setAll, reset } = useCorrection();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const profile = profiles.find((p) => p.id === profileId);
+  const profile = list.find((p) => p.id === profileId);
+  const pendingTemps = list.filter((p) => p.temporary && !madeHere.has(p.id));
+  const keepTemp = async (p: SituationProfile) => {
+    try { const saved = await api.profiles.save({ ...p, temporary: false }); setList((l) => l.map((x) => (x.id === p.id ? saved : x))); message.success(`'${p.name}'을(를) 프로필로 저장했습니다`); }
+    catch (e) { message.error(`저장 실패: ${e instanceof Error ? e.message : String(e)}`); }
+  };
+  const dropTemp = async (p: SituationProfile) => {
+    try {
+      await api.profiles.remove(p.id);
+      // 여러 개를 연달아 지워도 앞서 지운 것이 되살아나지 않게 함수형으로 갱신한다
+      setList((l) => l.filter((x) => x.id !== p.id));
+      const fallback = list.find((x) => x.isDefault && !x.temporary)?.id ?? list.find((x) => !x.temporary)?.id ?? "";
+      setProfileId((cur) => (cur === p.id ? fallback : cur));
+      message.success(`'${p.name}'을(를) 지웠습니다`);
+    } catch (e) { message.error(`삭제 실패: ${e instanceof Error ? e.message : String(e)}`); }
+  };
   const accepted = useMemo(() => state.edits.filter((e) => e.state === "accepted").map((e) => e.s), [state.edits]);
   const resultText = manual ?? (state.sourceText ? applyEdits(state.sourceText, accepted) : "");
   const running = state.status === "running";
@@ -233,9 +255,30 @@ export function Editor({ profiles, defaultProvider, initialProfileId }: { profil
 
   return (
     <div className="flex flex-col gap-3">
+      {pendingTemps.length > 0 && (
+        <Alert type="info" showIcon data-testid="temp-profiles" message="지난번에 '이번만 쓰기'로 만든 상황이 있습니다. 계속 쓸 거면 저장하고, 아니면 지우세요."
+          description={<div className="flex flex-col gap-1">{pendingTemps.map((p) => (
+            <Space key={p.id} wrap>
+              <span>{p.name}</span>
+              <Button size="small" data-testid="keep-temp" onClick={() => void keepTemp(p)}>프로필로 저장</Button>
+              <Button size="small" danger data-testid="drop-temp" onClick={() => void dropTemp(p)}>지우기</Button>
+            </Space>
+          ))}</div>} />
+      )}
+      <NewSituationDrawer open={creating} base={profile} takenIds={new Set(list.map((p) => p.id))} onClose={() => setCreating(false)}
+        onCreated={(p) => { setList((l) => [...l, p]); setProfileId(p.id); if (p.temporary) setMadeHere((s) => new Set(s).add(p.id)); setCreating(false); }} />
       <div className="panel flex flex-wrap items-center gap-2 px-3 py-2">
-        <Select aria-label="상황 프로필" value={profileId} onChange={setProfileId} className="min-w-[200px]" showSearch optionFilterProp="label"
-          options={profiles.map((p) => ({ value: p.id, label: p.name }))} />
+        <Select aria-label="상황 프로필" data-testid="profile-select" value={profileId} onChange={setProfileId} className="min-w-[200px]" showSearch optionFilterProp="label"
+          open={selectOpen} onOpenChange={setSelectOpen}
+          options={list.map((p) => ({ value: p.id, label: p.temporary ? `${p.name} (임시)` : p.name }))}
+          popupRender={(menu) => (
+            <>
+              {menu}
+              <Divider style={{ margin: "4px 0" }} />
+              {/* 맞는 프로필이 없을 때 프로필 화면으로 가지 않고 여기서 바로 만든다 */}
+              <Button type="text" block icon={<PlusOutlined />} data-testid="new-situation" onMouseDown={(e) => e.preventDefault()} onClick={() => { setSelectOpen(false); setCreating(true); }}>새 상황 만들기</Button>
+            </>
+          )} />
         <Segmented value={level} onChange={(v) => setLevel(v as Level)}
           options={LEVELS.map((l) => ({ value: l.value, label: <Tooltip title={l.hint}><span>{l.label}</span></Tooltip> }))} />
         <span className="ml-auto hidden text-[12px] sm:inline" style={faint}>{chars.toLocaleString()} / 4,000</span>
