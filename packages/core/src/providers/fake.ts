@@ -102,6 +102,17 @@ function fakeStudio(input: ProviderInput): unknown | null {
     };
   }
   if ("needs" in props && "subtype" in props) {
+    // 다회차: 목표에 '여러 번'이 있으면 1회차 depth, 2회차 next를 묻는다. 답한 depth도 계속 ask로 내서 코드의 고정을 검증한다.
+    if (goal.includes("여러 번")) {
+      const keys = new Set([...(/<answers>\n([\s\S]*?)\n<\/answers>/.exec(input.user)?.[1] ?? "").matchAll(/^- ([^:]+):/gm)].map((m) => m[1]));
+      return {
+        summary: `이해한 목표: ${goal}`, subtype: null,
+        needs: [
+          { id: "next", label: "파악한 뒤 무엇을 하나요", status: keys.has("depth") ? "ask" : "assume", value: "버그 수정 전 흐름 정리", options: keys.has("depth") ? ["기능 추가", "버그 수정"] : [], question: keys.has("depth") ? "파악한 뒤 무엇을 하나요?" : null, why: "깊이를 정하고 나니 다음 행동이 결과물을 바꾼다" },
+          { id: "depth", label: "어느 깊이까지", status: "ask", value: "진입점과 흐름만", options: ["흐름만", "분기·예외까지"], question: "어느 깊이까지 다룰까요?", why: "깊이에 따라 성공 기준과 분량이 달라집니다." },
+        ],
+      };
+    }
     // 의도 정리: 목표가 짧고 답변이 없으면 depth를 묻고, 아니면 전부 filled/assume.
     const short = !answered && goal.length < 30;
     return {

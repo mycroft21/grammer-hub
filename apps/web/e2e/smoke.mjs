@@ -181,6 +181,27 @@ try {
   const drawerText = await page.textContent(".ant-drawer [data-testid=studio-rendered]");
   check("filled prompt replaces the variable", drawerText.includes("function retry() {}") && !drawerText.includes("{{code}}"));
 
+  // 다회차 질문: 답을 반영하면 새 질문이 아래에 붙고 위 답은 남는다 → 즉시 생성. 폼의 '모호하면 묻기'가 프롬프트의 질문 정책이 된다.
+  await page.goto(`http://127.0.0.1:${PORT}/prompts`, { waitUntil: "load" });
+  await fillUntil(page, "[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]", "여러 번 묻는 재시도 조사", "[data-testid=studio-run]:not([disabled])");
+  await page.click("[data-testid=studio-run]");
+  await page.waitForSelector("[data-testid=studio-ask]", { timeout: 15000 });
+  const round1 = await page.locator("[data-testid=studio-ask] .rounded-lg").count();
+  await page.locator("label.ant-radio-button-wrapper:has([data-testid=studio-option])").first().click();
+  await page.click("[data-testid=studio-answer]");
+  await page.waitForFunction(() => document.querySelectorAll("[data-testid=studio-ask] .rounded-lg").length === 2, null, { timeout: 15000 }).catch(() => {});
+  const asked = await page.locator("[data-testid=studio-ask] .rounded-lg").allTextContents();
+  check("follow-up question is appended below the first", round1 === 1 && asked.length === 2 && asked[0].includes("어느 깊이까지") && asked[1].includes("파악한 뒤"));
+  // 보관함 탭에 다녀와도 이미 반영한 답은 남는다
+  await page.click("[data-testid=studio-tab] >> text=보관함");
+  await page.click("[data-testid=studio-tab] >> text=만들기");
+  await page.waitForSelector("[data-testid=studio-ask]", { timeout: 5000 });
+  check("earlier answer stays selected and editable (even after switching tabs)", (await page.locator("[data-testid=studio-ask] .rounded-lg").first().locator(".ant-radio-button-wrapper-checked").count()) === 1
+    && (await page.locator("[data-testid=studio-ask] .rounded-lg").first().locator(".ant-radio-button-wrapper-disabled").count()) === 0);
+  await page.click("[data-testid=studio-now]");
+  await page.waitForSelector("[data-testid=studio-save]:not([disabled])", { timeout: 20000 });
+  check("ask_first from the form becomes 'stop and ask before starting'", ((await page.textContent("[data-testid=studio-rendered]")) ?? "").includes("작업을 시작하기 전에 멈추고"));
+
   // 영어 지시문: 긴 목표는 바로 ready → 생성. 답변 언어 규칙이 자동 삽입된다.
   await page.goto(`http://127.0.0.1:${PORT}/prompts`, { waitUntil: "load" });
   await fillUntil(page, "[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]", "결제 승인 모듈의 재시도 로직을 파악해서 타임아웃 버그를 고치기 전에 흐름을 정리한 문서를 만든다", "[data-testid=studio-run]:not([disabled])");

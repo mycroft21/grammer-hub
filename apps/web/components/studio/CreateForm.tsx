@@ -41,7 +41,7 @@ export function CreateForm({ busy, error, initial, onSubmit, onTicket }: { busy:
     const d = loadDraft();
     if (d && d.goal) {
       setDomain(PURPOSES[d.purpose]?.domain ?? "dev"); setPurpose(d.purpose); setSubtype(d.subtype ?? null); setGoal(d.goal);
-      setLength(d.length); setClarify(d.clarify); setLanguage(d.promptLanguage); setIncludeStyleRules(d.includeStyleRules); setRuntime(d.runtime ?? defaultRuntime(d.purpose)); setRepos(d.repos ?? []); setRestored(true);
+      setLength(d.length); setClarify(d.clarify ?? "ask_first"); setLanguage(d.promptLanguage); setIncludeStyleRules(d.includeStyleRules); setRuntime(d.runtime ?? defaultRuntime(d.purpose)); setRepos(d.repos ?? []); setRestored(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

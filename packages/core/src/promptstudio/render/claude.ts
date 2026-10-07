@@ -34,8 +34,9 @@ const T = {
     agent: {
       rules: "## 범위와 제약", output: "## 보고 형식", criteria: "## 완료 조건", process: "## 진행", selfCheck: "## 끝내기 전에 검증",
       // 두 벤더 공통 권고: 되돌릴 수 있는 범위 안의 일은 묻지 않고 진행, 가정은 보고에. 멈추는 건 되돌리기 어려운 변경·범위 변경일 때만.
+      // ask_first만 예외: 사용자가 "모호하면 묻기"를 골랐으므로 시작 전에 멈춘다(저장소로 알 수 있는 것은 묻지 않는다).
       clarifyText: {
-        ask_first: "빠진 필수 정보가 있으면 그것에 의존하지 않는 부분을 먼저 끝내고, 질문은 마지막에 한 번에 모아 선택지와 함께 묻는다.",
+        ask_first: "필수 정보가 빠졌거나 요구가 둘 이상으로 해석되면 작업을 시작하기 전에 멈추고, 질문을 한 번에 모아 선택지와 함께 묻는다. 저장소를 읽어 알 수 있는 것은 묻지 않고 직접 확인한다.",
         assume_and_state: "합리적 가정으로 진행하고 가정을 보고에 적는다. 되돌리기 어려운 변경이나 범위가 바뀌는 판단만 멈추고 묻는다.",
         never_ask: "질문하지 않는다. 부족한 부분은 가장 근거 있는 해석으로 진행하고, 가정 목록을 보고 끝에 붙인다.",
       },
@@ -61,7 +62,7 @@ const T = {
     agent: {
       rules: "## Scope and constraints", output: "## Report", criteria: "## Done when", process: "## Approach", selfCheck: "## Verify before finishing",
       clarifyText: {
-        ask_first: "If required information is missing, finish everything that does not depend on it first, then ask your questions once, batched, with options.",
+        ask_first: "If required information is missing or the request can be read more than one way, stop before starting and ask your questions once, batched, with options. Do not ask about anything you can find by reading the repository; check it yourself.",
         assume_and_state: "Proceed on reasonable assumptions and record them in the report. Stop to ask only for hard-to-reverse changes or a change of scope.",
         never_ask: "Do not ask questions. Take the best-supported reading, proceed, and list your assumptions at the end of the report.",
       },

@@ -42,7 +42,7 @@ export function PromptsPage() {
               <RunLog entries={state.log} running compact />
             </div>
           )}
-          {state.phase === "ask" && state.plan && <AskStep plan={state.plan} busy={busy} onAnswer={(a, assume) => void studio.answer(a, assume)} onBack={studio.backToForm} />}
+          {state.phase === "ask" && state.plan && <AskStep plan={state.plan} initial={state.request?.answers} busy={busy || state.replanning} error={state.error} onAnswer={(a, now) => void studio.answer(a, now)} onBack={studio.backToForm} />}
           {(state.phase === "generating" || state.phase === "result") && (
             <ResultPanel state={state} onRegenerate={(s, i) => void studio.regenerate(s, i)} onEdit={(s, v) => void studio.editSlot(s, v)} onSave={save} onReset={studio.reset} />
           )}

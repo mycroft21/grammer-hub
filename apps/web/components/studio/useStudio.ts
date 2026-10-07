@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useRef, useState } from "react";
-import { SLOT_KEYS, SLOT_KO, parseIssueKey, type CheckResult, type PlanResult, type PromptSpec, type RenderedPrompt, type SlotKey, type StudioRequest, type Ticket, type TicketPlanResult } from "@grammer-hub/core";
+import { SLOT_KEYS, SLOT_KO, parseIssueKey, type CheckResult, type PlanQuestion, type PlanResult, type PromptSpec, type RenderedPrompt, type SlotKey, type StudioRequest, type Ticket, type TicketPlanResult } from "@grammer-hub/core";
 import { api, type StudioUsage, type WorkspaceStatus } from "@/lib/api";
 import { readSseRaw } from "@/lib/sse-client";
 
@@ -9,7 +9,8 @@ export type Phase = "form" | "planning" | "ask" | "ticket_review" | "generating"
 export interface StudioState {
   phase: Phase;
   request: StudioRequest | null;         // 마지막으로 보낸 요청(재생성·보관에 재사용)
-  plan: PlanResult | null;
+  plan: PlanResult | null;               // ask 단계에서는 지금까지 물은 질문 전체(회차가 지나도 위 질문이 남는다)
+  replanning: boolean;                   // 답을 반영해 의도 정리를 다시 하는 중(질문 화면 유지)
   slots: Partial<Record<SlotKey, unknown>>; // 스트리밍 중 도착한 슬롯
   spec: PromptSpec | null;
   rendered: RenderedPrompt | null;
@@ -27,7 +28,7 @@ export interface StudioState {
 const STAGE_MSG: Record<StudioState["progress"]["stage"], string> = { requesting: "요청 보냄", thinking: "모델 검토 시작", writing: "슬롯 작성 시작(첫 토큰)" };
 const withLog = (s: StudioState, msg: string): StudioState => ({ ...s, log: [...s.log, { t: Date.now() - s.progress.startedAt, msg }] });
 
-const initial: StudioState = { phase: "form", request: null, plan: null, slots: {}, spec: null, rendered: null, checks: [], usage: null, meta: null, savedId: null, busySlot: null, error: null, progress: { stage: "requesting", startedAt: 0, expectedMs: null }, log: [], ticket: null };
+const initial: StudioState = { phase: "form", request: null, plan: null, replanning: false, slots: {}, spec: null, rendered: null, checks: [], usage: null, meta: null, savedId: null, busySlot: null, error: null, progress: { stage: "requesting", startedAt: 0, expectedMs: null }, log: [], ticket: null };
 
 /** 만들기 흐름: plan(질문) → generate(스트리밍) → result(재생성·보관). */
 export function useStudio() {
@@ -71,35 +72,55 @@ export function useStudio() {
     }
   }, [cancel]);
 
-  /** 의도 정리. ready면 바로 생성으로, ask면 질문 단계로. never_ask면 plan을 건너뛴다. */
+  /**
+   * 의도 정리 한 회차. 이미 물은 질문(prev) 밖의 새 질문이 있으면 아래에 붙여 다시 묻고, 없으면 생성으로 넘어간다.
+   * 답한 항목은 서버가 filled로 고정하므로 같은 질문이 돌아오지 않고, 장부 항목 수가 질문 총량의 상한이 된다.
+   */
+  const planRound = useCallback(async (req: StudioRequest, prev: PlanQuestion[], ac: AbortController) => {
+    const r = await api.prompts.plan(req, ac.signal);
+    if (ac.signal.aborted) return;
+    const fresh = r.plan.questions.filter((q) => !prev.some((p) => p.id === q.id));
+    setState((s) => withLog(s, `의도 정리 ${fresh.length ? `→ ${prev.length ? "추가 " : ""}질문 ${fresh.length}개` : `→ 바로 생성(가정 ${r.plan.assumptions.length}개)`}${r.plan.verify_in_repo.length ? ` · 코드에서 확인 ${r.plan.verify_in_repo.length}개` : ""} · ${(r.usage.latencyMs / 1000).toFixed(1)}초`));
+    // 장부에서 나온 대상 저장소·코드에서 확인할 것은 생성 단계의 힌트가 된다(사용자에게 묻지 않는다)
+    const hints = { ...(req.hints ?? {}), ...(r.plan.repos.length ? { repos: r.plan.repos } : {}), ...(r.plan.verify_in_repo.length ? { verifyInRepo: r.plan.verify_in_repo } : {}) };
+    const next: StudioRequest = { ...req, ...(r.plan.subtype ? { subtype: r.plan.subtype } : {}), ...(Object.keys(hints).length ? { hints } : {}) };
+    if (fresh.length) { setState((s) => ({ ...s, phase: "ask", replanning: false, plan: { ...r.plan, mode: "ask", questions: [...prev, ...fresh] }, request: next })); return; }
+    setState((s) => ({ ...s, replanning: false, plan: r.plan }));
+    await generate({ ...next, assumptions: r.plan.assumptions });
+  }, [generate]);
+
+  /** 의도 정리. ask면 질문 단계로, ready면 바로 생성으로. never_ask면 plan을 건너뛴다. */
   const start = useCallback(async (req: StudioRequest) => {
     cancel();
     if (req.clarify === "never_ask") { await generate(req); return; }
     const ac = new AbortController(); abortRef.current = ac;
     setState({ ...initial, phase: "planning", request: req, progress: { stage: "requesting", startedAt: Date.now(), expectedMs: null }, log: [{ t: 0, msg: "의도 정리 요청" }] });
-    try {
-      const r = await api.prompts.plan(req, ac.signal);
-      if (ac.signal.aborted) return;
-      setState((s) => withLog(s, `의도 정리 ${r.plan.mode === "ask" ? `→ 질문 ${r.plan.questions.length}개` : `→ 바로 생성(가정 ${r.plan.assumptions.length}개)`}${r.plan.verify_in_repo.length ? ` · 코드에서 확인 ${r.plan.verify_in_repo.length}개` : ""} · ${(r.usage.latencyMs / 1000).toFixed(1)}초`));
-      // 장부에서 나온 대상 저장소·코드에서 확인할 것은 생성 단계의 힌트가 된다(사용자에게 묻지 않는다)
-      const hints = { ...(req.hints ?? {}), ...(r.plan.repos.length ? { repos: r.plan.repos } : {}), ...(r.plan.verify_in_repo.length ? { verifyInRepo: r.plan.verify_in_repo } : {}) };
-      const next: StudioRequest = { ...req, ...(r.plan.subtype ? { subtype: r.plan.subtype } : {}), ...(Object.keys(hints).length ? { hints } : {}) };
-      if (r.plan.mode === "ask" && r.plan.questions.length > 0) { setState((s) => ({ ...s, phase: "ask", plan: r.plan, request: next })); return; }
-      setState((s) => ({ ...s, plan: r.plan }));
-      await generate({ ...next, assumptions: r.plan.assumptions });
-    } catch (e) {
-      if (!ac.signal.aborted) setState((s) => ({ ...s, phase: "form", error: e instanceof Error ? e.message : String(e) }));
-    }
-  }, [cancel, generate]);
+    try { await planRound(req, [], ac); }
+    catch (e) { if (!ac.signal.aborted) setState((s) => ({ ...s, phase: "form", error: e instanceof Error ? e.message : String(e) })); }
+  }, [cancel, generate, planRound]);
 
-  /** 질문에 답한 뒤(또는 가정으로 진행) 생성. */
-  const answer = useCallback(async (answers: Record<string, string>, assumeRest: boolean) => {
+  /**
+   * 질문에 답한 뒤. now=false면 답(위 질문을 고친 것 포함)을 반영해 의도 정리를 다시 하고, now=true면 즉시 생성한다.
+   * 즉시 생성은 답하지 않은 질문을 장부의 기본값으로 가정한다. 질문 정책은 사용자가 고른 값 그대로 보낸다.
+   */
+  const answer = useCallback(async (answers: Record<string, string>, now: boolean) => {
     const req = state.request; const plan = state.plan;
     if (!req || !plan) return;
-    const unanswered = plan.questions.filter((q) => !answers[q.id]);
-    const assumptions = assumeRest ? [...plan.assumptions, ...unanswered.map((q) => `${q.question} → 기본값으로 가정`)] : plan.assumptions;
-    await generate({ ...req, answers, assumptions, clarify: req.clarify === "ask_first" ? "assume_and_state" : req.clarify });
-  }, [state.request, state.plan, generate]);
+    // where 답이 대상 저장소다. 앞 회차가 남긴 hints.repos를 그대로 두면 서버가 그것을 '사용자 선택'으로 보고 고친 답을 덮는다
+    const hints = answers["where"] ? { ...(req.hints ?? {}), repos: [answers["where"]] } : req.hints;
+    const next: StudioRequest = { ...req, answers, ...(hints ? { hints } : {}) };
+    if (now) {
+      const unanswered = plan.questions.filter((q) => !answers[q.id]);
+      const assumptions = [...plan.assumptions, ...unanswered.map((q) => { const n = plan.needs.find((x) => x.id === q.id); return n?.value ? `${n.label}: ${n.value}` : `${q.question} → 기본값으로 가정`; })];
+      await generate({ ...next, assumptions });
+      return;
+    }
+    cancel();
+    const ac = new AbortController(); abortRef.current = ac;
+    setState((s) => withLog({ ...s, replanning: true, error: null }, `답변 ${Object.keys(answers).length}개 반영 · 남은 모호함 확인`));
+    try { await planRound(next, plan.questions, ac); }
+    catch (e) { if (!ac.signal.aborted) setState((s) => ({ ...s, replanning: false, error: e instanceof Error ? e.message : String(e) })); }
+  }, [state.request, state.plan, cancel, generate, planRound]);
 
   /** 티켓 흐름 1단계: 가져오기 + 분류. 결과는 검토 화면으로. */
   const startFromTicket = useCallback(async (input: string) => {
@@ -164,7 +185,7 @@ export function useStudio() {
   }, [state]);
 
   const reset = useCallback(() => { cancel(); setState(initial); }, [cancel]);
-  const backToForm = useCallback(() => { cancel(); setState((s) => ({ ...s, phase: "form", plan: null, ticket: null, error: null })); }, [cancel]);
+  const backToForm = useCallback(() => { cancel(); setState((s) => ({ ...s, phase: "form", plan: null, replanning: false, ticket: null, error: null })); }, [cancel]);
 
   return { state, start, startFromTicket, generateFromTicket, setWorkspace, answer, generate, regenerate, editSlot, save, reset, backToForm, cancel };
 }

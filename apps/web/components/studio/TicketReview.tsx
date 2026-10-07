@@ -50,7 +50,7 @@ export function TicketReview({ ticket, plan, workspace, busy, onGenerate, onBack
     const unanswered = plan.questions.filter((q) => !a[q.id]);
     const assumptions = [...plan.assumptions, ...(assumeRest ? unanswered.map((q) => { const n = plan.needs.find((x) => x.id === q.id); return n?.value ? `${n.label}: ${n.value}` : `${q.question} → 기본값으로 가정`; }) : [])];
     onGenerate({
-      purpose, subtype, goal: goal.trim(), length, clarify: "assume_and_state", promptLanguage: language, includeStyleRules: false, runtime, provider: null,
+      purpose, subtype, goal: goal.trim(), length, promptLanguage: language, includeStyleRules: false, runtime, provider: null,
       ticket: ticket.key, answers: a, assumptions,
       hints: { startingPoints: lines(starts), context: context.trim(), repos: answeredRepos, verifyInRepo: lines(verify) },
     });

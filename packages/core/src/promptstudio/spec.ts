@@ -172,7 +172,7 @@ export const StudioRequest = z.object({
   subtype: z.string().nullable().optional(),
   goal: z.string().min(4).max(2000),
   length: PromptLength.default("standard"),
-  clarify: ClarifyPolicy.default("ask_first"),
+  clarify: ClarifyPolicy.optional(),                          // 폼에서 고른 값. 있으면 생성 프롬프트의 질문 정책이 된다(티켓 흐름은 보내지 않음)
   promptLanguage: PromptLanguage.default("ko"),               // en = 지시문 영어, 답변은 한국어
   runtime: Runtime.nullable().optional(),                      // 비우면 대분류 기본(개발=claude_code, 그 외=chat)
   ticket: z.string().max(200).nullable().optional(),           // 이슈 키(EP-1174) 또는 URL. 서버가 가져와 <ticket>으로 넣는다

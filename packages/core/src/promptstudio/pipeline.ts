@@ -8,7 +8,7 @@ import { renderClaude, type RenderedPrompt } from "./render/claude";
 import { runChecks } from "./checks";
 import { DOMAINS, PURPOSES, findSubtype } from "./taxonomy";
 import { TicketPlanRaw, buildTicketPlanPrompt, suggestPurpose, ticketCutLine, ticketCutPrefix, type Ticket, type TicketPlanResult } from "./ticket";
-import { UNIVERSAL_NEEDS, deriveNeeds } from "./needs";
+import { UNIVERSAL_NEEDS, applyAnswers, deriveNeeds } from "./needs";
 import { resolveRepos, type WorkspaceProfile } from "./workspace";
 import { agentDefaultsFor } from "./agent-defaults";
 
@@ -64,7 +64,8 @@ export async function planPrompt(provider: CorrectionProvider, ctxIn: StudioCont
   const profile = dev ? ctxIn.profile ?? null : null;
   const picked = (ctxIn.hints?.repos ?? []).map((n) => profile?.repos.find((r) => r.name === n)).filter((r): r is NonNullable<typeof r> => Boolean(r)).map((repo) => ({ repo, evidence: "사용자가 선택" }));
   const repoMatches = picked.length ? picked : profile ? resolveRepos(profile, { title: ctxIn.goal }) : [];
-  const d = deriveNeeds(raw.needs, { profile, allowedIds: allowed, repoMatches, trustModelWhere: true });
+  // 다회차 질문: 이미 답한 항목은 모델이 다시 ask로 내도 코드가 filled로 고정한다(같은 질문 반복 방지, 장부 항목 수가 질문 총량의 상한)
+  const d = deriveNeeds(applyAnswers(raw.needs, ctxIn.answers ?? {}), { profile, allowedIds: allowed, repoMatches, trustModelWhere: true });
   const plan: PlanResult = { summary: raw.summary, subtype: sub.id, needs: d.needs, mode: d.mode, questions: d.questions, assumptions: d.assumptions, verify_in_repo: d.verify_in_repo, repos: d.repos };
   const u = r.usage ?? { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
   return { plan: unmaskDeep(plan, m), usage: { ...u, costUsd: provider.cost(u), latencyMs: Date.now() - t0 }, error: null };
@@ -175,9 +176,11 @@ export function normalizeSpec(spec: PromptSpec, ctx: StudioContext): PromptSpec 
   if (ad) {
     spec.output_contract.length = ad.report.length[spec.language];
     if (spec.output_contract.structure.trim().length < 5) spec.output_contract.structure = ad.report.structure[spec.language];
-    // 질문 정책도 목적이 정하면 코드가 정한다(화면 값은 서버에 오지 않고, 모델이 고르면 매번 달라진다)
+    // 질문 정책도 목적이 정하면 코드가 정한다(모델이 고르면 매번 달라진다)
     if (ad.clarify) spec.clarify_policy = ad.clarify.policy;
   }
+  // 사용자가 폼에서 고른 질문 정책이 최종값이다(티켓 흐름은 값이 없어 위 규칙·모델 선택을 따른다)
+  if (ctx.clarify) spec.clarify_policy = ctx.clarify;
   // 티켓 본문이 잘렸으면 받는 쪽이 원문을 먼저 읽게 한다. 모델이 빠뜨리지 않도록 코드가 넣고, 재생성 때 겹치지 않게 같은 줄은 지우고 다시 넣는다
   if (ctx.ticketCut) {
     const line = ticketCutLine(ctx.ticketCut, spec.language), prefix = ticketCutPrefix(ctx.ticketCut, spec.language);

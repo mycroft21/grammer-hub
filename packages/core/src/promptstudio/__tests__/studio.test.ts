@@ -268,7 +268,7 @@ describe("pipeline with fake provider", () => {
     const planCtx = ctx({ purpose: "plan", subtype: null, runtime: "claude_code" });
     const plan = await run(planCtx);
     expect(plan.spec?.clarify_policy).toBe("ask_first");   // 가짜 모델은 assume_and_state를 낸다
-    expect(plan.rendered?.system).toContain("그것에 의존하지 않는 부분을 먼저");
+    expect(plan.rendered?.system).toContain("작업을 시작하기 전에 멈추고");
     expect(plan.rendered?.system).toContain("필수로 적힌 항목");
     const build = await run(ctx({ purpose: "build", subtype: null, runtime: "claude_code" }));
     expect(build.spec?.clarify_policy).toBe("assume_and_state");
@@ -278,6 +278,29 @@ describe("pipeline with fake provider", () => {
     expect(renderClaude({ ...plan.spec!, clarify_policy: "never_ask" }, { purpose: "plan" }).system).not.toContain("필수로 적힌 항목");
     const regen = await regenerateSlot(provider, planCtx, { ...plan.spec!, clarify_policy: "assume_and_state" }, "hard_rules", null);
     expect(regen.spec?.clarify_policy).toBe("ask_first");
+  });
+  it("폼에서 고른 질문 정책이 최종값이고, 값이 없으면(티켓 흐름) 목적 기본·모델 선택을 따른다", async () => {
+    const run = async (c: StudioContext) => { const g = generatePrompt(provider, c); let r = await g.next(); while (!r.done) r = await g.next(); return r.value; };
+    const build = await run(ctx({ purpose: "build", subtype: null, runtime: "claude_code", clarify: "ask_first" }));
+    expect(build.spec?.clarify_policy).toBe("ask_first");   // 가짜 모델은 assume_and_state를 낸다
+    expect(build.rendered?.system).toContain("작업을 시작하기 전에 멈추고");
+    expect(build.rendered?.system).not.toContain("합리적 가정으로 진행");
+    expect((await run(ctx({ purpose: "plan", subtype: null, runtime: "claude_code", clarify: "never_ask" }))).spec?.clarify_policy).toBe("never_ask");
+    expect((await run(ctx({ purpose: "build", subtype: null, runtime: "claude_code" }))).spec?.clarify_policy).toBe("assume_and_state");
+    expect(buildGeneratePrompt(ctx({ clarify: "ask_first" })).user).toContain("<clarify_policy>ask_first</clarify_policy>");
+    expect(buildGeneratePrompt(ctx()).user).not.toContain("<clarify_policy>");
+    expect(renderClaude({ ...build.spec!, language: "en" }, { purpose: "build" }).system).toContain("stop before starting");
+  });
+  it("다회차 질문: 답한 항목은 모델이 다시 물어도 코드가 고정하고, 새 질문만 남는다", async () => {
+    const goal = "여러 번 묻는 재시도 조사";
+    const r1 = await planPrompt(provider, ctx({ goal }));
+    expect(r1.plan?.questions.map((q) => q.id)).toEqual(["depth"]);
+    const r2 = await planPrompt(provider, ctx({ goal, answers: { depth: "분기·예외까지" } }));
+    expect(r2.plan?.questions.map((q) => q.id)).toEqual(["next"]);
+    expect(r2.plan?.needs.find((n) => n.id === "depth")).toMatchObject({ status: "filled", value: "분기·예외까지" });
+    const r3 = await planPrompt(provider, ctx({ goal, answers: { depth: "분기·예외까지", next: "버그 수정" } }));
+    expect(r3.plan?.mode).toBe("ready");
+    expect(r3.plan?.questions).toEqual([]);
   });
   it("plan(에이전트)은 설계 문서를 저장소 안 파일로 쓰게 하고 보고는 짧은 요약으로 나눈다", async () => {
     const g = generatePrompt(provider, ctx({ purpose: "plan", subtype: null, runtime: "claude_code" }));
