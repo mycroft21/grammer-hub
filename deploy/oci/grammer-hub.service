@@ -1,0 +1,22 @@
+# Grammar Hub 팀 서버. bootstrap.sh 가 @…@ 자리를 채워 /etc/systemd/system/ 에 설치한다.
+[Unit]
+Description=Grammar Hub (Next.js) team server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@APP_USER@
+WorkingDirectory=@APP_DIR@
+Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=512
+# 루프백에만 묶는다 — 밖에서는 Caddy(HTTPS)를 거친다
+ExecStart=@PNPM@ --filter @grammer-hub/web start -p @PORT@ -H 127.0.0.1
+Restart=always
+RestartSec=3
+# 1GB VM: 메모리 상한을 두어 폭주 시 서비스만 재시작되게
+MemoryMax=700M
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

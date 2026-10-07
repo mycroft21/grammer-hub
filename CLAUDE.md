@@ -13,6 +13,7 @@
 - `packages/core` — 순수 TS. 교정 파이프라인, PII 마스킹, **프롬프트 스튜디오**(`src/promptstudio/`: spec·taxonomy·needs·workspace·agent-defaults·ticket·meta-prompt·render·checks·pipeline). Node 전용(claude-cli 프로바이더)은 `src/node.ts`에서만 export — 브라우저 번들에 `node:child_process`가 섞이면 빌드가 깨진다
 - `packages/db` — Drizzle + better-sqlite3. 마이그레이션은 `drizzle/`
 - `apps/web` — Next 16 App Router, React 19, Ant Design v6, Tailwind 유틸만(Preflight 끔). 서버 전용 모듈은 `import "server-only"`. 로그인은 `lib/auth/`(OIDC + HMAC 세션 쿠키)와 `proxy.ts`(요청 게이트). OIDC 환경 변수가 비어 있으면 로그인 없는 단일 사용자 모드
+- 배포: `deploy/oci/`(Ubuntu VM 부트스트랩·갱신·백업 스크립트, systemd·Caddy). 서버 절차는 `deploy/oci/README.md`
 - 문서: `docs/05`(실행·설정·팀 서버), `docs/08`(학습 데이터·팀 화면), `docs/09`(스튜디오 설계·결정), `docs/10`(프롬프트 근거), `docs/11`(코딩 에이전트 벤치마크). 동작을 바꾸면 해당 §를 같이 고친다
 
 ## 지켜야 할 것

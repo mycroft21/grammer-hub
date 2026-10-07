@@ -324,6 +324,10 @@ STORE_DRAFTS=true                              # 팀 데이터 수집이 목적�
 
 ### D-3. 띄우기
 
+Ubuntu VM이면 `deploy/oci/bootstrap.sh` 하나로 끝납니다(스왑·Node·Caddy·방화벽·빌드·systemd·백업). 절차와 확인 사항은 `deploy/oci/README.md`. 현재 팀 서버는 OCI 오사카 `sandbox-2`, 주소 `https://grammer-hub.duckdns.org`.
+
+손으로 하려면:
+
 ```bash
 pnpm install && pnpm build
 pnpm --filter @grammer-hub/web start -p 3000 -H 127.0.0.1     # 앞단 프록시가 있을 때
