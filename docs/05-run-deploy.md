@@ -156,7 +156,7 @@ pnpm studio:mark                 # 배포 직후 한 번. 지금 시각·git HEA
 pnpm studio:since                # 기준선 이후에 보관된 프롬프트·버전·점검 실패·사람이 고친 슬롯 요약
 pnpm studio:since --all          # 기준선을 무시하고 전체
 pnpm studio:since --json         # 같은 내용을 JSON으로
-pnpm studio:since --db <경로> --limit 20
+pnpm studio:since --db <경로> --limit 20 --user you@company.com   # 기본은 모든 사용자 합계
 ```
 
 기준선은 DB 옆 `apps/web/data/studio-baseline.json`에 저장되며 커밋 대상이 아닙니다. 기준선을 찍은 적이 없으면 전체를 보여 주고 안내 문구가 붙습니다. 코드의 `STUDIO_PROMPT_VERSION`이 기준선보다 올라가 있으면 그 사실도 함께 알려 줍니다.
