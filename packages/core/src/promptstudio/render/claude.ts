@@ -140,8 +140,10 @@ export function renderClaude(spec: PromptSpec, opts: RenderOptions = {}): Render
     spec.self_check.length ? `${h.selfCheck}\n${list(spec.self_check)}` : "",
   ].filter((l) => l !== "").join("\n").replace(/\n{3,}/g, "\n\n").trim();
 
-  // Codex CLI는 system 프롬프트를 따로 받지 않으므로 태그 없이 한 덩어리로(역할·범위가 맨 위).
-  const combined = spec.runtime === "codex" ? `${system}\n\n${user}` : `<system>\n${system}\n</system>\n\n${user}`;
+  // 한 덩어리는 사람이 그대로 붙여넣는 텍스트다. 어떤 런타임도 이 경로로는 system 프롬프트를 따로 받지 않는다.
+  // <system> 태그를 넣으면 받는 쪽(Claude Code 등)이 사용자 입력에 낀 시스템 지시 = 주입 시도로 의심해 거부한다.
+  // system/user를 실제 필드로 나눠 쓰는 곳은 API 경로뿐이고, 그쪽은 아래 system·user를 그대로 쓴다.
+  const combined = `${system}\n\n${user}`;
   return { target: spec.runtime === "codex" ? "codex" : "claude", language: lang, runtime: spec.runtime, system, user, combined, variables: spec.inputs.map((i) => i.name) };
 }
 

@@ -86,7 +86,7 @@ describe("render", () => {
     expect(en.user).toContain("## Done when");
     expect(en.system).toContain("## Scope and constraints");
   });
-  it("agent render inserts the purpose scope line first and Codex gets a single untagged block", () => {
+  it("agent render inserts the purpose scope line first and every runtime gets a single untagged block", () => {
     const build = renderClaude({ ...baseSpec(), runtime: "claude_code", inputs: [], starting_points: ["reporter-api: Foo.bar"] }, { purpose: "build" });
     expect(build.system).toContain("1. 요청된 변경만 한다");
     expect(build.system).toContain("2. 읽지 않은 파일은");
@@ -97,7 +97,14 @@ describe("render", () => {
     expect(codex.combined.startsWith("<system>")).toBe(false);
     expect(codex.combined).toContain("조사만 한다");
     expect(codex.combined).toContain("## 범위와 제약");
+    // 붙여넣기용 한 덩어리에는 어떤 런타임에서도 <system> 태그를 넣지 않는다.
+    // 넣으면 받는 쪽이 사용자 입력에 낀 시스템 지시로 보고 주입 시도로 의심한다.
     const chat = renderClaude(baseSpec(), { purpose: "build" });
+    for (const r of [build, codex, chat]) {
+      expect(r.combined).not.toContain("<system>");
+      expect(r.combined).not.toContain("</system>");
+      expect(r.combined).toBe(`${r.system}\n\n${r.user}`);
+    }
     expect(chat.system).toContain("## 절대 규칙");
     expect(chat.system).not.toContain("요청된 변경만");
     // 시작점이 없으면 '위 시작점부터'라고 가리키지 않는다
