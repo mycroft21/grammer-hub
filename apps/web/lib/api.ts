@@ -50,6 +50,10 @@ export const api = {
     event: (body: { promptId: string; versionId?: string | null; action: "copy" | "fill" | "view"; slot?: string | null; payload?: Record<string, unknown> | null }) =>
       fetch("/api/prompts/events", json("POST", body)).then(j<{ ok: true }>).catch(() => ({ ok: true as const })),
   },
+  team: {
+    /** 관리자: 사람별 사용량·수락률·비용(텍스트 없음) */
+    stats: (weeks: number) => fetch(`/api/team/stats?weeks=${weeks}`).then(j<TeamStats>),
+  },
   auth: {
     me: () => fetch("/api/auth/me").then(j<MeDto>),
     logout: () => fetch("/api/auth/logout", { method: "POST" }).then(j<{ ok: true }>),
@@ -99,6 +103,14 @@ export interface CategoryPoint { category: string; accepted: number; rejected: n
 export interface RecentRunPoint { id: string; createdAt: number; latencyMs: number | null; costUsd: number; level: string; cachedTokens: number; inputTokens: number }
 export interface Collection { samples: number; sampleChars: number; feedback: Record<string, number>; finals: number; editPairs: number; runsOk: number }
 export interface Stats { weekly: WeeklyPoint[]; byCategory: CategoryPoint[]; recent: RecentRunPoint[]; collection: Collection }
+/** packages/db repo/team.ts 의 응답 모양 */
+export interface TeamMember {
+  userId: string; email: string; runsOk: number; runsError: number; lastActiveAt: number | null;
+  costUsd: number; inputTokens: number; cachedTokens: number; outputTokens: number; latencyAvgMs: number | null;
+  cards: number; accepted: number; rejected: number; muted: number; edits: number; finals: number; prefers: number;
+  prompts: number; promptVersions: number; promptRegens: number; promptCopies: number; studioCostUsd: number;
+}
+export interface TeamStats { since: number; weeks: number; members: TeamMember[]; team: Stats; weeklyActive: { weekStart: number; users: number }[] }
 
 export interface StudioUsage { inputTokens: number; cachedTokens: number; cacheWriteTokens: number; outputTokens: number; costUsd: number; latencyMs: number }
 export interface PromptRow { id: string; userId: string; title: string; purpose: string; subtype: string | null; language: string; goal: string; ticketKey: string | null; currentVersionId: string | null; archived: boolean; createdAt: number; updatedAt: number }

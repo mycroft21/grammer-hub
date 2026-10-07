@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Layout, Menu, Tooltip, Button } from "antd";
-import { EditOutlined, IdcardOutlined, HighlightOutlined, BookOutlined, HistoryOutlined, ExperimentOutlined, MoonOutlined, SunOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SettingOutlined, LogoutOutlined } from "@ant-design/icons";
+import { EditOutlined, IdcardOutlined, HighlightOutlined, BookOutlined, HistoryOutlined, ExperimentOutlined, MoonOutlined, SunOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SettingOutlined, LogoutOutlined, TeamOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { useAuth, useThemeMode } from "./providers/AppProviders";
 
@@ -14,8 +14,10 @@ const ITEMS = [
   { key: "/dictionary", label: "사전", icon: <BookOutlined /> },
   { key: "/runs", label: "기록", icon: <HistoryOutlined /> },
   { key: "/prompts", label: "프롬프트", icon: <ExperimentOutlined /> },
+  { key: "/team", label: "팀", icon: <TeamOutlined /> },
   { key: "/settings", label: "설정", icon: <SettingOutlined /> },
 ];
+const ADMIN_ONLY = new Set(["/team", "/settings"]);
 
 /** 아이콘 레일 사이드바(접힘 기본) + 콘텐츠. 모바일(<lg)에서는 상단 가로 메뉴. 로그인 모드면 관리자에게만 설정 메뉴가 보이고 아래에 이메일·로그아웃. */
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -25,7 +27,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const toggleCollapsed = () => setCollapsed((c) => { try { localStorage.setItem("gh:sider", c ? "open" : "closed"); } catch { /* noop */ } return !c; });
   const { mode, toggle } = useThemeMode();
   const me = useAuth();
-  const items = ITEMS.filter((i) => i.key !== "/settings" || !me || me.admin);
+  const items = ITEMS.filter((i) => !ADMIN_ONLY.has(i.key) || !me || me.admin);
   const selected = items.find((i) => i.key !== "/" && pathname.startsWith(i.key))?.key ?? "/";
   const logout = async () => { try { await api.auth.logout(); } finally { window.location.href = "/login"; } };
   if (pathname === "/login") return <Layout className="min-h-screen"><Layout.Content className="mx-auto w-full max-w-6xl px-4 py-4">{children}</Layout.Content></Layout>;

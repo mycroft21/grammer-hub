@@ -331,6 +331,7 @@ try {
   await p2.goto(`${BASE2}/settings`, { waitUntil: "load" });
   check("auth: non-admin is bounced from /settings", new URL(p2.url()).pathname === "/");
   check("auth: non-admin settings API is 403", (await call("/api/settings")).status === 403);
+  check("team: non-admin cannot read team stats", (await call("/api/team/stats")).status === 403 && (await p2.locator("a[href='/team']").count()) === 0);
   check("auth: non-admin can still add to the team profile from review (PATCH)", (await call("/api/settings/workspace", jsonInit("PATCH", { ops: [{ op: "add_verify", repo: "reporter-legacy", command: "./gradlew test" }] }))).status === 200);
   const corr = await call("/api/correct", jsonInit("POST", { text: "보내드릴께요 확인 부탁드립니다", profileId: "boss-slack", level: "L2" }));
   check("auth: team member can run a correction", corr.status === 200 && corr.text.includes("event: done"));
@@ -354,6 +355,18 @@ try {
   await p2.goto(`${BASE2}/settings`, { waitUntil: "load" });
   await p2.waitForSelector("[data-testid=settings-health]", { timeout: 15000 });
   check("auth: admin opens settings and sees login on with one admin", ((await p2.textContent("[data-testid=settings-health]")) ?? "").includes("로그인 켜짐 (관리자 1명"));
+  // 팀 화면: 관리자에게 팀원의 실행이 사람별로 집계되어 보이고(본문은 없음), CSV는 같은 표
+  await p2.goto(`${BASE2}/team`, { waitUntil: "load" });
+  await p2.waitForSelector("[data-testid=team-member]", { timeout: 15000 });
+  const teamText = (await p2.textContent("[data-testid=team-page]")) ?? "";
+  check("team: admin sees per-person usage for the member who ran a correction", (await p2.locator("[data-testid=team-member]").allTextContents()).includes("tester@example.com") && !teamText.includes("보내드릴께요"));
+  const teamJson = (await call("/api/team/stats?weeks=4")).json;
+  const tester = teamJson?.members?.find((m) => m.email === "tester@example.com");
+  if (!(tester?.runsOk === 1 && tester.cards >= 1 && teamJson.weeklyActive.at(-1)?.users === 1)) console.log("team stats debug:", JSON.stringify({ tester, weeklyActive: teamJson?.weeklyActive }));
+  check("team: stats count the member's run, cards and nothing textual", tester?.runsOk === 1 && tester.cards >= 1 && teamJson.weeklyActive.at(-1)?.users === 1 && !JSON.stringify(teamJson).includes("보내드릴께요"));
+  const csv = await call("/api/team/stats?format=csv");
+  // fetch().text()는 선두 BOM을 떼고 돌려주므로 헤더 줄만 본다
+  check("team: CSV export has a header and one row per member", csv.status === 200 && csv.text.replace(/^\uFEFF/, "").startsWith("email,runs_ok") && csv.text.includes("tester@example.com") && !csv.text.includes("보내드릴께요"));
   const sess = (await ctx2.cookies()).find((c) => c.name === "gh_session");
   const forged = sess.value.slice(0, -2) + (sess.value.endsWith("AA") ? "BB" : "AA");
   check("auth: a tampered session cookie is rejected", Boolean(sess) && (await fetch(`${BASE2}/api/runs`, { headers: { cookie: `gh_session=${forged}` } })).status === 401);

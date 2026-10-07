@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  createDraft, createRun, ensureUser, finishRun, getRunContext, getStats, listDictionary, listOkRunIds, listProfiles, listRecentRuns, listRules,
-  openDb, recordFeedback, recordFinal, runOwnerId, saveSuggestions, seedDefaultProfiles, upsertDictionary, upsertProfile, upsertRule,
+  createDraft, createRun, ensureUser, finishRun, getRunContext, getStats, getTeamStats, listDictionary, listOkRunIds, listProfiles, listRecentRuns, listRules,
+  openDb, recordFeedback, recordFinal, runOwnerId, saveSuggestions, seedDefaultProfiles, teamStatsCsv, upsertDictionary, upsertProfile, upsertRule,
 } from "../index";
 
 describe("db", () => {
@@ -67,6 +67,20 @@ describe("db", () => {
     expect([sa.collection.feedback["reject"], sb.collection.feedback["reject"]]).toEqual([2, 1]);
     expect(sa.weekly.reduce((n, w) => n + w.runs, 0)).toBe(2);
     expect(sb.recent.map((r) => r.id)).toEqual([rb]);
+
+    // 팀 화면: 사람별 집계(텍스트 없음) + CSV
+    ensureUser(db, "idle@team.com");
+    const t = getTeamStats(db, 8);
+    const ma = t.members.find((m) => m.email === "a@team.com")!, mb = t.members.find((m) => m.email === "b@team.com")!, mi = t.members.find((m) => m.email === "idle@team.com")!;
+    expect([ma.runsOk, mb.runsOk, mi.runsOk]).toEqual([2, 1, 0]);
+    expect([ma.rejected, ma.finals, ma.costUsd]).toEqual([2, 2, 0.02]);
+    expect(ma.lastActiveAt).not.toBeNull();
+    expect(t.weeklyActive.at(-1)?.users).toBe(2);
+    expect(t.team.collection.runsOk).toBe(3);
+    const csv = teamStatsCsv(t);
+    expect(csv.startsWith("\uFEFFemail,runs_ok")).toBe(true);
+    expect(csv.split("\n").filter(Boolean)).toHaveLength(1 + t.members.length);
+    expect(csv).not.toContain("원문");
   });
 
   it("STORE_DRAFTS=false면 원문 대신 해시만 남는다", () => {
