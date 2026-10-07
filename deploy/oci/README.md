@@ -8,14 +8,16 @@ scp -i $KEY deploy/oci/bootstrap.sh ubuntu@161.33.32.93:
 ssh -i $KEY ubuntu@161.33.32.93 'bash bootstrap.sh'          # HOST 기본값 grammer-hub.duckdns.org
 ```
 
-`bootstrap.sh`가 스왑(3GB) → 패키지 → Node 22·pnpm → Caddy → iptables 80/443 → 코드(`/opt/grammer-hub`) → `.env` 초안 → 빌드 → systemd → 백업 cron까지 한다. 여러 번 실행해도 안전하다. 저장소가 비공개면 중간에 Deploy key 공개키를 찍고 멈춘다 → GitHub › Settings › Deploy keys에 읽기 전용으로 넣고 다시 실행.
+`bootstrap.sh`가 스왑(3GB) → 패키지 → Node 22·pnpm → Caddy → iptables 80/443 → 코드(`/opt/grammer-hub`) → `.env` 초안 → 빌드 → systemd → 백업 cron까지 한다. 여러 번 실행해도 안전하다. 실행 기록은 서버의 `~/bootstrap.log`에 이어 쓴다. 부팅 직후라 자동 업데이트(apt)가 돌고 있으면 끝날 때까지(최대 10분) 기다린다. 저장소가 비공개면 중간에 Deploy key 공개키를 찍고 멈춘다 → GitHub › Settings › Deploy keys에 읽기 전용으로 넣고 다시 실행.
+
+**`.env`에 OIDC 세 값(`OIDC_ISSUER`·`OIDC_CLIENT_ID`·`OIDC_CLIENT_SECRET`)이 없으면 서비스를 시작하지 않는다.** 로그인 없는 모드로 공개되면 설정 화면(`.env` 쓰기)까지 누구나 쓸 수 있기 때문이다. 처음 실행하면 `.env`가 비어 있으므로 서비스는 꺼진(disabled) 채로 끝나는 것이 정상이다.
 
 끝나면 `.env`를 채운다:
 
 ```bash
 ssh -i $KEY ubuntu@161.33.32.93
 nano /opt/grammer-hub/.env       # ANTHROPIC_API_KEY, OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, AUTH_ALLOWED_DOMAINS, AUTH_ADMIN_EMAILS
-sudo systemctl restart grammer-hub
+sudo systemctl enable --now grammer-hub   # 처음엔 꺼져 있다. 이후 .env를 고치면 restart
 curl -s localhost:3000/api/health | python3 -m json.tool | grep -A8 '"auth"'
 ```
 
@@ -25,7 +27,7 @@ curl -s localhost:3000/api/health | python3 -m json.tool | grep -A8 '"auth"'
 | IdP 콜백 URL | `https://grammer-hub.duckdns.org/api/auth/callback` |
 | 앱 디렉터리 | `/opt/grammer-hub` (브랜치 `claude/grammar-correction-project-gr3qnk`) |
 | 서비스 | `grammer-hub.service` → `127.0.0.1:3000`, 앞단 Caddy가 HTTPS |
-| DB | `/opt/grammer-hub/apps/web/data/grammer.db`, 백업 `/var/backups/grammer-hub/` (매일 03:10, 14일) |
+| DB | `/opt/grammer-hub/apps/web/data/grammer.db`, 백업 `/var/backups/grammer-hub/` (매일 03:10 UTC = 한국 12:10, 14일) |
 | 코드 갱신 | `ssh … '/opt/grammer-hub/deploy/oci/update.sh'` (멈춤 → 빌드 → 재시작, 1GB라 5~10분 다운타임) |
 | 로그 | `journalctl -u grammer-hub -f` · `journalctl -u caddy -f` |
 
