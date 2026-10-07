@@ -1,5 +1,6 @@
 import { isAgentRuntime, type CheckResult, type PromptSpec, type Purpose } from "./spec";
 import { PURPOSES } from "./taxonomy";
+import { TICKET_CUT_LINE } from "./ticket";
 
 const VAGUE = /(좋은|적절한|잘|충분히|알맞게|괜찮은)\s|\b(good|appropriate|proper|nice|well|sufficiently|adequate)\b/i;
 const BARE_NEG = /(않는다|않을 것|말 것|금지|마라|말라)\.?$|^\s*(do not|don't|never|avoid)\b/i;
@@ -45,9 +46,11 @@ export function runChecks(spec: PromptSpec, opts: CheckOptions = {}): CheckResul
   add("criteria_verifiable", "성공 기준이 3개 이상이고 검증 가능하다", spec.success_criteria.length >= 3 && !spec.success_criteria.some((c) => VAGUE.test(c + " ")),
     `${spec.success_criteria.length}개. '좋은/적절한' 같은 말은 기준이 아닙니다.`);
   if (isAgentRuntime(spec.runtime)) {
-    const bare = spec.starting_points.filter((s) => BARE_KEYWORD.test(s.trim()));
-    add("starting_points", "저장소에서 어디부터 볼지 시작점이 있다(검색어 하나만은 아니다)", spec.starting_points.length > 0 && bare.length === 0 && spec.inputs.every((i) => /^[a-z][a-z0-9_]*$/.test(i.name)),
-      spec.starting_points.length === 0 ? "URL·경로·클래스명·검색어 중 하나는 있어야 모델이 헤매지 않습니다." : bare.length ? `'${bare.join("', '")}'는 이름 하나뿐입니다. '저장소: 클래스·메서드' 또는 '저장소: X·Y 호출부 검색'처럼 어느 저장소의 어디를 어떻게 볼지 적으세요.` : "변수명은 영문 snake_case여야 합니다.");
+    // 티켓이 잘렸을 때 코드가 맨 앞에 넣는 '원문을 먼저 읽는다' 줄은 시작점으로 세지 않는다(모델이 시작점을 안 써도 통과해 버리므로)
+    const points = spec.starting_points.filter((s) => !TICKET_CUT_LINE.test(s));
+    const bare = points.filter((s) => BARE_KEYWORD.test(s.trim()));
+    add("starting_points", "저장소에서 어디부터 볼지 시작점이 있다(검색어 하나만은 아니다)", points.length > 0 && bare.length === 0 && spec.inputs.every((i) => /^[a-z][a-z0-9_]*$/.test(i.name)),
+      points.length === 0 ? "URL·경로·클래스명·검색어 중 하나는 있어야 모델이 헤매지 않습니다." : bare.length ? `'${bare.join("', '")}'는 이름 하나뿐입니다. '저장소: 클래스·메서드' 또는 '저장소: X·Y 호출부 검색'처럼 어느 저장소의 어디를 어떻게 볼지 적으세요.` : "변수명은 영문 snake_case여야 합니다.");
     const pool = [...spec.success_criteria, ...spec.self_check];
     // 구현은 테스트·빌드·재현 같은 실행 확인, 조사·설계·검토는 '파일을 읽어 값을 인용·확인'도 인정한다
     const readOnlyPurpose = !opts.purpose || READ_ONLY_PURPOSES.includes(opts.purpose);

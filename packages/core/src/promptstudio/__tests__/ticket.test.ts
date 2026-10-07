@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { FakeProvider } from "../../providers/fake";
-import { DEMO_TICKET, DEMO_TICKET_TERSE, adfToText, buildTicketPlanPrompt, jiraIssueToTicket, parseIssueKey, redactPeople, ticketToText } from "../ticket";
-import { generatePrompt, planFromTicket, planPrompt } from "../pipeline";
+import { DEMO_TICKET, DEMO_TICKET_TERSE, adfToText, buildTicketPlanPrompt, jiraIssueToTicket, parseIssueKey, redactPeople, ticketCut, ticketToText } from "../ticket";
+import { generatePrompt, planFromTicket, planPrompt, regenerateSlot } from "../pipeline";
 import { EXAMPLE_PROFILE, applyProfileOps, cleanProfileDraft, formatProfile, glossaryFor, parseWorkspaceProfile, profileIssues, resolveRepos, suggestAliases, workspaceBlock } from "../workspace";
 import { deriveNeeds, needsCatalog } from "../needs";
 import { suggestPurpose } from "../ticket";
+import { runChecks } from "../checks";
 import type { Need } from "../spec";
 
 describe("parseIssueKey", () => {
@@ -64,6 +65,18 @@ describe("jiraIssueToTicket / ticketToText", () => {
     const t = { ...DEMO_TICKET, description: "x".repeat(10000) };
     expect(ticketToText(t, { maxDescription: 100 })).toContain("…(9900자 생략)");
   });
+  it("marks a cut description with its full length and the omitted section headings", () => {
+    const long = { ...DEMO_TICKET, description: "## 1. 개요\n" + "x".repeat(7000) + "\n## 5. Q&A\nq\nh2. 7. test 환경\nt" };
+    const text = ticketToText(long);
+    expect(text).toContain(`본문(전체 ${long.description.length}자 중 앞 6000자만 실음`);
+    expect(text).toContain("생략된 뒤쪽 절 제목: 5. Q&A · 7. test 환경");
+    expect(ticketCut(long)?.headings).toEqual(["5. Q&A", "7. test 환경"]);   // 실린 앞부분의 제목(1. 개요)은 넣지 않는다
+    expect(ticketCut(DEMO_TICKET)).toBeNull();
+    // 코드 블록 안의 '# 주석'은 제목이 아니다(잘린 지점이 블록 안이어도)
+    const withCode = { ...DEMO_TICKET, description: "x".repeat(5990) + "\n```\n" + "y".repeat(20) + "\n# 설정 변경\n```\n## 6. 배포\n```sh\n# deploy\n```" };
+    expect(ticketCut(withCode)?.headings).toEqual(["6. 배포"]);
+    expect(ticketToText(DEMO_TICKET)).not.toContain("앞 6000자만");
+  });
 });
 
 describe("ticket plan prompt + pipeline", () => {
@@ -110,6 +123,22 @@ describe("ticket plan prompt + pipeline", () => {
     while (!r.done) r = await gen.next();
     expect(r.value.spec).not.toBeNull();
     expect(r.value.spec?.runtime).toBe("claude_code");
+  });
+  it("a cut ticket puts 'read the original first' at the top of starting points (agent) or the end of context (chat), once even after regenerate", async () => {
+    const long = { ...DEMO_TICKET, description: DEMO_TICKET.description + "\n" + "x".repeat(7000) + "\n## 5. Q&A\nq" };
+    const cut = ticketCut(long)!;
+    const base = { purpose: "plan" as const, subtype: "spec", goal: "DEMO-1: Visa 상태전환 설계안", length: "short" as const, language: "ko" as const, ticket: ticketToText(long), ticketCut: cut };
+    const run = async (runtime: "claude_code" | "chat") => { const g = generatePrompt(provider, { ...base, runtime }); let r = await g.next(); while (!r.done) r = await g.next(); return r.value.spec!; };
+    const agent = await run("claude_code");
+    expect(agent.starting_points[0]).toContain("DEMO-1 원문을 먼저 읽는다");
+    expect(agent.starting_points[0]).toContain("생략된 절: 5. Q&A");
+    const regen = await regenerateSlot(provider, { ...base, runtime: "claude_code" }, agent, "starting_points", null);
+    expect(regen.spec!.starting_points.filter((p) => p.includes("원문을 먼저 읽는다"))).toHaveLength(1);
+    const chat = await run("chat");
+    expect(chat.context).toContain("DEMO-1 원문을 먼저 읽는다");
+    expect(chat.starting_points).toEqual([]);
+    // 코드가 넣은 줄만 있고 모델이 쓴 시작점이 없으면 시작점 점검은 실패해야 한다
+    expect(runChecks({ ...agent, starting_points: [agent.starting_points[0]!] }, { purpose: "plan" }).find((c) => c.id === "starting_points")?.ok).toBe(false);
   });
 });
 

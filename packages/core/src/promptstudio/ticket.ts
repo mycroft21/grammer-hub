@@ -155,16 +155,48 @@ export function jiraIssueToTicket(issue: Record<string, unknown>, baseUrl: strin
   };
 }
 
+/** 모델 입력에 싣는 본문 상한(자). 넘으면 앞부분만 싣고 잘렸다는 사실·생략된 절 제목을 함께 남긴다. */
+export const MAX_DESCRIPTION = 6000;
+/** 본문이 잘렸을 때의 표시. 생성 프롬프트에 "원문을 먼저 읽어라"를 코드가 넣는 근거(EP-1245에서 뒤쪽 Q&A·test 환경 절이 빠졌다). */
+export interface TicketCut { key: string; url: string; total: number; kept: number; headings: string[] }
+const HEADING = /^(?:#{1,6}|h[1-6]\.)\s+(.+)$/;
+// ponytail: ADF heading 노드(`## 제목`)와 위키 마크업 `h2.`만 제목으로 잡는다. 굵은 문단·펼치기(expand) 제목은 못 잡음 — 필요해지면 adfToText에서 표시를 남긴다
+export function ticketCut(t: Ticket, max = MAX_DESCRIPTION): TicketCut | null {
+  const d = t.description.trim();
+  if (d.length <= max) return null;
+  // 코드 블록(```) 안의 '# 주석' 줄은 제목이 아니다. 잘린 지점이 블록 안이면 앞쪽에서 열린 펜스 수로 시작 상태를 정한다
+  let inFence = (d.slice(0, max).match(/^```/gm)?.length ?? 0) % 2 === 1;
+  const headings: string[] = [];
+  for (const l of d.slice(max).split("\n")) {
+    if (l.trim().startsWith("```")) { inFence = !inFence; continue; }
+    const h = inFence ? null : HEADING.exec(l.trim())?.[1]?.trim();
+    if (h && headings.length < 15) headings.push(h.slice(0, 80));
+  }
+  return { key: t.key, url: t.url, total: d.length, kept: max, headings };
+}
+/** 생성 프롬프트에 코드가 넣는 한 줄. 에이전트는 시작점 맨 앞, chat은 맥락 끝(pipeline.normalizeSpec). */
+export function ticketCutLine(c: TicketCut, lang: "ko" | "en"): string {
+  return lang === "en"
+    ? `Read ${c.key} in full first (${c.url}) — this prompt carries only the first ${c.kept} of ${c.total} characters of its description.${c.headings.length ? ` Omitted sections: ${c.headings.join(" / ")}.` : ""}`
+    : `${c.key} 원문을 먼저 읽는다(${c.url}). 이 프롬프트에는 본문 ${c.total}자 중 앞 ${c.kept}자만 실렸다.${c.headings.length ? ` 생략된 절: ${c.headings.join(" / ")}.` : ""}`;
+}
+/** 코드가 넣은 줄인지(점검에서 모델이 쓴 시작점과 구분하려고). */
+export const TICKET_CUT_LINE = /^\S+ 원문을 먼저 읽는다\(|^Read \S+ in full first \(/;
+/** 같은 줄을 다시 넣지 않으려고 알아보는 앞부분(재생성마다 normalizeSpec이 다시 돈다). */
+export const ticketCutPrefix = (c: TicketCut, lang: "ko" | "en") => (lang === "en" ? `Read ${c.key} in full first` : `${c.key} 원문을 먼저 읽는다`);
+
 /** 프롬프트에 넣을 티켓 텍스트. 본문·댓글은 길이를 자르고 첨부는 이름만. */
 export function ticketToText(t: Ticket, opts: { maxDescription?: number; maxComments?: number; maxCommentChars?: number } = {}): string {
-  const maxD = opts.maxDescription ?? 6000, maxC = opts.maxComments ?? 6, maxCC = opts.maxCommentChars ?? 800;
+  const maxD = opts.maxDescription ?? MAX_DESCRIPTION, maxC = opts.maxComments ?? 6, maxCC = opts.maxCommentChars ?? 800;
+  const dCut = ticketCut(t, maxD);
   const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n) + `\n…(${s.length - n}자 생략)` : s);
   const lines = [
     `키: ${t.key} · 유형: ${t.type} · 상태: ${t.status}${t.priority ? ` · 우선순위: ${t.priority}` : ""}`,
     `제목: ${t.summary}`,
     t.labels.length ? `라벨: ${t.labels.join(", ")}` : "",
     t.components.length ? `컴포넌트: ${t.components.join(", ")}` : "",
-    "", "본문:", cut(t.description.trim() || "(없음)", maxD),
+    "", dCut ? `본문(전체 ${dCut.total}자 중 앞 ${dCut.kept}자만 실음 — 뒤쪽은 원문에서 확인 필요):` : "본문:", cut(t.description.trim() || "(없음)", maxD),
+    dCut?.headings.length ? `생략된 뒤쪽 절 제목: ${dCut.headings.join(" · ")}` : "",
   ];
   if (t.comments.length) {
     lines.push("", `댓글 (최근 ${Math.min(maxC, t.comments.length)}/${t.comments.length}):`);

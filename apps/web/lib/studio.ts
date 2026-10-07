@@ -1,5 +1,5 @@
 import "server-only";
-import { PromptLanguage, Purpose, defaultRuntime, renderRulesSnapshot, ticketToText, type StudioContext, type StudioRequest } from "@grammer-hub/core";
+import { PromptLanguage, Purpose, defaultRuntime, renderRulesSnapshot, ticketCut, ticketToText, type StudioContext, type StudioRequest } from "@grammer-hub/core";
 import { fetchTicket } from "./jira";
 import { loadWorkspace } from "./workspace";
 import { listRules } from "@grammer-hub/db";
@@ -17,6 +17,8 @@ export async function toStudioContext(req: StudioRequest): Promise<{ ok: true; c
     if (!t.ok) return { ok: false, res: Response.json({ error: { code: "ticket_unavailable", message: t.message } }, { status: t.status }) };
     ctx.ticket = ticketToText(t.ticket);
     ctx.ticketKey = t.ticket.key;
+    const cut = ticketCut(t.ticket);
+    if (cut) ctx.ticketCut = cut;
   }
   return { ok: true, ctx };
 }

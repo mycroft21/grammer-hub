@@ -7,7 +7,7 @@ import { PartialSlotParser } from "./partial";
 import { renderClaude, type RenderedPrompt } from "./render/claude";
 import { runChecks } from "./checks";
 import { DOMAINS, PURPOSES, findSubtype } from "./taxonomy";
-import { TicketPlanRaw, buildTicketPlanPrompt, suggestPurpose, type Ticket, type TicketPlanResult } from "./ticket";
+import { TicketPlanRaw, buildTicketPlanPrompt, suggestPurpose, ticketCutLine, ticketCutPrefix, type Ticket, type TicketPlanResult } from "./ticket";
 import { UNIVERSAL_NEEDS, deriveNeeds } from "./needs";
 import { resolveRepos, type WorkspaceProfile } from "./workspace";
 import { agentDefaultsFor } from "./agent-defaults";
@@ -177,6 +177,12 @@ export function normalizeSpec(spec: PromptSpec, ctx: StudioContext): PromptSpec 
     if (spec.output_contract.structure.trim().length < 5) spec.output_contract.structure = ad.report.structure[spec.language];
     // 질문 정책도 목적이 정하면 코드가 정한다(화면 값은 서버에 오지 않고, 모델이 고르면 매번 달라진다)
     if (ad.clarify) spec.clarify_policy = ad.clarify.policy;
+  }
+  // 티켓 본문이 잘렸으면 받는 쪽이 원문을 먼저 읽게 한다. 모델이 빠뜨리지 않도록 코드가 넣고, 재생성 때 겹치지 않게 같은 줄은 지우고 다시 넣는다
+  if (ctx.ticketCut) {
+    const line = ticketCutLine(ctx.ticketCut, spec.language), prefix = ticketCutPrefix(ctx.ticketCut, spec.language);
+    if (isAgentRuntime(spec.runtime)) spec.starting_points = [line, ...spec.starting_points.filter((p) => !p.startsWith(prefix))];
+    else spec.context = [...(spec.context ?? "").split("\n").filter((l) => !l.startsWith(prefix)), line].join("\n").trim();
   }
   return spec;
 }

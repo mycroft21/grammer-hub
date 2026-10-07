@@ -5,6 +5,7 @@ import { needsCatalog, needsRules } from "./needs";
 import { hasProfile, workspaceBlock, type WorkspaceProfile } from "./workspace";
 import { agentDefaultsFor } from "./agent-defaults";
 import type { SystemBlock } from "../prompt/build";
+import type { TicketCut } from "./ticket";
 
 export const STUDIO_PROMPT_VERSION = "0.5.1";
 
@@ -119,6 +120,7 @@ export interface StudioContext {
   styleRules?: string | null | undefined;    // includeStyleRules일 때만 (글쓰기)
   ticket?: string | null | undefined;        // 이슈 트래커 티켓 텍스트(ticketToText). 있으면 맥락·시작점의 근거
   ticketKey?: string | null | undefined;     // 이슈 키(프로필의 프로젝트 뜻을 찾는 데 쓴다)
+  ticketCut?: TicketCut | null | undefined;  // 본문이 잘렸으면 그 표시(normalizeSpec이 "원문을 먼저 읽어라"를 넣는다)
   /** 사용자가 확정한 시작점·맥락·대상 저장소·코드에서 확인할 것 */
   hints?: { startingPoints?: string[] | undefined; context?: string | undefined; repos?: string[] | undefined; verifyInRepo?: string[] | undefined } | null | undefined;
   /** 작업 공간 프로필(루트 studio.workspace.json). 없으면 null */
