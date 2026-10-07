@@ -195,11 +195,12 @@ export function ticketToText(t: Ticket, opts: { maxDescription?: number; maxComm
     `제목: ${t.summary}`,
     t.labels.length ? `라벨: ${t.labels.join(", ")}` : "",
     t.components.length ? `컴포넌트: ${t.components.join(", ")}` : "",
-    "", dCut ? `본문(전체 ${dCut.total}자 중 앞 ${dCut.kept}자만 실음 — 뒤쪽은 원문에서 확인 필요):` : "본문:", cut(t.description.trim() || "(없음)", maxD),
+    // 머리말이 출처다: 본문 = 요구사항 원문, 댓글 = 그 뒤의 논의·결정. 분류·생성 모두 맥락 줄마다 이 출처를 붙인다
+    "", dCut ? `본문(요구사항 원문 · 전체 ${dCut.total}자 중 앞 ${dCut.kept}자만 실음 — 뒤쪽은 원문에서 확인 필요):` : "본문(요구사항 원문):", cut(t.description.trim() || "(없음)", maxD),
     dCut?.headings.length ? `생략된 뒤쪽 절 제목: ${dCut.headings.join(" · ")}` : "",
   ];
   if (t.comments.length) {
-    lines.push("", `댓글 (최근 ${Math.min(maxC, t.comments.length)}/${t.comments.length}):`);
+    lines.push("", `댓글(본문 이후의 논의·결정, 오래된 순 — 최근 ${Math.min(maxC, t.comments.length)}/${t.comments.length}):`);
     for (const c of t.comments.slice(-maxC)) lines.push(`- [${c.date}] ${c.author}: ${cut(c.text.trim(), maxCC).replace(/\n+/g, " ")}`);
   }
   if (t.attachments.length) lines.push("", `첨부(내용은 읽지 못함, 이름만): ${t.attachments.map((a) => a.name).join(", ")}`);
@@ -276,7 +277,7 @@ export function buildTicketPlanPrompt(ticketText: string, opts: TicketPlanOption
     "- '검토 요청', '연동 가능 여부', '일정 산정'처럼 코드보다 조사·판단이 핵심이면 리서치 또는 기획.",
     "- goal: 티켓 표현을 살려 한두 문장. 결과물이 무엇인지 드러나게. 사람 이름·인사말·담당자 의견은 빼고 핵심만.",
     "- starting_points: '저장소: 대상' 형태로 한 줄에 하나(예: 'reporter-api: MerchantServiceCommandService.updateMasterCardStatus', 'eximbay-partner: Set-Cookie·addCookie 호출부 전체 검색'). 티켓에 적힌 클래스·메서드·파일·URL·화면을 그대로 옮기고, 없으면 검색어를 한 줄로 묶는다. 'cookie', 'session'처럼 단어만 나열하지 않는다.",
-    "- context: 티켓에서 확정된 사실만(정책, 일정, 계정 구조, 조사 결과). 담당자의 의견·입장·인사말은 넣지 않는다. 추측 금지.",
+    "- context: 티켓에서 확정된 사실만(정책, 일정, 계정 구조, 조사 결과). 담당자의 의견·입장·인사말은 넣지 않는다. 추측 금지. 줄마다 출처를 앞에 붙인다: 본문에서 온 것은 `[본문]`, 댓글에서 온 결정·변경은 `[댓글 YYYY-MM-DD]`(그 댓글의 날짜). 댓글이 본문의 요구를 바꾸면 '본문의 X → Y'로 무엇이 바뀌었는지 쓴다.",
     "- 모든 텍스트는 한국어(코드 식별자·영문 고유명사는 원문).",
     "",
     needsRules(),

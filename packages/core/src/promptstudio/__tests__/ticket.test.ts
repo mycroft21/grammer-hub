@@ -6,6 +6,7 @@ import { EXAMPLE_PROFILE, applyProfileOps, cleanProfileDraft, formatProfile, glo
 import { deriveNeeds, needsCatalog } from "../needs";
 import { suggestPurpose } from "../ticket";
 import { runChecks } from "../checks";
+import { buildGeneratePrompt, buildRegeneratePrompt } from "../meta-prompt";
 import type { Need } from "../spec";
 
 describe("parseIssueKey", () => {
@@ -68,7 +69,7 @@ describe("jiraIssueToTicket / ticketToText", () => {
   it("marks a cut description with its full length and the omitted section headings", () => {
     const long = { ...DEMO_TICKET, description: "## 1. 개요\n" + "x".repeat(7000) + "\n## 5. Q&A\nq\nh2. 7. test 환경\nt" };
     const text = ticketToText(long);
-    expect(text).toContain(`본문(전체 ${long.description.length}자 중 앞 6000자만 실음`);
+    expect(text).toContain(`본문(요구사항 원문 · 전체 ${long.description.length}자 중 앞 6000자만 실음`);
     expect(text).toContain("생략된 뒤쪽 절 제목: 5. Q&A · 7. test 환경");
     expect(ticketCut(long)?.headings).toEqual(["5. Q&A", "7. test 환경"]);   // 실린 앞부분의 제목(1. 개요)은 넣지 않는다
     expect(ticketCut(DEMO_TICKET)).toBeNull();
@@ -76,6 +77,19 @@ describe("jiraIssueToTicket / ticketToText", () => {
     const withCode = { ...DEMO_TICKET, description: "x".repeat(5990) + "\n```\n" + "y".repeat(20) + "\n# 설정 변경\n```\n## 6. 배포\n```sh\n# deploy\n```" };
     expect(ticketCut(withCode)?.headings).toEqual(["6. 배포"]);
     expect(ticketToText(DEMO_TICKET)).not.toContain("앞 6000자만");
+  });
+  it("labels the description and comments as sources, and both prompts ask to keep per-line source tags", async () => {
+    const t = { ...DEMO_TICKET, comments: [{ author: "담당자", date: "2026-10-01", text: "신규 엔드포인트로 가기로 함" }] };
+    const text = ticketToText(t);
+    expect(text).toContain("본문(요구사항 원문):");
+    expect(text).toContain("댓글(본문 이후의 논의·결정, 오래된 순 — 최근 1/1):");
+    expect(buildTicketPlanPrompt(text).system.map((b) => b.text).join("\n")).toContain("[댓글 YYYY-MM-DD]");
+    expect(buildGeneratePrompt({ purpose: "plan", subtype: "spec", goal: "DEMO-1 설계안", length: "short", language: "en", runtime: "claude_code", ticket: text }).user).toContain("[Comment YYYY-MM-DD]");
+    const regenCtx = { purpose: "plan" as const, subtype: "spec", goal: "DEMO-1 설계안", length: "short" as const, language: "ko" as const, runtime: "claude_code" as const, ticket: text };
+    const g = generatePrompt(new FakeProvider(0), regenCtx); let r = await g.next(); while (!r.done) r = await g.next();
+    const spec = r.value.spec!;
+    expect(buildRegeneratePrompt(regenCtx, spec, "context", null).user).toContain("[본문]·[댓글 YYYY-MM-DD]");
+    expect(buildRegeneratePrompt(regenCtx, spec, "goal", null).user).not.toContain("[본문]·[댓글");
   });
 });
 
