@@ -215,6 +215,34 @@ export class ClaudeCliProvider implements CorrectionProvider {
     });
   }
 
+  /**
+   * 연결 확인용 아주 짧은 실제 호출. `--version`(health)은 설치만 보므로 로그인이 풀리거나 토큰이 틀려도 통과한다.
+   * 이것은 모델까지 한 번 불러 로그인·토큰을 확인한다 — 구독 사용량이 조금 든다(설정 화면의 관리자 버튼에서만 부른다).
+   */
+  async probe(timeoutMs = 60_000): Promise<{ ok: boolean; detail: string }> {
+    return new Promise((resolve) => {
+      let out = ""; let err = ""; let done = false;
+      const finish = (v: { ok: boolean; detail: string }) => { if (!done) { done = true; clearTimeout(t); resolve(v); } };
+      let child: ReturnType<typeof spawn>;
+      try {
+        child = spawn(this.bin, [...this.binArgs, "-p", "--output-format", "json", "--model", this.model, ...ISOLATION_ARGS], { cwd: this.cwd, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" } });
+      } catch (e) { resolve({ ok: false, detail: `claude 실행 실패: ${String(e)}` }); return; }
+      const t = setTimeout(() => { child.kill("SIGTERM"); finish({ ok: false, detail: `${Math.round(timeoutMs / 1000)}초 안에 응답이 없습니다` }); }, timeoutMs);
+      child.stdout?.on("data", (d: Buffer) => { out += d.toString("utf8"); });
+      child.stderr?.on("data", (d: Buffer) => { err += d.toString("utf8"); });
+      child.on("error", (e: NodeJS.ErrnoException) => finish({ ok: false, detail: e.code === "ENOENT" ? `claude CLI를 찾을 수 없습니다(${this.bin})` : `claude 실행 실패: ${e.message}` }));
+      child.on("close", (code) => {
+        const last = out.trim().split("\n").at(-1) ?? "";
+        let r: { is_error?: boolean; result?: string } | null = null;
+        try { r = JSON.parse(last) as { is_error?: boolean; result?: string }; } catch { r = null; }
+        if (code === 0 && r && !r.is_error) finish({ ok: true, detail: `응답 확인 · ${this.model}` });
+        else finish({ ok: false, detail: (r?.result || err || out || `종료 코드 ${code}`).trim().slice(0, 300) });
+      });
+      child.stdin?.on("error", () => { /* 조기 종료 시 EPIPE 무시 */ });
+      child.stdin?.end("Reply with the single word OK.");
+    });
+  }
+
   /** 구독이라 실제 청구는 0이지만, 비교를 위해 API 요금 기준 추정치를 남긴다. */
   cost(usage: ProviderUsage): number { return costUsd(this.model, usage); }
 }

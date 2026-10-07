@@ -1,8 +1,8 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, App, Button, Card, Input, Segmented, Select, Skeleton, Space, Switch, Tag, Tooltip, Typography } from "antd";
-import { CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
-import { api, type HealthDto, type SettingDefDto, type SettingsDto, type WorkspaceFileDto } from "@/lib/api";
+import { CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
+import { api, type HealthDto, type ProbeDto, type ProbeTarget, type SettingDefDto, type SettingsDto, type WorkspaceFileDto } from "@/lib/api";
 import { PageHeader, errMsg } from "./_shared";
 import { useThemeMode } from "@/components/providers/AppProviders";
 import { WorkspaceEditor } from "@/components/settings/WorkspaceEditor";
@@ -26,7 +26,6 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [restart, setRestart] = useState<string[]>([]);
   const [health, setHealth] = useState<HealthDto | null>(null);
-  const [probing, setProbing] = useState(false);
   const [ws, setWs] = useState<WorkspaceFileDto | null>(null);
 
   const reload = useCallback(async () => {
@@ -51,10 +50,6 @@ export function SettingsPage() {
       setHealth(await api.settings.health(false));
     } catch (e) { message.error(`저장 실패: ${errMsg(e)}`); } finally { setSaving(false); }
   };
-  const probe = async () => {
-    setProbing(true);
-    try { setHealth(await api.settings.health(true)); } catch (e) { message.error(`연결 확인 실패: ${errMsg(e)}`); } finally { setProbing(false); }
-  };
   /** 프로필 저장 후 상단 상태 줄(프로필 n개 저장소)도 맞춘다 */
   const onWorkspaceSaved = async (f: WorkspaceFileDto) => { setWs(f); try { setHealth(await api.settings.health(false)); } catch { /* 상태 줄만 */ } };
 
@@ -69,8 +64,8 @@ export function SettingsPage() {
 
       {health && (
         <Alert type={health.cloud.ready ? "success" : "warning"} showIcon
-          message={<span data-testid="settings-health">클라우드 자리: <b>{health.cloud.backend}</b> · 모델 {health.cloud.model} · {health.cloud.ready ? "준비됨" : "준비 안 됨 — API 키를 넣거나 클라우드 방식을 바꾸세요"} · Jira {health.jira.configured ? "켜짐" : "꺼짐"} · 로그인 {health.auth?.enabled ? `켜짐 (관리자 ${health.auth.admins}명${health.auth.sessionSecretSet ? "" : " · AUTH_SECRET 없음"})` : "꺼짐(단일 사용자)"} · 프로필 {health.workspace.exists ? `${health.workspace.repos ?? 0}개 저장소` : "없음"}{health.cloud.health ? <> · 실제 호출 {health.cloud.health.ok ? <CheckCircleOutlined style={{ color: "var(--color-primary)" }} /> : <CloseCircleOutlined style={{ color: "var(--color-danger)" }} />} {health.cloud.health.detail ?? ""}</> : null}</span>}
-          action={<Button size="small" loading={probing} onClick={() => void probe()}>연결 확인</Button>} />
+          message={<span data-testid="settings-health">클라우드 자리: <b>{health.cloud.backend}</b> · 모델 {health.cloud.model} · {health.cloud.ready ? "준비됨" : "준비 안 됨 — API 키를 넣거나 클라우드 방식을 바꾸세요"} · Jira {health.jira.configured ? "켜짐" : "꺼짐"} · 로그인 {health.auth?.enabled ? `켜짐 (관리자 ${health.auth.admins}명${health.auth.sessionSecretSet ? "" : " · AUTH_SECRET 없음"})` : "꺼짐(단일 사용자)"} · 프로필 {health.workspace.exists ? `${health.workspace.repos ?? 0}개 저장소` : "없음"}</span>}
+          description={<Typography.Text type="secondary" style={small}>실제 연결은 아래 카드마다 있는 &apos;연결 확인&apos;으로 봅니다.</Typography.Text>} />
       )}
       {restart.length > 0 && <Alert type="info" showIcon message={`재시작 필요: ${restart.join(", ")} — 터미널에서 서버를 다시 띄우면(pnpm start) 반영됩니다.`} closable onClose={() => setRestart([])} />}
       {!data.exists && <Alert type="info" showIcon message={`${data.envFile} 파일이 아직 없습니다. 저장하면 .env.example을 바탕으로 만들어집니다.`} />}
@@ -109,6 +104,7 @@ export function SettingsPage() {
               );
             })}
           </div>
+          {PROBES[g] && <ProbeBar dirty={dirty} targets={PROBES[g]!.map((t) => (t.target === "cloud" && (effective("CLOUD_BACKEND") || defaultOf("CLOUD_BACKEND")) === "claude-cli" ? { ...t, note: "claude -p로 짧게 한 번 실제 호출합니다(구독 사용량이 조금 듭니다)" } : t))} />}
         </Card>
       ))}
 
@@ -117,6 +113,55 @@ export function SettingsPage() {
       <Typography.Text type="secondary" style={small}>
         비밀값(API 키·토큰)은 이 컴퓨터의 .env에만 저장되고 화면에는 끝 4자만 보입니다. 이 앱은 인증 없이 로컬에서 쓰는 단일 사용자용이므로, 다른 사람에게 줄 때는 각자 자기 컴퓨터에서 설정하게 하세요. 터미널에서 확인하려면 <code>pnpm health</code>.
       </Typography.Text>
+    </div>
+  );
+}
+
+/** 카드별 연결 확인 대상. 실제 외부 호출을 하므로 관리자만(서버가 requireAdmin). */
+const PROBES: Partial<Record<SettingDefDto["group"], { target: ProbeTarget; label: string; note?: string }[]>> = {
+  backend: [{ target: "cloud", label: "모델 연결 확인" }, { target: "local", label: "로컬 LLM 확인" }],
+  jira: [{ target: "jira", label: "Jira 연결 확인", note: "계정 정보(/myself)를 읽어 봅니다" }],
+  team: [{ target: "oidc", label: "로그인 설정 확인", note: "발급자 문서 → 콜백 URL → 클라이언트 시크릿 순으로 봅니다" }],
+};
+const STATE_ICON = {
+  ok: <CheckCircleOutlined style={{ color: "var(--color-primary)" }} />,
+  warn: <ExclamationCircleOutlined style={{ color: "var(--ant-color-warning)" }} />,
+  fail: <CloseCircleOutlined style={{ color: "var(--color-danger)" }} />,
+} as const;
+
+function ProbeBar({ targets, dirty }: { targets: { target: ProbeTarget; label: string; note?: string }[]; dirty: boolean }) {
+  const { message } = App.useApp();
+  const [results, setResults] = useState<Partial<Record<ProbeTarget, ProbeDto>>>({});
+  const [busy, setBusy] = useState<ProbeTarget | null>(null);
+  const run = async (t: ProbeTarget) => {
+    setBusy(t);
+    try { const r = await api.settings.probe(t); setResults((x) => ({ ...x, [t]: r })); }
+    catch (e) { message.error(`연결 확인 실패: ${errMsg(e)}`); }
+    finally { setBusy(null); }
+  };
+  const small = { fontSize: 12 } as const;
+  return (
+    <div className="mt-3 flex flex-col gap-2 border-t pt-3" style={{ borderColor: "var(--ant-color-border-secondary)" }}>
+      {targets.map((t) => {
+        const r = results[t.target];
+        return (
+          <div key={t.target}>
+            <Space wrap>
+              <Button size="small" data-testid={`probe-${t.target}`} loading={busy === t.target} disabled={busy !== null && busy !== t.target} onClick={() => void run(t.target)}>{t.label}</Button>
+              {t.note && <Typography.Text type="secondary" style={small}>{t.note}</Typography.Text>}
+              {dirty && <Typography.Text type="warning" style={small}>저장한 값으로 확인합니다</Typography.Text>}
+            </Space>
+            {r && (
+              <div className="mt-1 flex flex-col gap-0.5" data-testid={`probe-result-${t.target}`}>
+                {r.steps.map((s, i) => (
+                  <Typography.Text key={i} style={small}>{STATE_ICON[s.state]} <b>{s.label}</b> {s.detail}</Typography.Text>
+                ))}
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>{new Date(r.checkedAt).toLocaleTimeString("ko-KR")} 확인</Typography.Text>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

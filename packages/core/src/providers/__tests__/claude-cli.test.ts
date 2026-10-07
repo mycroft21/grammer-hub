@@ -132,4 +132,20 @@ describe("ClaudeCliProvider", () => {
     expect(r.value.rendered?.user).toContain("{{code}}");
     void SPEC_SCHEMA;
   });
+  it("probe는 --version이 아니라 실제로 짧게 불러, 로그인·토큰이 틀리면 실패로 돌려준다", async () => {
+    // --version은 통과하지만 실제 호출은 인증 오류를 내는 대역(토큰 만료·로그아웃 상황)
+    const bad = fakeCli(`
+      if (!args.includes("-p") || args[args.indexOf("--output-format") + 1] !== "json") process.exit(9);
+      process.stdout.write(JSON.stringify({ type: "result", subtype: "success", is_error: true, result: "Invalid API key · Please run /login" }) + "\\n"); process.exit(1);
+    `);
+    const p = new ClaudeCliProvider({ bin: process.execPath, binArgs: [bad] });
+    expect((await p.health()).ok).toBe(true);
+    const r = await p.probe();
+    expect(r).toMatchObject({ ok: false, detail: expect.stringContaining("Invalid API key") });
+    const good = fakeCli(`
+      if (!stdin.includes("OK")) process.exit(8);
+      process.stdout.write(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "OK" }) + "\\n");
+    `);
+    expect(await new ClaudeCliProvider({ bin: process.execPath, binArgs: [good], model: "m1" }).probe()).toEqual({ ok: true, detail: "응답 확인 · m1" });
+  });
 });

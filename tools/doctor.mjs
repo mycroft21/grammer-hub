@@ -136,6 +136,7 @@ try {
   if (h.code.head && head && h.code.head !== head) warn(`서버가 보는 코드(${h.code.head})와 작업 트리(${head})가 다릅니다 → 재빌드·재시작`);
   if (!h.cloud.ready) bad(`서버 기준으로 클라우드 백엔드 준비 안 됨 (${JSON.stringify(h.cloud)}) → .env 수정 후 서버 재시작`);
   if (h.cloud.health) (h.cloud.health.ok ? ok : bad)(`백엔드 헬스: ${h.cloud.health.detail ?? "ok"}`);
+  else if (h.cloud.probeIgnored) warn(`백엔드 실제 호출을 건너뜀 — ${h.cloud.probeIgnored}`);
   else if (!PROBE) console.log("  (백엔드 실제 호출 확인은 --probe)");
 } catch { warn(`localhost:${PORT} 에 서버 없음 — pnpm start 후 다시 실행하면 서버 상태까지 봅니다`); }
 

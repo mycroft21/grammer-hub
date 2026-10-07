@@ -17,10 +17,13 @@ function git(args: string[]): string | null {
 
 /**
  * 상태 점검: 어떤 백엔드로 도는지, 그 백엔드가 살아 있는지, 코드·빌드가 언제 것인지.
- * `curl localhost:3000/api/health` 또는 `pnpm doctor`가 본다. 비밀값은 내지 않는다.
+ * `curl localhost:3000/api/health` 또는 `pnpm health`가 본다. 비밀값은 내지 않는다.
+ * 로그인 모드에서는 공개 경로라 `?probe=1`(실제 백엔드 호출)을 무시한다 — 밖에서 반복 호출하면 매번 프로세스가 뜬다.
+ * 그때의 실제 확인은 설정 화면의 관리자 전용 '연결 확인'(POST /api/settings/probe).
  */
 export async function GET(req: Request): Promise<Response> {
-  const probe = new URL(req.url).searchParams.get("probe") === "1";
+  const probeRequested = new URL(req.url).searchParams.get("probe") === "1";
+  const probe = probeRequested && !env.authEnabled;
   const backend = env.fakeProvider ? "fake" : env.cloudBackend === "claude-cli" ? "claude-cli" : "api";
   const cloud = getProvider("cloud");
   let health: { ok: boolean; detail?: string } | null = null;
@@ -41,6 +44,7 @@ export async function GET(req: Request): Promise<Response> {
       ...(backend === "claude-cli" ? { cliPath: env.claudeCliPath } : {}),
       ...(backend === "api" ? { hasApiKey: env.hasAnthropicKey } : {}),
       health,
+      ...(probeRequested && !probe ? { probeIgnored: "로그인 모드에서는 공개 health의 실제 호출을 하지 않습니다. 설정 화면의 연결 확인(관리자)을 쓰세요." } : {}),
     },
     defaultProvider: env.defaultProvider,
     jira: { configured: jiraConfigured(), baseUrl: env.jiraBaseUrl || null },

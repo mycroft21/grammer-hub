@@ -69,6 +69,8 @@ export const api = {
     /** 검토 화면의 "프로필에 추가" — 별칭·검증 명령·저장소를 파일에 병합 */
     patchWorkspace: (ops: ProfileOp[]) => fetch("/api/settings/workspace", json("PATCH", { ops })).then(j<{ ok: true; changes: string[]; repos: number; workspace: WorkspaceStatus }>),
     health: (probe: boolean) => fetch(`/api/health${probe ? "?probe=1" : ""}`).then(j<HealthDto>),
+    /** 관리자: 대상별 연결 확인(실제 외부 호출) */
+    probe: (target: ProbeTarget) => fetch("/api/settings/probe", json("POST", { target })).then(j<ProbeDto>),
   },
   samples: {
     list: () => fetch("/api/samples").then(j<WritingSample[]>),
@@ -114,6 +116,8 @@ export interface TeamMember {
 }
 export interface TeamStats { since: number; weeks: number; members: TeamMember[]; team: Stats; weeklyActive: { weekStart: number; users: number }[] }
 
+export type ProbeTarget = "cloud" | "local" | "jira" | "oidc";
+export interface ProbeDto { target: ProbeTarget; checkedAt: number; ok: boolean; summary: string; steps: { label: string; state: "ok" | "fail" | "warn"; detail: string }[] }
 /** packages/db repo/prompt-runs.ts 의 행 모양(원문 없음) */
 export interface PromptRun {
   id: string; userId: string; kind: "plan" | "ticket" | "generate" | "regenerate"; purpose: string | null; subtype: string | null; ticketKey: string | null;

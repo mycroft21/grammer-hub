@@ -21,7 +21,8 @@ const server = spawn(process.execPath, [require.resolve("next/dist/bin/next"), "
   cwd: new URL("..", import.meta.url).pathname,
   // 작업 공간 프로필은 예시의 임시 복사본(DEMO-2의 [partner] 태그 → eximbay-partner 확정 경로를 검사)
   // 설정 화면 검사는 실제 .env를 건드리지 않도록 GH_ENV_FILE을 임시 파일로 돌린다
-  env: { ...process.env, DATABASE_URL: `file:${join(dir, "e2e.db")}`, FAKE_PROVIDER: "1", ALLOWED_EMAIL: "e2e@example.com", WORKSPACE_PROFILE: profilePath, GH_ENV_FILE: join(dir, "e2e.env") },
+  // Jira는 빈 값으로 고정한다: Next가 .env를 자동으로 읽어 실제 계정으로 외부 호출을 하지 않게(빈 값도 "설정됨"이라 .env가 덮지 않는다)
+  env: { ...process.env, DATABASE_URL: `file:${join(dir, "e2e.db")}`, FAKE_PROVIDER: "1", ALLOWED_EMAIL: "e2e@example.com", WORKSPACE_PROFILE: profilePath, GH_ENV_FILE: join(dir, "e2e.env"), JIRA_BASE_URL: "", JIRA_EMAIL: "", JIRA_API_TOKEN: "" },
   stdio: ["ignore", "pipe", "pipe"], detached: true,
 });
 const extraStops = [];
@@ -282,6 +283,14 @@ try {
   await page.goto(`http://127.0.0.1:${PORT}/settings`, { waitUntil: "load" });
   await page.waitForSelector("[data-testid=settings-page]", { timeout: 15000 });
   check("settings shows backend health line", ((await page.textContent("[data-testid=settings-health]")) ?? "").includes("fake"));
+  // 카드별 연결 확인: 모델(가짜)은 정상, Jira는 설정이 없어 실패로 구분해 보인다. 로그인 없는 모드라 공개 health의 probe도 그대로 돈다
+  await page.click("[data-testid=probe-cloud]");
+  await page.waitForSelector("[data-testid=probe-result-cloud]", { timeout: 10000 });
+  await page.click("[data-testid=probe-jira]");
+  await page.waitForSelector("[data-testid=probe-result-jira]", { timeout: 10000 });
+  check("probe: model ok and jira reports missing settings per card", ((await page.textContent("[data-testid=probe-result-cloud]")) ?? "").includes("가짜 모델")
+    && ((await page.textContent("[data-testid=probe-result-jira]")) ?? "").includes("셋 다"));
+  check("probe: public health still probes when login is off", (await (await fetch(`http://127.0.0.1:${PORT}/api/health?probe=1`)).json()).cloud?.health?.ok === true);
   await fillUntil(page, "[data-testid=setting-LOG_FILE] input", "/tmp/gh-e2e.log", "[data-testid=settings-save]:not([disabled])");
   await page.click("[data-testid=settings-save]");
   await page.waitForSelector("text=저장했습니다", { timeout: 5000 });
@@ -345,7 +354,7 @@ try {
   const server2 = spawn(process.execPath, [require.resolve("next/dist/bin/next"), "start", "-p", PORT2], {
     cwd: new URL("..", import.meta.url).pathname,
     env: { ...process.env, DATABASE_URL: `file:${join(dir, "team.db")}`, FAKE_PROVIDER: "1", WORKSPACE_PROFILE: profile2, GH_ENV_FILE: join(dir, "team.env"),
-      OIDC_ISSUER: idp.issuer, OIDC_CLIENT_ID: "gh-e2e", OIDC_CLIENT_SECRET: CLIENT_SECRET, AUTH_SECRET: "e2e-session-secret-0123456789",
+      OIDC_ISSUER: idp.issuer, OIDC_CLIENT_ID: "gh-e2e", OIDC_CLIENT_SECRET: CLIENT_SECRET, APP_URL: "", JIRA_BASE_URL: "", JIRA_EMAIL: "", JIRA_API_TOKEN: "", AUTH_SECRET: "e2e-session-secret-0123456789",
       AUTH_ALLOWED_DOMAINS: "example.com", AUTH_ADMIN_EMAILS: "admin@example.com" },
     stdio: ["ignore", "pipe", "pipe"], detached: true,
   });
@@ -360,6 +369,9 @@ try {
   check("auth: unauthenticated page is redirected to /login with next", p2.url().includes("/login?next=%2Fruns"));
   check("auth: unauthenticated API gets 401", (await fetch(`${BASE2}/api/runs`)).status === 401);
   check("auth: health stays reachable without a session and reports login on", (await (await fetch(`${BASE2}/api/health`)).json()).auth?.enabled === true);
+  const pubProbe = await (await fetch(`${BASE2}/api/health?probe=1`)).json();
+  check("auth: public health ignores probe=1 in login mode", pubProbe.cloud?.health === null && typeof pubProbe.cloud?.probeIgnored === "string");
+  check("auth: probe API needs a session", (await fetch(`${BASE2}/api/settings/probe`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: "cloud" }) })).status === 401);
 
   idp.state.email = "tester@example.com";
   await p2.click("[data-testid=login-button]");
@@ -371,7 +383,7 @@ try {
   check("auth: non-admin does not see the settings menu", (await p2.locator("a[href='/settings']").count()) === 0);
   await p2.goto(`${BASE2}/settings`, { waitUntil: "load" });
   check("auth: non-admin is bounced from /settings", new URL(p2.url()).pathname === "/");
-  check("auth: non-admin settings API is 403", (await call("/api/settings")).status === 403);
+  check("auth: non-admin settings API is 403", (await call("/api/settings")).status === 403 && (await call("/api/settings/probe", jsonInit("POST", { target: "cloud" }))).status === 403);
   check("team: non-admin cannot read team stats", (await call("/api/team/stats")).status === 403 && (await p2.locator("a[href='/team']").count()) === 0);
   check("auth: non-admin can still add to the team profile from review (PATCH)", (await call("/api/settings/workspace", jsonInit("PATCH", { ops: [{ op: "add_verify", repo: "reporter-legacy", command: "./gradlew test" }] }))).status === 200);
   const corr = await call("/api/correct", jsonInit("POST", { text: "보내드릴께요 확인 부탁드립니다", profileId: "boss-slack", level: "L2" }));
@@ -393,6 +405,8 @@ try {
   check("auth: admin logs in", meAdmin?.email === "admin@example.com" && meAdmin.admin === true);
   check("auth: admin does not see the other member's runs or stats", (await call("/api/runs")).json?.length === 0 && (await call("/api/stats")).json?.collection?.runsOk === 0);
   check("auth: admin settings API is 200", (await call("/api/settings")).status === 200);
+  const oidcProbe = (await call("/api/settings/probe", jsonInit("POST", { target: "oidc" }))).json;
+  check("probe: admin checks OIDC issuer, callback and client against the IdP", oidcProbe?.ok === true && oidcProbe.steps.map((x) => `${x.label}:${x.state}`).join(",") === "발급자:ok,콜백 URL:warn,클라이언트:ok" && !JSON.stringify(oidcProbe).includes("e2e-secret"));
   await p2.goto(`${BASE2}/settings`, { waitUntil: "load" });
   await p2.waitForSelector("[data-testid=settings-health]", { timeout: 15000 });
   check("auth: admin opens settings and sees login on with one admin", ((await p2.textContent("[data-testid=settings-health]")) ?? "").includes("로그인 켜짐 (관리자 1명"));
