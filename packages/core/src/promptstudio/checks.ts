@@ -11,6 +11,7 @@ const BARE_KEYWORD = /^[^\s:/·(]+$/;
 /** 목표·완료 조건·진행에 '구현'이 들어 있는가. 코드를 수정하지 않는 목적(조사·계획·검토)과 모순되면 잡는다 */
 const IMPLEMENTS = /(구현한다|구현하고|코드 변경|코드를 변경|코드를 수정|수정한다|변경한다|변경된다|갱신된다|갱신한다|패치|리팩터링한다|추가한다|삭제한다|diff를|PR을)|\b(implement|modify|refactor|patch|change the code|add the|update the code|commit|open a PR)\b/i;
 const READ_ONLY_PURPOSES: Purpose[] = ["investigate", "plan", "review"];
+const DESIGN_DOC = /(설계 문서|설계안 문서)|\bdesign (doc|document)\b/i;
 /** 구현 분류인데 내용이 '코드를 수정하지 않는다·설계안만'이면 반대 방향 모순 */
 const READ_ONLY_TEXT = /(코드를 수정하지 않|코드를 고치지 않|수정 없이|설계안만|설계 문서만|문서만 낸다|구현하지 않)|\b(do not modify code|don't modify code|without editing code|without modifying|design doc only|design document only|no code changes?)\b/i;
 /** 조사·설계·검토에서는 '읽어서 인용·확인'도 실행해 보일 수 있는 검증이다(테스트가 없을 수 있다) */
@@ -24,7 +25,9 @@ export function runChecks(spec: PromptSpec, opts: CheckOptions = {}): CheckResul
   const add = (id: string, label: string, ok: boolean, detail: string) => out.push({ id, label, ok, detail });
   // 분류가 뜻하는 범위(코드 수정 없음)와 스펙 내용(구현)이 어긋나면 에이전트가 모순된 지시를 받는다. 목적을 알 때만(파이프라인·보관함) 본다.
   if (opts.purpose && isAgentRuntime(spec.runtime)) {
-    const text = [spec.goal, ...spec.success_criteria, ...(spec.process ?? [])].join("\n");
+    // 계획은 설계 문서 파일 하나를 쓴다(코드가 넣는 산출물 줄). '설계 문서를 추가한다' 같은 문장은 구현이 아니므로 구현 판정에서 뺀다
+    const lines = [spec.goal, ...spec.success_criteria, ...(spec.process ?? [])];
+    const text = (opts.purpose === "plan" ? lines.filter((l) => !DESIGN_DOC.test(l)) : lines).join("\n");
     const readOnly = READ_ONLY_PURPOSES.includes(opts.purpose);
     const implementing = IMPLEMENTS.test(text);
     const readOnlyText = READ_ONLY_TEXT.test([text, ...spec.hard_rules].join("\n"));

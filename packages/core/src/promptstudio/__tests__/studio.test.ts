@@ -279,6 +279,26 @@ describe("pipeline with fake provider", () => {
     const regen = await regenerateSlot(provider, planCtx, { ...plan.spec!, clarify_policy: "assume_and_state" }, "hard_rules", null);
     expect(regen.spec?.clarify_policy).toBe("ask_first");
   });
+  it("plan(에이전트)은 설계 문서를 저장소 안 파일로 쓰게 하고 보고는 짧은 요약으로 나눈다", async () => {
+    const g = generatePrompt(provider, ctx({ purpose: "plan", subtype: null, runtime: "claude_code" }));
+    let r = await g.next(); while (!r.done) r = await g.next();
+    const sys = r.value.rendered!.system;
+    expect(sys).toContain("설계 문서 전체를 대상 저장소 안의 Markdown 파일로 쓴다");
+    expect(sys).toContain("15줄 안팎");
+    expect(sys).not.toContain("1,000~1,500자");
+    expect(sys.indexOf("산출물:")).toBeLessThan(sys.indexOf("- 형식:"));   // 보고 형식 맨 앞
+    expect(r.value.spec?.output_contract.length).toBe("15줄 안팎. 문서 내용을 다시 붙이지 않는다");
+    expect(renderClaude({ ...r.value.spec!, language: "en" }, { purpose: "plan" }).system).toContain("Deliverable: write the full design document");
+    // chat 런타임의 plan, 에이전트의 조사(investigate)는 산출물이 채팅 보고 자체라 문서 줄이 없다
+    expect(renderClaude({ ...r.value.spec!, runtime: "chat" }, { purpose: "plan" }).system).not.toContain("산출물:");
+    expect(renderClaude(r.value.spec!, { purpose: "investigate" }).system).not.toContain("산출물:");
+    // 설계 문서를 쓰는 문장은 구현으로 보지 않는다. 코드 변경은 여전히 잡는다
+    const agentSpec = { ...baseSpec(), runtime: "claude_code" as const, inputs: [], starting_points: ["reporter-api: Foo.bar"] };
+    const docOnly = { ...agentSpec, success_criteria: [...agentSpec.success_criteria, "설계 문서를 docs/design/EP-1.md로 추가한다", "Add the design document under docs/design"] };
+    expect(runChecks(docOnly, { purpose: "plan" }).find((c) => c.id === "scope_consistent")?.ok).toBe(true);
+    const codeChange = { ...agentSpec, success_criteria: [...agentSpec.success_criteria, "결제 모듈의 재시도 횟수를 수정한다"] };
+    expect(runChecks(codeChange, { purpose: "plan" }).find((c) => c.id === "scope_consistent")?.ok).toBe(false);
+  });
   it("masks PII in the goal and restores it", async () => {
     const goal = "홍길동(010-1234-5678) 고객 문의 응대 스크립트 초안을 만든다. 정중하고 간결하게.";
     const gen = generatePrompt(provider, ctx({ purpose: "write_business", subtype: null, goal }));

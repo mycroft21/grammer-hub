@@ -94,6 +94,7 @@ export function renderClaude(spec: PromptSpec, opts: RenderOptions = {}): Render
 
   const rules = [...(agent && defaults ? [defaults.scope[lang]] : []), ...spec.hard_rules];
   const outputLines = [
+    agent && defaults?.doc ? `- ${defaults.doc[lang]}` : "",
     `- ${t.format}: ${spec.output_contract.format}`,
     `- ${t.structure}: ${spec.output_contract.structure}`,
     `- ${t.length}: ${spec.output_contract.length}`,

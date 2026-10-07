@@ -18,6 +18,11 @@ export interface AgentDefaults {
    * 설계는 사람이 내릴 결정(필수 항목을 빼거나 바꾸는 것)을 에이전트가 가정으로 채우기 쉽다. 그래서 묻게 한다.
    */
   clarify?: { policy: ClarifyPolicy; line: Record<PromptLanguage, string> };
+  /**
+   * 산출물이 보고와 따로 있는 목적(설계 문서)이면 그 문서를 어디에 어떤 구성으로 쓰는지. 보고 형식 맨 앞에 들어가고,
+   * 그때 report는 문서의 요약만 다룬다. 보고 분량 상한이 문서 전체에 걸려 필수 항목이 잘리던 문제(EP-1245) 때문에 나눴다.
+   */
+  doc?: Record<PromptLanguage, string>;
 }
 
 export const AGENT_DEFAULTS: Partial<Record<Purpose, AgentDefaults>> = {
@@ -29,10 +34,14 @@ export const AGENT_DEFAULTS: Partial<Record<Purpose, AgentDefaults>> = {
     },
   },
   plan: {
-    scope: { ko: "설계안만 낸다. 코드를 수정하지 않고, 확인이 필요한 코드는 읽기만 한다.", en: "Produce the design only. Do not modify code; read what you need to verify." },
+    scope: { ko: "설계안만 낸다. 코드를 수정하지 않고(쓰는 파일은 설계 문서 하나), 확인이 필요한 코드는 읽기만 한다.", en: "Produce the design only. Do not modify code (the only file you write is the design document); read what you need to verify." },
     report: {
-      structure: { ko: "결정(요약) / 대안 비교(각각 트레이드오프) / 변경 범위(파일·메서드) / 수용 기준과 검증 방법 / 되돌리기 어려운 지점·미결", en: "Decision (summary) / Alternatives with trade-offs / Change scope (files and methods) / Acceptance criteria and verification / Hard-to-reverse points and open items" },
-      length: { ko: "1,000~1,500자", en: "600–900 words" },
+      structure: { ko: "설계 문서 경로 / 결정 요약(어느 대안을 왜) / 미결·질문", en: "Design document path / Decision summary (which alternative and why) / Open items and questions" },
+      length: { ko: "15줄 안팎. 문서 내용을 다시 붙이지 않는다", en: "About 15 lines. Do not repeat the document's content" },
+    },
+    doc: {
+      ko: "산출물: 설계 문서 전체를 대상 저장소 안의 Markdown 파일로 쓴다(설계 문서를 두는 폴더가 이미 있으면 거기, 없으면 docs/design/, 파일 이름은 티켓 키가 있으면 그 키). 문서 구성: 결정 / 대안 비교(각각 트레이드오프) / 변경 범위(파일·메서드) / 수용 기준과 검증 방법 / 되돌리기 어려운 지점·미결. 분량은 필수 항목이 요구하는 만큼이고, 짧게 하려고 필수 항목을 빼지 않는다. 아래 보고는 이 문서의 요약이다.",
+      en: "Deliverable: write the full design document as a Markdown file in the target repository (its existing design-doc folder if there is one, otherwise docs/design/, named after the ticket key if there is one). Document structure: Decision / Alternatives with trade-offs / Change scope (files and methods) / Acceptance criteria and verification / Hard-to-reverse points and open items. Its length is whatever the required items need; do not drop required items to keep it short. The report below only summarizes it.",
     },
     clarify: {
       policy: "ask_first",

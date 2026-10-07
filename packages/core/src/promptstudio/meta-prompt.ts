@@ -95,9 +95,15 @@ export function studioPurposeBlock(purpose: Purpose, subtypeId: string | null | 
     `- 기본 과정: ${s.seeds.process ? s.seeds.process.join(" → ") : "단일 패스"}`,
     `- 기본 출력 형식: ${s.seeds.outputFormat}`,
     inputsLine,
-    s.seeds.handoff.length ? `- ${next ? "다음 단계로 넘길 것" : "결과에 반드시 포함할 것"}(출력 형식에 반드시 포함): ${s.seeds.handoff.join(" / ")}` : "",
+    s.seeds.handoff.length
+      ? ad?.doc
+        // 설계 문서가 따로 있으면 넘길 것은 문서에 들어가야 한다. 채팅 보고(output_contract)는 요약뿐이라 거기 넣으면 문서에서 빠진다
+        ? `- ${next ? "다음 단계로 넘길 것" : "결과에 반드시 포함할 것"}(설계 문서에 반드시 포함. success_criteria 한 항목에 '설계 문서에 …이 있다'로 묶어 넣고, output_contract.structure에는 넣지 않는다): ${s.seeds.handoff.join(" / ")}`
+        : `- ${next ? "다음 단계로 넘길 것" : "결과에 반드시 포함할 것"}(출력 형식에 반드시 포함): ${s.seeds.handoff.join(" / ")}`
+      : "",
     ad ? `- 에이전트 보고 기본 구성(output_contract.structure의 기준, 프롬프트 언어로 쓴다): ${ad.report.structure[language]} · 분량은 프로그램이 "${ad.report.length[language]}"로 넣는다` : "",
     ad ? `- 범위 유지 문장(프로그램이 범위와 제약 첫 줄에 넣음. 다시 쓰지 말 것): "${ad.scope[language]}"` : "",
+    ad?.doc ? "- 설계 문서를 저장소에 파일로 쓰라는 문장과 문서 구성은 프로그램이 보고 형식 맨 앞에 넣는다. output_contract.structure는 그 문서가 아니라 채팅 보고(요약)의 구성이다. goal·success_criteria·process에 '문서를 추가한다'처럼 구현으로 읽히는 말을 쓰지 않는다('설계 문서에 …이 있다'로 쓴다)" : "",
   ].filter((l) => l !== "").join("\n");
 }
 
