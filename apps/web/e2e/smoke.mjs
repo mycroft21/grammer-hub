@@ -216,7 +216,7 @@ try {
   await page.click("[data-testid=ticket-generate]");
   await page.waitForSelector("[data-testid=studio-save]:not([disabled])", { timeout: 20000 });
   const fromTicket = await page.textContent("[data-testid=studio-rendered]");
-  check("ticket prompt is Claude Code style with starting points and a scope line", fromTicket.includes("## 시작점") && fromTicket.includes("## 범위와 제약") && fromTicket.includes("설계안만 낸다") && !fromTicket.includes("{{"));
+  check("ticket prompt is Claude Code style with starting points and a scope line", fromTicket.includes("## 시작점") && fromTicket.includes("## 범위와 제약") && fromTicket.includes("설계안만 낸다") && fromTicket.includes("필수로 적힌 항목") && !fromTicket.includes("{{"));
   await page.click("[data-testid=studio-save]");
   await page.waitForSelector("text=보관함에 저장했습니다", { timeout: 5000 });
   await page.click("[data-testid=studio-tab] >> text=보관함");

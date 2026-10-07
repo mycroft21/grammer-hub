@@ -175,6 +175,8 @@ export function normalizeSpec(spec: PromptSpec, ctx: StudioContext): PromptSpec 
   if (ad) {
     spec.output_contract.length = ad.report.length[spec.language];
     if (spec.output_contract.structure.trim().length < 5) spec.output_contract.structure = ad.report.structure[spec.language];
+    // 질문 정책도 목적이 정하면 코드가 정한다(화면 값은 서버에 오지 않고, 모델이 고르면 매번 달라진다)
+    if (ad.clarify) spec.clarify_policy = ad.clarify.policy;
   }
   return spec;
 }

@@ -111,6 +111,8 @@ export function renderClaude(spec: PromptSpec, opts: RenderOptions = {}): Render
     spec.failure_guards.length ? `${t.guards}\n${list(spec.failure_guards)}` : "",
     "",
     `${t.clarify}\n${h.clarifyText[spec.clarify_policy]}`,
+    // 버전 저장 API로 never_ask가 들어온 경우엔 붙이지 않는다(서로 어긋나는 문장이 되므로). 화면 경로는 재생성 때 코드가 ask_first로 되돌린다
+    agent && defaults?.clarify && spec.clarify_policy !== "never_ask" ? defaults.clarify.line[lang] : "",
   ].filter((l) => l !== "").join("\n").replace(/\n{3,}/g, "\n\n").trim();
 
   const inputBlocks = spec.inputs.map((i) => `<${i.name}>\n{{${i.name}}}\n</${i.name}>`).join("\n\n");

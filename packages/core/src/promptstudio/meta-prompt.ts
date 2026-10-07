@@ -6,7 +6,7 @@ import { hasProfile, workspaceBlock, type WorkspaceProfile } from "./workspace";
 import { agentDefaultsFor } from "./agent-defaults";
 import type { SystemBlock } from "../prompt/build";
 
-export const STUDIO_PROMPT_VERSION = "0.5.0";
+export const STUDIO_PROMPT_VERSION = "0.5.1";
 
 /**
  * 고정 블록(캐시 대상). 날짜·ID 같은 가변 값 금지.
@@ -39,7 +39,7 @@ export function studioStableSystem(): string {
     "- self_check(에이전트에서는 '끝내기 전에 검증'): 에이전트면 끝내기 전에 실행할 구체적 검증 2~3개 — 어떤 명령·확인을 하고 어떤 결과를 보고에 붙일지('./gradlew test 통과 출력', '변경 파일 목록과 diff 요약', '재현 절차를 다시 밟아 정상 동작 확인'). '…했는가?' 같은 되묻기 문장은 쓰지 않는다(일반적인 '다시 확인하라'는 과잉 검증만 부른다). chat이면 답하기 전에 할 확인 동작 2~3개. success_criteria·hard_rules를 되풀이하지 않는다.",
     "- failure_guards: 이 종류의 작업에서 흔한 실패를 막는 지침 1~3개. 목적별 씨앗 중 이 목표에 실제로 걸리는 것만 골라 구체화한다. hard_rules에 이미 쓴 것은 여기 다시 쓰지 않는다.",
     "- examples: 형식이 특이하거나 판단이 미묘할 때 권장(1~2개, 입력·출력 짝). 실제 입력과 같은 형태로 자신 있게 만들 수 있을 때만. 코딩 에이전트 프롬프트는 보통 null. 억지로 만든 예시는 없느니만 못하다.",
-    "- clarify_policy: 요청의 값을 그대로. 에이전트면 프로그램이 '되돌리기 어려운 변경·범위 변경만 멈춘다'는 문장으로 렌더한다.",
+    "- clarify_policy: 목표에 맞게 고른다. 에이전트의 계획(설계) 목적은 프로그램이 정하므로 무엇을 골라도 덮어쓴다.",
     "- rationale: 각 슬롯을 왜 그렇게 썼는지 한 문장씩(context·examples가 null이면 왜 비웠는지). 사용자가 배우는 용도. 스키마에 없는 키를 추가하지 않는다.",
     "- language: 요청의 <language> 값을 그대로 넣는다. runtime: 요청의 <runtime> 값을 그대로 넣는다.",
     "",

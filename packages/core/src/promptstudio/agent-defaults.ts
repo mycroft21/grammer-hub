@@ -1,4 +1,4 @@
-import type { PromptLanguage, Purpose, Runtime, SlotKey } from "./spec";
+import type { ClarifyPolicy, PromptLanguage, Purpose, Runtime, SlotKey } from "./spec";
 import { isAgentRuntime } from "./spec";
 
 /**
@@ -13,6 +13,11 @@ export interface AgentDefaults {
   scope: Record<PromptLanguage, string>;
   /** 보고 형식 기본. 모델의 structure가 비었을 때 쓰고, length는 항상 이 값으로 통일한다 */
   report: { structure: Record<PromptLanguage, string>; length: Record<PromptLanguage, string> };
+  /**
+   * 정보가 부족할 때 정책을 코드가 정한다(모델 선택을 덮어씀) + 정책 문장 뒤에 붙는 한 줄.
+   * 설계는 사람이 내릴 결정(필수 항목을 빼거나 바꾸는 것)을 에이전트가 가정으로 채우기 쉽다. 그래서 묻게 한다.
+   */
+  clarify?: { policy: ClarifyPolicy; line: Record<PromptLanguage, string> };
 }
 
 export const AGENT_DEFAULTS: Partial<Record<Purpose, AgentDefaults>> = {
@@ -28,6 +33,13 @@ export const AGENT_DEFAULTS: Partial<Record<Purpose, AgentDefaults>> = {
     report: {
       structure: { ko: "결정(요약) / 대안 비교(각각 트레이드오프) / 변경 범위(파일·메서드) / 수용 기준과 검증 방법 / 되돌리기 어려운 지점·미결", en: "Decision (summary) / Alternatives with trade-offs / Change scope (files and methods) / Acceptance criteria and verification / Hard-to-reverse points and open items" },
       length: { ko: "1,000~1,500자", en: "600–900 words" },
+    },
+    clarify: {
+      policy: "ask_first",
+      line: {
+        ko: "티켓에 필수로 적힌 항목을 빼거나 바꾸는 판단은 가정하지 않는다. 설계에는 적힌 대로 두고, 바꾸자는 제안은 미결 질문으로 묻는다.",
+        en: "Treat dropping or changing anything the ticket marks as required as a question, not an assumption: keep it as written in the design and raise the proposed change as an open question.",
+      },
     },
   },
   build: {

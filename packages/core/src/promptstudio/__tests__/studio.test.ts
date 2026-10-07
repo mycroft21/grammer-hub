@@ -263,6 +263,22 @@ describe("pipeline with fake provider", () => {
     expect(r.spec?.output_contract.length).toBe("20~40줄. 목록 위주, 코드는 붙이지 말고 파일·메서드 이름으로 가리킨다");
     expect(r.spec?.runtime).toBe("claude_code");
   });
+  it("plan(에이전트)은 질문 정책을 코드가 ask_first로 정하고, 필수 항목을 바꾸는 판단은 묻게 하는 문장을 넣는다", async () => {
+    const run = async (c: StudioContext) => { const g = generatePrompt(provider, c); let r = await g.next(); while (!r.done) r = await g.next(); return r.value; };
+    const planCtx = ctx({ purpose: "plan", subtype: null, runtime: "claude_code" });
+    const plan = await run(planCtx);
+    expect(plan.spec?.clarify_policy).toBe("ask_first");   // 가짜 모델은 assume_and_state를 낸다
+    expect(plan.rendered?.system).toContain("그것에 의존하지 않는 부분을 먼저");
+    expect(plan.rendered?.system).toContain("필수로 적힌 항목");
+    const build = await run(ctx({ purpose: "build", subtype: null, runtime: "claude_code" }));
+    expect(build.spec?.clarify_policy).toBe("assume_and_state");
+    expect(build.rendered?.system).not.toContain("필수로 적힌 항목");
+    expect(renderClaude({ ...plan.spec!, language: "en" }, { purpose: "plan" }).system).toContain("marks as required");
+    // 사람이 never_ask로 바꿔 저장했으면 어긋나는 문장을 붙이지 않는다
+    expect(renderClaude({ ...plan.spec!, clarify_policy: "never_ask" }, { purpose: "plan" }).system).not.toContain("필수로 적힌 항목");
+    const regen = await regenerateSlot(provider, planCtx, { ...plan.spec!, clarify_policy: "assume_and_state" }, "hard_rules", null);
+    expect(regen.spec?.clarify_policy).toBe("ask_first");
+  });
   it("masks PII in the goal and restores it", async () => {
     const goal = "홍길동(010-1234-5678) 고객 문의 응대 스크립트 초안을 만든다. 정중하고 간결하게.";
     const gen = generatePrompt(provider, ctx({ purpose: "write_business", subtype: null, goal }));
