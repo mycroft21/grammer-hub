@@ -139,6 +139,22 @@ pnpm health --probe    # 서버(localhost:3000)에 백엔드 실제 호출까지
 
 서버만 직접 보려면 `curl localhost:3000/api/health?probe=1` (비밀값은 안 나옵니다). `✘` 항목의 화살표 뒤가 해결 방법입니다.
 
+### A-4‴. 배포 이후에 쌓인 보관 자료만 보기 — `pnpm studio:since` (개발자용)
+
+메타프롬프트나 렌더 규칙을 고쳐서 배포했을 때, 그 이후에 만들어진 프롬프트만 골라 봐야 바뀐 규칙이 실제로 나아졌는지 판단할 수 있습니다. 화면에는 없고 터미널에서만 씁니다.
+
+```bash
+pnpm studio:mark                 # 배포 직후 한 번. 지금 시각·git HEAD·studio 버전을 기준선으로 저장한다
+pnpm studio:since                # 기준선 이후에 보관된 프롬프트·버전·점검 실패·사람이 고친 슬롯 요약
+pnpm studio:since --all          # 기준선을 무시하고 전체
+pnpm studio:since --json         # 같은 내용을 JSON으로
+pnpm studio:since --db <경로> --limit 20
+```
+
+기준선은 DB 옆 `apps/web/data/studio-baseline.json`에 저장되며 커밋 대상이 아닙니다. 기준선을 찍은 적이 없으면 전체를 보여 주고 안내 문구가 붙습니다. 코드의 `STUDIO_PROMPT_VERSION`이 기준선보다 올라가 있으면 그 사실도 함께 알려 줍니다.
+
+읽는 요령은 이렇습니다. **생성 경로**에서 `regenerate`·`edit` 비율이 높으면 첫 생성이 약한 것이고, **손댄 슬롯**은 어느 블록을 사람이 매번 고치는지, **실패한 점검**은 메타프롬프트가 아직 못 지키는 규칙이 무엇인지 가리킵니다. 이 세 줄이 다음에 무엇을 고칠지 알려 주는 신호입니다.
+
 ### A-5. 확인
 
 1. http://localhost:3000 접속

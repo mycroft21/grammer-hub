@@ -12,7 +12,9 @@
     "report": "node tools/report-week.mjs",
     "seed:demo": "node tools/seed-demo.mjs",
     "seed:clear": "node tools/seed-demo.mjs --clear",
-    "health": "node tools/doctor.mjs"
+    "health": "node tools/doctor.mjs",
+    "studio:since": "node tools/studio-since.mjs",
+    "studio:mark": "node tools/studio-since.mjs --mark"
   },
   "devDependencies": {
     "better-sqlite3": "^13.0.3",
