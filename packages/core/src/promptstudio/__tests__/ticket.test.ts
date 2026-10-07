@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FakeProvider } from "../../providers/fake";
 import { DEMO_TICKET, DEMO_TICKET_TERSE, adfToText, buildTicketPlanPrompt, jiraIssueToTicket, parseIssueKey, redactPeople, ticketToText } from "../ticket";
 import { generatePrompt, planFromTicket, planPrompt } from "../pipeline";
-import { EXAMPLE_PROFILE, glossaryFor, parseWorkspaceProfile, resolveRepos, workspaceBlock } from "../workspace";
+import { EXAMPLE_PROFILE, applyProfileOps, cleanProfileDraft, formatProfile, glossaryFor, parseWorkspaceProfile, profileIssues, resolveRepos, suggestAliases, workspaceBlock } from "../workspace";
 import { deriveNeeds, needsCatalog } from "../needs";
 import { suggestPurpose } from "../ticket";
 import type { Need } from "../spec";
@@ -171,6 +171,43 @@ describe("workspace profile", () => {
     expect(resolveRepos(EXAMPLE_PROFILE, { title: "reporter", body: "" }).map((x) => x.repo.name)).toEqual(["reporter-api"]);  // 별칭은 단어 경계
     expect(resolveRepos(EXAMPLE_PROFILE, { title: "reporters", body: "" })).toEqual([]);
     expect(resolveRepos(EXAMPLE_PROFILE, { title: "[reporter-legacy] JSP 화면 수정" }).map((x) => x.repo.name)).toEqual(["reporter-legacy"]);  // 'reporter'가 reporter-legacy 안에서 걸리지 않는다
+  });
+  it("cleanProfileDraft drops blank rows and profileIssues points at the offending field", () => {
+    const draft = { ...EXAMPLE_PROFILE, team: "  ", repos: [{ ...EXAMPLE_PROFILE.repos[0]!, aliases: [" reporter ", "", "reporter"], stack: " " }], projects: { " EP ": " 결제 ", "": "x", ES: "" }, conventions: ["", " a "], glossary: {}, defaults: {} };
+    const c = cleanProfileDraft(draft);
+    expect(c.team).toBeUndefined();
+    expect(c.repos[0]!.aliases).toEqual(["reporter"]);
+    expect(c.repos[0]!.stack).toBeUndefined();
+    expect(c.projects).toEqual({ EP: "결제" });
+    expect(c.conventions).toEqual(["a"]);
+    expect(formatProfile(c).endsWith("}\n")).toBe(true);
+    expect(profileIssues(c)).toEqual({});
+    expect(Object.keys(profileIssues({ ...c, repos: [{ ...c.repos[0], name: "" }] }))).toEqual(["repos.0.name"]);
+    const dup = profileIssues({ ...c, repos: [{ ...c.repos[0], name: "X" }, { ...c.repos[0], name: "x" }] });   // 스키마를 통과한 뒤에야 중복 검사
+    expect(dup["repos.1.name"]).toContain("중복");
+    expect(Object.keys(profileIssues("{"))).toEqual(["(root)"]);
+  });
+  it("applyProfileOps adds alias/verify/repo idempotently and refuses unknown or taken names", () => {
+    const r = applyProfileOps(EXAMPLE_PROFILE, [
+      { op: "add_alias", repo: "eximbay-partner", alias: "[PARTNER-WEB]" },
+      { op: "add_alias", repo: "eximbay-partner", alias: "partner" },            // 이미 있음 → 건너뜀
+      { op: "add_verify", repo: "reporter-legacy", command: "./gradlew test" },
+      { op: "add_repo", name: "billing-batch", what: "정산 배치", aliases: ["배치", "billing-batch"], verify: [] },
+      { op: "add_repo", name: "Billing-Batch", what: "중복", aliases: [], verify: [] },  // 대소문자만 다른 이름 → 건너뜀
+    ]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.changes).toEqual(["eximbay-partner 별칭 \"[PARTNER-WEB]\"", "reporter-legacy 검증 명령 \"./gradlew test\"", "저장소 billing-batch 추가"]);
+    expect(r.profile.repos.find((x) => x.name === "eximbay-partner")!.aliases).toContain("[PARTNER-WEB]");
+    expect(r.profile.repos.find((x) => x.name === "billing-batch")!.aliases).toEqual(["배치"]);
+    expect(EXAMPLE_PROFILE.repos.find((x) => x.name === "reporter-legacy")!.verify).toEqual([]);   // 원본 불변
+    expect(parseWorkspaceProfile(formatProfile(r.profile)).ok).toBe(true);
+    expect(applyProfileOps(EXAMPLE_PROFILE, [{ op: "add_alias", repo: "nope", alias: "x" }])).toMatchObject({ ok: false });
+    expect(applyProfileOps(EXAMPLE_PROFILE, [{ op: "add_alias", repo: "reporter-api", alias: "legacy" }])).toMatchObject({ ok: false, message: expect.stringContaining("reporter-legacy") });
+  });
+  it("suggestAliases offers title tags, labels and components the profile does not know yet", () => {
+    expect(suggestAliases(EXAMPLE_PROFILE, { summary: "[billing] [partner] 정산 오류", labels: ["settlement", "reporter"], components: ["Batch"] })).toEqual(["[billing]", "settlement", "Batch"]);
+    expect(suggestAliases(EXAMPLE_PROFILE, { summary: "제목만", labels: [], components: [] })).toEqual([]);
   });
   it("workspace block focuses the chosen repo and only includes glossary terms that appear", () => {
     const b = workspaceBlock(EXAMPLE_PROFILE, { text: "서브몰 등록 완료 시 Visa", repos: ["reporter-api"], issueKey: "EP-1174" });

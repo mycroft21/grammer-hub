@@ -1,7 +1,7 @@
 import "server-only";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { EXAMPLE_PROFILE, parseWorkspaceProfile } from "@grammer-hub/core";
+import { EMPTY_PROFILE, EXAMPLE_PROFILE, applyProfileOps, formatProfile, parseWorkspaceProfile, type ProfileOp, type WorkspaceProfile } from "@grammer-hub/core";
 import { resetProviders } from "./providers";
 import { serverLog } from "./log";
 import { loadWorkspace, workspacePath } from "./workspace";
@@ -15,8 +15,9 @@ const ROOT = resolve(process.cwd(), "..", "..");
 export const envFilePath = (): string => (process.env["GH_ENV_FILE"] ? resolve(ROOT, process.env["GH_ENV_FILE"]) : resolve(ROOT, ".env"));
 
 export type SettingKind = "text" | "secret" | "select" | "bool";
+export type SettingGroup = "backend" | "jira" | "team" | "behavior";
 export interface SettingDef {
-  key: string; label: string; group: "backend" | "jira" | "behavior";
+  key: string; label: string; group: SettingGroup;
   kind: SettingKind; help: string; options?: { value: string; label: string }[]; placeholder?: string;
   /** 첫 사용 때 고정되는 값이라 바꾸면 서버 재시작이 필요 */
   restart?: boolean;
@@ -34,6 +35,15 @@ export const SETTINGS: SettingDef[] = [
   { key: "JIRA_BASE_URL", label: "Jira 주소", group: "jira", kind: "text", help: "예: https://xxx.atlassian.net", placeholder: "https://xxx.atlassian.net" },
   { key: "JIRA_EMAIL", label: "Atlassian 이메일", group: "jira", kind: "text", help: "API 토큰을 발급한 계정.", placeholder: "you@company.com" },
   { key: "JIRA_API_TOKEN", label: "Jira API 토큰", group: "jira", kind: "secret", help: "id.atlassian.com → 보안 → API 토큰. 읽기 전용으로만 쓴다." },
+  // 팀 서버 로그인(OIDC). 셋이 다 있어야 켜진다. 켜지면 설정 화면은 관리자만 — 자기 이메일을 관리자에 먼저 넣고 저장할 것.
+  { key: "OIDC_ISSUER", label: "IdP 발급자(issuer) 주소", group: "team", kind: "text", help: "discovery 문서가 있는 주소. 구글: https://accounts.google.com · Okta: https://xxx.okta.com · Azure: https://login.microsoftonline.com/<tenant>/v2.0", placeholder: "https://accounts.google.com" },
+  { key: "OIDC_CLIENT_ID", label: "클라이언트 ID", group: "team", kind: "text", help: "IdP에 등록한 웹 앱의 ID. 콜백 URL은 <APP_URL>/api/auth/callback 으로 등록." },
+  { key: "OIDC_CLIENT_SECRET", label: "클라이언트 시크릿", group: "team", kind: "secret", help: "IdP가 발급한 시크릿. 저장하면 끝 4자만 보인다." },
+  { key: "AUTH_SECRET", label: "세션 서명 키", group: "team", kind: "secret", help: "세션 쿠키 서명용 임의 문자열(32자 이상 권장, `openssl rand -base64 32`). 바꾸면 모두 다시 로그인." },
+  { key: "APP_URL", label: "외부 접속 주소", group: "team", kind: "text", help: "콜백 URL의 기준. 리버스 프록시 뒤에 있으면 반드시 적는다. 비우면 요청의 origin.", placeholder: "https://grammar.example.internal" },
+  { key: "AUTH_ALLOWED_DOMAINS", label: "허용 도메인", group: "team", kind: "text", help: "이 도메인 이메일은 모두 로그인 가능. 쉼표로 여러 개.", placeholder: "example.com" },
+  { key: "AUTH_ALLOWED_EMAILS", label: "허용 이메일", group: "team", kind: "text", help: "도메인 밖에서 예외로 들일 사람. 쉼표로.", placeholder: "guest@partner.com" },
+  { key: "AUTH_ADMIN_EMAILS", label: "관리자 이메일", group: "team", kind: "text", help: "설정 화면·프로필 전체 편집이 가능한 사람. 비어 있으면 로그인 모드에서는 아무도 설정을 못 바꾼다(.env 직접 편집).", placeholder: "me@example.com" },
   { key: "STORE_DRAFTS", label: "교정 원문 저장", group: "behavior", kind: "bool", help: "끄면 교정 기록에 원문을 남기지 않는다(카드·통계만)." },
   { key: "PII_BLOCK", label: "차단할 개인정보 종류", group: "behavior", kind: "text", help: "감지되면 전송을 막을 종류. 쉼표로: EMAIL,PHONE,CARD,ACCT,RRN. 비우면 마스킹만.", placeholder: "CARD,RRN" },
   { key: "LOG_FILE", label: "로그 파일", group: "behavior", kind: "text", help: "비우면 터미널에만. 경로를 주면 진행 로그를 파일에도 덧붙인다.", placeholder: "/tmp/grammer-hub.log" },
@@ -80,6 +90,12 @@ const VALIDATORS: Record<string, (v: string) => string | null> = {
   LOCAL_LLM_URL: (v) => (!v || /^https?:\/\/[^\s/]+/.test(v) ? null : "http(s)://로 시작하는 주소"),
   PII_BLOCK: (v) => (v.split(",").map((x) => x.trim()).filter(Boolean).every((x) => ["EMAIL", "PHONE", "CARD", "ACCT", "RRN", "DICT"].includes(x)) ? null : "EMAIL,PHONE,CARD,ACCT,RRN,DICT 중에서"),
   ANTHROPIC_API_KEY: (v) => (!v || /^[A-Za-z0-9_-]{20,}$/.test(v) ? null : "키 형식이 아닙니다"),
+  OIDC_ISSUER: (v) => (!v || /^https?:\/\/[^\s/]+/.test(v) ? null : "https://로 시작하는 주소"),
+  APP_URL: (v) => (!v || /^https?:\/\/[^\s/]+/.test(v) ? null : "https://로 시작하는 주소"),
+  AUTH_ALLOWED_DOMAINS: (v) => (v.split(",").map((x) => x.trim()).filter(Boolean).every((x) => /^@?[a-z0-9.-]+\.[a-z]{2,}$/i.test(x)) ? null : "도메인만(example.com), 쉼표로 구분"),
+  AUTH_ALLOWED_EMAILS: (v) => (v.split(",").map((x) => x.trim()).filter(Boolean).every((x) => x.includes("@")) ? null : "이메일 주소를 쉼표로"),
+  AUTH_ADMIN_EMAILS: (v) => (v.split(",").map((x) => x.trim()).filter(Boolean).every((x) => x.includes("@")) ? null : "이메일 주소를 쉼표로"),
+  AUTH_SECRET: (v) => (!v || v.length >= 16 ? null : "16자 이상"),
 };
 
 /**
@@ -107,18 +123,48 @@ export function saveSettings(changes: Record<string, string>): { ok: true; resta
   return { ok: true, restart, changed };
 }
 
-/** 작업 공간 프로필 편집기 뒷단: 현재 파일 원문 + 상태, 예시 원문. */
-export function getWorkspaceFile(): { path: string; exists: boolean; text: string; error: string | null; summary: { repos: number } | null; example: string } {
+/** 작업 공간 프로필 편집기 뒷단: 현재 파일 원문 + 파싱된 프로필(폼 초기값) + 상태, 예시. */
+export interface WorkspaceFile { path: string; exists: boolean; text: string; profile: WorkspaceProfile | null; error: string | null; summary: { repos: number } | null; example: string }
+export function getWorkspaceFile(): WorkspaceFile {
   const w = loadWorkspace();
   let text = "";
   if (w.exists) { try { text = readFileSync(workspacePath(), "utf8"); } catch { /* 읽기 실패는 error에 있음 */ } }
-  return { path: w.path.startsWith(ROOT) ? w.path.slice(ROOT.length + 1) : w.path, exists: w.exists, text, error: w.error, summary: w.profile ? { repos: w.profile.repos.length } : null, example: JSON.stringify(EXAMPLE_PROFILE, null, 2) };
+  return { path: w.path.startsWith(ROOT) ? w.path.slice(ROOT.length + 1) : w.path, exists: w.exists, text, profile: w.profile, error: w.error, summary: w.profile ? { repos: w.profile.repos.length } : null, example: formatProfile(EXAMPLE_PROFILE) };
 }
+function writeWorkspace(text: string): string | null {
+  try { mkdirSync(dirname(workspacePath()), { recursive: true }); writeFileSync(workspacePath(), text.endsWith("\n") ? text : text + "\n"); return null; }
+  catch (e) { return `파일 쓰기 실패: ${(e as Error).message}`; }
+}
+/** JSON 탭·가져오기: 원문을 검증(스키마·중복 이름)해 그대로 쓴다(사용자의 들여쓰기·주석 필드 보존). */
 export function saveWorkspaceFile(text: string): { ok: true; repos: number } | { ok: false; message: string } {
   const r = parseWorkspaceProfile(text);
   if (!r.ok) return { ok: false, message: r.message };
-  try { mkdirSync(dirname(workspacePath()), { recursive: true }); writeFileSync(workspacePath(), text.endsWith("\n") ? text : text + "\n"); }
-  catch (e) { return { ok: false, message: `파일 쓰기 실패: ${(e as Error).message}` }; }
-  serverLog("settings", "프로필 저장", { repos: r.profile.repos.length });
+  const err = writeWorkspace(text);
+  if (err) return { ok: false, message: err };
+  serverLog("settings", "프로필 저장", { repos: r.profile.repos.length, via: "text" });
   return { ok: true, repos: r.profile.repos.length };
+}
+/** 폼 탭: 구조화된 값을 받아 표준 형태로 쓴다. 검증은 원문 경로와 같은 parseWorkspaceProfile을 거친다. */
+export function saveWorkspaceProfile(profile: unknown): { ok: true; repos: number } | { ok: false; message: string } {
+  const r = parseWorkspaceProfile(JSON.stringify(profile));
+  if (!r.ok) return { ok: false, message: r.message };
+  const err = writeWorkspace(formatProfile(r.profile));
+  if (err) return { ok: false, message: err };
+  serverLog("settings", "프로필 저장", { repos: r.profile.repos.length, via: "form" });
+  return { ok: true, repos: r.profile.repos.length };
+}
+/**
+ * 검토 화면의 "프로필에 추가": 파일이 없으면 빈 프로필에서 시작하고, 파일에 오류가 있으면 덮어쓰지 않고 거절한다(사용자가 손으로 고친 파일을 날리지 않기 위해).
+ */
+export function patchWorkspaceProfile(ops: ProfileOp[]): { ok: true; changes: string[]; repos: number } | { ok: false; message: string } {
+  const w = loadWorkspace();
+  if (w.exists && !w.profile) return { ok: false, message: `현재 프로필 파일에 오류가 있어 자동으로 추가할 수 없습니다 (${w.error ?? "알 수 없는 오류"}). 설정 화면에서 먼저 고쳐 주세요.` };
+  const r = applyProfileOps(w.profile ?? EMPTY_PROFILE, ops);
+  if (!r.ok) return r;
+  if (r.changes.length) {
+    const err = writeWorkspace(formatProfile(r.profile));
+    if (err) return { ok: false, message: err };
+    serverLog("settings", "프로필 자동 추가", { ops: ops.map((o) => o.op).join(","), changes: r.changes.length, repos: r.profile.repos.length });
+  }
+  return { ok: true, changes: r.changes, repos: r.profile.repos.length };
 }

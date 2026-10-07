@@ -1,7 +1,7 @@
 import { Audience, Category, Channel, FeedbackRequest } from "@grammer-hub/core";
-import { recordFeedback, upsertRule } from "@grammer-hub/db";
+import { recordFeedback, runOwnerId, upsertRule } from "@grammer-hub/db";
 import { getDb, getUser } from "@/lib/db";
-import { parseBody } from "@/lib/json";
+import { bad, parseBody } from "@/lib/json";
 
 export const runtime = "nodejs";
 
@@ -13,7 +13,8 @@ export async function POST(req: Request): Promise<Response> {
   if (!body.ok) return body.res;
   const { category, channel, audience, ...feedback } = body.data;
   const db = getDb();
-  const user = getUser();
+  const user = await getUser();
+  if (runOwnerId(db, feedback.runId) !== user.id) return bad("실행을 찾을 수 없습니다", 404);
   const id = recordFeedback(db, feedback);
   let ruleId: string | null = null;
   if (feedback.action === "mute" && category) {

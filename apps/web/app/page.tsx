@@ -6,7 +6,7 @@ import { env } from "@/lib/env";
 export const dynamic = "force-dynamic";
 
 export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const profiles = listProfiles(getDb(), getUser().id);
+  const profiles = listProfiles(getDb(), (await getUser()).id);
   const sp = await searchParams;
   const q = typeof sp["profile"] === "string" ? sp["profile"] : undefined;
   const initialProfileId = profiles.some((p) => p.id === q) ? q : undefined;

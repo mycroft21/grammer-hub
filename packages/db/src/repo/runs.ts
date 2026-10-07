@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { FeedbackRequest, LlmRewrite, Suggestion, Usage } from "@grammer-hub/core";
 import type { Db } from "../client";
 import { correctionRuns, drafts, feedbackEvents, runFinals, suggestions } from "../schema";
@@ -72,7 +72,8 @@ export interface RunSummary {
   costUsd: number; cachedTokens: number; status: string; accepted: number; rejected: number; edits: number;
 }
 
-export function listRecentRuns(db: Db, limit = 50): RunSummary[] {
+/** 최근 실행. userId를 주면 그 사람의 초안에서 나온 실행만(팀 서버에서는 반드시 준다). */
+export function listRecentRuns(db: Db, limit = 50, userId?: string): RunSummary[] {
   const acc = db.$with("acc").as(
     db.select({
       runId: feedbackEvents.runId,
@@ -91,7 +92,9 @@ export function listRecentRuns(db: Db, limit = 50): RunSummary[] {
     accepted: sql<number>`coalesce(${acc.accepted}, 0)`, rejected: sql<number>`coalesce(${acc.rejected}, 0)`,
     edits: sql<number>`coalesce(${cnt.edits}, 0)`,
   }).from(correctionRuns)
+    .innerJoin(drafts, eq(drafts.id, correctionRuns.draftId))
     .leftJoin(acc, eq(acc.runId, correctionRuns.id))
     .leftJoin(cnt, eq(cnt.runId, correctionRuns.id))
+    .where(userId ? eq(drafts.userId, userId) : undefined)
     .orderBy(desc(correctionRuns.createdAt)).limit(limit).all();
 }

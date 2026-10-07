@@ -1,4 +1,4 @@
-import type { CheckResult, DictionaryEntry, PlanResult, PromptSpec, RenderedPrompt, SituationProfile, SlotKey, StudioRequest, StyleRule, Ticket, TicketPlanResult } from "@grammer-hub/core";
+import type { CheckResult, DictionaryEntry, PlanResult, ProfileOp, PromptSpec, RenderedPrompt, SituationProfile, SlotKey, StudioRequest, StyleRule, Ticket, TicketPlanResult, WorkspaceProfile } from "@grammer-hub/core";
 
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -50,11 +50,22 @@ export const api = {
     event: (body: { promptId: string; versionId?: string | null; action: "copy" | "fill" | "view"; slot?: string | null; payload?: Record<string, unknown> | null }) =>
       fetch("/api/prompts/events", json("POST", body)).then(j<{ ok: true }>).catch(() => ({ ok: true as const })),
   },
+  team: {
+    /** 관리자: 사람별 사용량·수락률·비용(텍스트 없음) */
+    stats: (weeks: number) => fetch(`/api/team/stats?weeks=${weeks}`).then(j<TeamStats>),
+  },
+  auth: {
+    me: () => fetch("/api/auth/me").then(j<MeDto>),
+    logout: () => fetch("/api/auth/logout", { method: "POST" }).then(j<{ ok: true }>),
+  },
   settings: {
     get: () => fetch("/api/settings").then(j<SettingsDto>),
     save: (values: Record<string, string>) => fetch("/api/settings", json("PUT", { values })).then(j<SettingsDto & { ok: true; restart: string[]; changed: string[] }>),
     workspace: () => fetch("/api/settings/workspace").then(j<WorkspaceFileDto>),
     saveWorkspace: (text: string) => fetch("/api/settings/workspace", json("PUT", { text })).then(j<WorkspaceFileDto & { ok: true; repos: number }>),
+    saveWorkspaceProfile: (profile: WorkspaceProfile) => fetch("/api/settings/workspace", json("PUT", { profile })).then(j<WorkspaceFileDto & { ok: true; repos: number }>),
+    /** 검토 화면의 "프로필에 추가" — 별칭·검증 명령·저장소를 파일에 병합 */
+    patchWorkspace: (ops: ProfileOp[]) => fetch("/api/settings/workspace", json("PATCH", { ops })).then(j<{ ok: true; changes: string[]; repos: number; workspace: WorkspaceStatus }>),
     health: (probe: boolean) => fetch(`/api/health${probe ? "?probe=1" : ""}`).then(j<HealthDto>),
   },
   samples: {
@@ -65,10 +76,11 @@ export const api = {
 };
 
 /** 서버 lib/settings.ts 의 응답 모양 */
-export interface SettingDefDto { key: string; label: string; group: "backend" | "jira" | "behavior"; kind: "text" | "secret" | "select" | "bool"; help: string; options?: { value: string; label: string }[]; placeholder?: string; restart?: boolean; showWhen?: [string, string[]] }
+export interface MeDto { authEnabled: boolean; email: string; name: string | null; admin: boolean }
+export interface SettingDefDto { key: string; label: string; group: "backend" | "jira" | "team" | "behavior"; kind: "text" | "secret" | "select" | "bool"; help: string; options?: { value: string; label: string }[]; placeholder?: string; restart?: boolean; showWhen?: [string, string[]] }
 export interface SettingsDto { items: { key: string; value: string; masked: boolean; set: boolean; source: "file" | "os" | "default" }[]; envFile: string; exists: boolean; defs: SettingDefDto[] }
-export interface WorkspaceFileDto { path: string; exists: boolean; text: string; error: string | null; summary: { repos: number } | null; example: string }
-export interface HealthDto { ok: boolean; cloud: { backend: string; ready: boolean; model: string; cliPath?: string; hasApiKey?: boolean; health: { ok: boolean; detail?: string } | null }; defaultProvider: string; jira: { configured: boolean; baseUrl: string | null }; workspace: { exists: boolean; path: string; error: string | null; repos?: number; conventions?: number }; code: { branch: string | null; head: string | null; committedAt: string | null; dirtyFiles: number | null }; build: { id: string; builtAt: string; staleAgainstHead: boolean | null } | null; node: string }
+export interface WorkspaceFileDto { path: string; exists: boolean; text: string; profile: WorkspaceProfile | null; error: string | null; summary: { repos: number } | null; example: string }
+export interface HealthDto { ok: boolean; cloud: { backend: string; ready: boolean; model: string; cliPath?: string; hasApiKey?: boolean; health: { ok: boolean; detail?: string } | null }; defaultProvider: string; jira: { configured: boolean; baseUrl: string | null }; auth?: { enabled: boolean; issuer: string | null; appUrl: string | null; allowedDomains: number; allowedEmails: number; admins: number; sessionSecretSet: boolean }; workspace: { exists: boolean; path: string; error: string | null; repos?: number; conventions?: number }; code: { branch: string | null; head: string | null; committedAt: string | null; dirtyFiles: number | null }; build: { id: string; builtAt: string; staleAgainstHead: boolean | null } | null; node: string }
 
 /** 서버 lib/workspace.ts workspaceStatus()의 응답 모양 */
 export interface WorkspaceStatus {
@@ -76,6 +88,7 @@ export interface WorkspaceStatus {
   error: string | null;
   summary: { repos: number; conventions: number; glossary: number; team: string | null } | null;
   repoNames: string[];
+  repos: { name: string; aliases: string[]; verify: string[] }[];
   defaults: { runtime?: "claude_code" | "codex" | "chat"; length?: "short" | "standard" | "detailed"; promptLanguage?: "ko" | "en" };
 }
 
@@ -90,6 +103,14 @@ export interface CategoryPoint { category: string; accepted: number; rejected: n
 export interface RecentRunPoint { id: string; createdAt: number; latencyMs: number | null; costUsd: number; level: string; cachedTokens: number; inputTokens: number }
 export interface Collection { samples: number; sampleChars: number; feedback: Record<string, number>; finals: number; editPairs: number; runsOk: number }
 export interface Stats { weekly: WeeklyPoint[]; byCategory: CategoryPoint[]; recent: RecentRunPoint[]; collection: Collection }
+/** packages/db repo/team.ts 의 응답 모양 */
+export interface TeamMember {
+  userId: string; email: string; runsOk: number; runsError: number; lastActiveAt: number | null;
+  costUsd: number; inputTokens: number; cachedTokens: number; outputTokens: number; latencyAvgMs: number | null;
+  cards: number; accepted: number; rejected: number; muted: number; edits: number; finals: number; prefers: number;
+  prompts: number; promptVersions: number; promptRegens: number; promptCopies: number; studioCostUsd: number;
+}
+export interface TeamStats { since: number; weeks: number; members: TeamMember[]; team: Stats; weeklyActive: { weekStart: number; users: number }[] }
 
 export interface StudioUsage { inputTokens: number; cachedTokens: number; cacheWriteTokens: number; outputTokens: number; costUsd: number; latencyMs: number }
 export interface PromptRow { id: string; userId: string; title: string; purpose: string; subtype: string | null; language: string; goal: string; ticketKey: string | null; currentVersionId: string | null; archived: boolean; createdAt: number; updatedAt: number }

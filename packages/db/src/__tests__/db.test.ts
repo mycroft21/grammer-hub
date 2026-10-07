@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  createDraft, createRun, ensureUser, finishRun, listDictionary, listProfiles, listRecentRuns, listRules,
-  openDb, recordFeedback, recordFinal, saveSuggestions, seedDefaultProfiles, upsertDictionary, upsertProfile, upsertRule,
+  createDraft, createRun, ensureUser, finishRun, getRunContext, getStats, getTeamStats, listDictionary, listOkRunIds, listProfiles, listRecentRuns, listRules,
+  openDb, recordFeedback, recordFinal, runOwnerId, saveSuggestions, seedDefaultProfiles, teamStatsCsv, upsertDictionary, upsertProfile, upsertRule,
 } from "../index";
 
 describe("db", () => {
@@ -39,6 +39,48 @@ describe("db", () => {
     const runs = listRecentRuns(db);
     expect(runs).toHaveLength(1);
     expect(runs[0]).toMatchObject({ id: runId, accepted: 1, rejected: 0, edits: 1, status: "ok", cachedTokens: 2500 });
+  });
+
+  it("팀 서버: 실행·통계·데이터셋은 초안의 userId로 사람별로 나뉜다", () => {
+    const db = openDb(":memory:");
+    const a = ensureUser(db, "a@team.com"), b = ensureUser(db, "b@team.com");
+    const mk = (userId: string) => {
+      const draftId = createDraft(db, { userId, profileId: "boss-slack", textNfc: "원문", textMasked: "원문", maskMap: {}, lang: "ko", storeText: false });
+      const runId = createRun(db, { draftId, level: "L2", provider: "cloud", model: "m", promptVersion: "0.1.0", profileVersionId: null });
+      finishRun(db, runId, { inputTokens: 1, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 1, costUsd: 0.01, latencyMs: 10, ttfbMs: 5 }, "ok");
+      recordFeedback(db, { runId, action: "reject" });
+      recordFinal(db, runId, "최종");
+      return runId;
+    };
+    const ra = mk(a.id); mk(a.id); const rb = mk(b.id);
+    expect(listRecentRuns(db, 50).length).toBe(3);                       // 사용자 없이(로컬 단일 사용자) 전체
+    expect(listRecentRuns(db, 50, a.id).map((r) => r.id)).toContain(ra);
+    expect(listRecentRuns(db, 50, a.id).length).toBe(2);
+    expect(listRecentRuns(db, 50, b.id).map((r) => r.id)).toEqual([rb]);
+    expect(listOkRunIds(db, 100, b.id)).toEqual([rb]);
+    expect(runOwnerId(db, ra)).toBe(a.id);
+    expect(runOwnerId(db, "nope")).toBeNull();
+    expect(getRunContext(db, rb)?.userId).toBe(b.id);
+    const sa = getStats(db, 8, 30, a.id), sb = getStats(db, 8, 30, b.id), all = getStats(db, 8, 30);
+    expect([sa.collection.runsOk, sb.collection.runsOk, all.collection.runsOk]).toEqual([2, 1, 3]);
+    expect([sa.collection.finals, sb.collection.finals]).toEqual([2, 1]);
+    expect([sa.collection.feedback["reject"], sb.collection.feedback["reject"]]).toEqual([2, 1]);
+    expect(sa.weekly.reduce((n, w) => n + w.runs, 0)).toBe(2);
+    expect(sb.recent.map((r) => r.id)).toEqual([rb]);
+
+    // 팀 화면: 사람별 집계(텍스트 없음) + CSV
+    ensureUser(db, "idle@team.com");
+    const t = getTeamStats(db, 8);
+    const ma = t.members.find((m) => m.email === "a@team.com")!, mb = t.members.find((m) => m.email === "b@team.com")!, mi = t.members.find((m) => m.email === "idle@team.com")!;
+    expect([ma.runsOk, mb.runsOk, mi.runsOk]).toEqual([2, 1, 0]);
+    expect([ma.rejected, ma.finals, ma.costUsd]).toEqual([2, 2, 0.02]);
+    expect(ma.lastActiveAt).not.toBeNull();
+    expect(t.weeklyActive.at(-1)?.users).toBe(2);
+    expect(t.team.collection.runsOk).toBe(3);
+    const csv = teamStatsCsv(t);
+    expect(csv.startsWith("\uFEFFemail,runs_ok")).toBe(true);
+    expect(csv.split("\n").filter(Boolean)).toHaveLength(1 + t.members.length);
+    expect(csv).not.toContain("원문");
   });
 
   it("STORE_DRAFTS=false면 원문 대신 해시만 남는다", () => {

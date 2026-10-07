@@ -27,7 +27,23 @@ export const env = {
   get logFile() { return s("LOG_FILE") || null; },
   /** 작업 공간 프로필 파일 경로(루트 기준). 비우면 루트 studio.workspace.json */
   get workspaceProfile() { return s("WORKSPACE_PROFILE") || null; },
+
+  // ── 팀 서버 로그인(OIDC). 셋(ISSUER·CLIENT_ID·CLIENT_SECRET)이 다 있어야 켜지고, 비어 있으면 지금처럼 로그인 없는 단일 사용자 모드 ──
+  /** 외부에서 접속하는 주소(콜백 URL의 기준). 비우면 요청의 origin을 쓴다. 예: https://grammar.internal.example.com */
+  get appUrl() { return s("APP_URL").replace(/\/+$/, ""); },
+  get oidcIssuer() { return s("OIDC_ISSUER").replace(/\/+$/, ""); },
+  get oidcClientId() { return s("OIDC_CLIENT_ID"); },
+  get oidcClientSecret() { return s("OIDC_CLIENT_SECRET"); },
+  get authEnabled() { return Boolean(s("OIDC_ISSUER") && s("OIDC_CLIENT_ID") && s("OIDC_CLIENT_SECRET")); },
+  /** 세션 쿠키 서명 키. 비우면 클라이언트 시크릿을 대신 쓴다(동작은 하지만 따로 두는 것을 권장). */
+  get authSecret() { return s("AUTH_SECRET") || s("OIDC_CLIENT_SECRET"); },
+  get authAllowedDomains() { return list("AUTH_ALLOWED_DOMAINS").map((d) => d.replace(/^@/, "")); },
+  get authAllowedEmails() { return list("AUTH_ALLOWED_EMAILS"); },
+  /** 설정 화면·.env 편집이 허용되는 사람. 비어 있으면 로그인 모드에서는 아무도 설정을 못 바꾼다(.env를 서버에서 직접 고친다). */
+  get authAdminEmails() { return list("AUTH_ADMIN_EMAILS"); },
 };
+/** 쉼표 목록 → 소문자·공백 제거 */
+const list = (k: string) => s(k).split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
 
 /** cloud provider가 API 키 없이도 동작하는가(fake 또는 claude-cli). */
 export const cloudReady = (): boolean => env.hasAnthropicKey || env.fakeProvider || env.cloudBackend === "claude-cli";

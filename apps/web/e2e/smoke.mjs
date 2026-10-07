@@ -1,7 +1,9 @@
 // E2E 스모크: FAKE_PROVIDER=1 서버를 대상으로 에디터 → 카드 → 수락 → 복사 → 실행 기록까지.
 // 실행: pnpm --filter @grammer-hub/web e2e  (서버는 스크립트가 직접 띄운다)
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
@@ -10,23 +12,65 @@ const require = createRequire(import.meta.url);
 
 const PORT = process.env.E2E_PORT ?? "3199";
 const dir = mkdtempSync(join(tmpdir(), "gh-e2e-"));
+const ROOT = new URL("../../..", import.meta.url).pathname;
+// 작업 공간 프로필은 예시를 임시 폴더에 복사해 쓴다: 검토 화면의 "프로필에 추가"와 설정 폼 저장이 실제 파일에 쓰기 때문
+const profilePath = join(dir, "studio.workspace.json");
+copyFileSync(join(ROOT, "studio.workspace.example.json"), profilePath);
 // pnpm을 거치지 않고 next 바이너리를 직접 띄우고, 프로세스 그룹 단위로 종료한다(고아 서버 방지).
 const server = spawn(process.execPath, [require.resolve("next/dist/bin/next"), "start", "-p", PORT], {
   cwd: new URL("..", import.meta.url).pathname,
-  // 작업 공간 프로필은 예시 파일을 그대로 쓴다(DEMO-2의 [partner] 태그 → eximbay-partner 확정 경로를 검사)
+  // 작업 공간 프로필은 예시의 임시 복사본(DEMO-2의 [partner] 태그 → eximbay-partner 확정 경로를 검사)
   // 설정 화면 검사는 실제 .env를 건드리지 않도록 GH_ENV_FILE을 임시 파일로 돌린다
-  env: { ...process.env, DATABASE_URL: `file:${join(dir, "e2e.db")}`, FAKE_PROVIDER: "1", ALLOWED_EMAIL: "e2e@example.com", WORKSPACE_PROFILE: "studio.workspace.example.json", GH_ENV_FILE: join(dir, "e2e.env") },
+  env: { ...process.env, DATABASE_URL: `file:${join(dir, "e2e.db")}`, FAKE_PROVIDER: "1", ALLOWED_EMAIL: "e2e@example.com", WORKSPACE_PROFILE: profilePath, GH_ENV_FILE: join(dir, "e2e.env") },
   stdio: ["ignore", "pipe", "pipe"], detached: true,
 });
-const stopServer = () => { try { process.kill(-server.pid, "SIGTERM"); } catch { try { server.kill("SIGTERM"); } catch {} } };
+const extraStops = [];
+const stopServer = () => { for (const f of extraStops.splice(0)) { try { f(); } catch {} } try { process.kill(-server.pid, "SIGTERM"); } catch { try { server.kill("SIGTERM"); } catch {} } };
 process.on("exit", stopServer);
-const waitServer = async () => {
+const waitServer = async (port = PORT, path = "/api/profiles", okStatuses = [200]) => {
   for (let i = 0; i < 60; i++) {
-    try { const r = await fetch(`http://127.0.0.1:${PORT}/api/profiles`); if (r.ok) return; } catch {}
+    try { const r = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: "manual" }); if (okStatuses.includes(r.status)) return; } catch {}
     await new Promise((r) => setTimeout(r, 500));
   }
-  throw new Error("server did not start");
+  throw new Error(`server on ${port} did not start`);
 };
+
+/**
+ * 가짜 OIDC IdP(discovery·authorize·token·jwks). authorize는 묻지 않고 바로 콜백으로 돌려보내며,
+ * 어떤 이메일로 로그인시킬지는 `state.email`로 테스트가 정한다. id_token은 RS256으로 서명해 서버의 jose 검증을 실제로 거친다.
+ */
+async function startFakeIdp(port, clientSecret) {
+  const { generateKeyPair, exportJWK, SignJWT } = require("jose");
+  const { publicKey, privateKey } = await generateKeyPair("RS256");
+  const jwk = { ...(await exportJWK(publicKey)), kid: "e2e", alg: "RS256", use: "sig" };
+  const issuer = `http://127.0.0.1:${port}`;
+  const codes = new Map();
+  const state = { email: "tester@example.com", authorizeHits: 0 };
+  const srv = http.createServer(async (req, res) => {
+    const u = new URL(req.url, issuer);
+    const json = (o, status = 200) => { res.statusCode = status; res.setHeader("content-type", "application/json"); res.end(JSON.stringify(o)); };
+    if (u.pathname === "/.well-known/openid-configuration") return json({ issuer, authorization_endpoint: `${issuer}/authorize`, token_endpoint: `${issuer}/token`, jwks_uri: `${issuer}/jwks` });
+    if (u.pathname === "/jwks") return json({ keys: [jwk] });
+    if (u.pathname === "/authorize") {
+      state.authorizeHits++;
+      const code = randomUUID();
+      codes.set(code, { nonce: u.searchParams.get("nonce"), aud: u.searchParams.get("client_id"), email: state.email, challenge: u.searchParams.get("code_challenge") });
+      res.statusCode = 302; res.setHeader("location", `${u.searchParams.get("redirect_uri")}?code=${code}&state=${encodeURIComponent(u.searchParams.get("state"))}`); return res.end();
+    }
+    if (u.pathname === "/token") {
+      let body = ""; for await (const c of req) body += c;
+      const p = new URLSearchParams(body); const c = codes.get(p.get("code"));
+      if (!c || p.get("client_secret") !== clientSecret || !p.get("code_verifier")) return json({ error: "invalid_grant" }, 400);
+      codes.delete(p.get("code"));
+      const id_token = await new SignJWT({ email: c.email, email_verified: true, name: "E2E 사용자", nonce: c.nonce })
+        .setProtectedHeader({ alg: "RS256", kid: "e2e" }).setIssuer(issuer).setAudience(c.aud).setSubject(c.email).setIssuedAt().setExpirationTime("5m").sign(privateKey);
+      return json({ id_token, access_token: "x", token_type: "Bearer" });
+    }
+    res.statusCode = 404; res.end();
+  });
+  await new Promise((r) => srv.listen(port, "127.0.0.1", r));
+  return { state, issuer, close: () => srv.close() };
+}
 
 
 /** 하이드레이션 전에 fill하면 React 상태에 반영되지 않는다. 교정 버튼이 활성화될 때까지 재시도. */
@@ -149,6 +193,25 @@ try {
   check("ticket review shows suggested goal", (await page.inputValue("[data-testid=ticket-goal]")).includes("DEMO-1"));
   check("profile resolved the repo from the label (no 'where' question)", ((await page.textContent("[data-testid=ticket-review]")) ?? "").includes("코드가 확정") && (await page.locator("[data-testid=ticket-option]").count()) === 2);
   check("verify-in-repo list is prefilled from the ledger", ((await page.inputValue("[data-testid=ticket-verify]")) ?? "").length > 0);
+  // "프로필에 추가": 코드가 확정한 저장소(reporter-api, 검증 명령 있음)에는 힌트가 없다. 사용자가 reporter-legacy로 바꾸면
+  // 별칭 후보([Feature]·feature — 이미 아는 reporter-api 라벨은 제외)와 검증 명령 입력이 나오고, 클릭하면 임시 프로필 파일에 쓰인다.
+  check("no profile hints while the code-resolved repo is selected", (await page.locator("[data-testid=profile-hints]").count()) === 0);
+  await page.click("[data-testid=ticket-repos] .ant-select-selection-item[title=reporter-api] .ant-select-selection-item-remove");
+  await page.click("[data-testid=ticket-repos]");
+  await page.click(".ant-select-dropdown .ant-select-item-option[title=reporter-legacy]");
+  await page.keyboard.press("Escape");
+  await page.waitForSelector("[data-testid=profile-hints]", { timeout: 5000 });
+  const aliasButtons = await page.locator("[data-testid=profile-hint-alias]").allTextContents();
+  check("hints offer unknown title tag and label as aliases, not the known one", aliasButtons.some((t) => t.includes("[Feature]")) && aliasButtons.some((t) => t.includes("feature")) && !aliasButtons.some((t) => t.includes("reporter-api")));
+  check("hints ask for a verify command when the repo has none", (await page.locator("[data-testid=profile-hint-verify]").count()) === 1);
+  await page.click("[data-testid=profile-hint-alias]:has-text('[Feature]')");
+  await page.waitForFunction(() => !Array.from(document.querySelectorAll("[data-testid=profile-hint-alias]")).some((b) => b.textContent?.includes("[Feature]")), null, { timeout: 5000 });
+  await page.fill("[data-testid=profile-hint-cmd]", "./gradlew test");
+  await page.click("[data-testid=profile-hint-add-verify]");
+  await page.waitForSelector("[data-testid=profile-hint-verify]", { state: "detached", timeout: 5000 });
+  const patched = JSON.parse(readFileSync(profilePath, "utf8"));
+  const legacy = patched.repos.find((r) => r.name === "reporter-legacy");
+  check("one-click additions are written to the profile file", legacy.aliases.includes("[Feature]") && legacy.verify.includes("./gradlew test") && patched.repos.length === 3);
   await page.locator("label.ant-radio-button-wrapper:has([data-testid=ticket-option])").first().click();
   await page.click("[data-testid=ticket-generate]");
   await page.waitForSelector("[data-testid=studio-save]:not([disabled])", { timeout: 20000 });
@@ -184,6 +247,34 @@ try {
   await page.goto(`http://127.0.0.1:${PORT}/settings`, { waitUntil: "load" });
   await page.waitForSelector("[data-testid=setting-LOG_FILE] input", { timeout: 15000 });
   check("saved setting survives reload and is written to the env file", (await page.inputValue("[data-testid=setting-LOG_FILE] input")) === "/tmp/gh-e2e.log" && readFileSync(join(dir, "e2e.env"), "utf8").includes("LOG_FILE=/tmp/gh-e2e.log"));
+  // 프로필 폼: 파일이 폼으로 열리고(검토 화면에서 추가한 별칭이 보인다), 빈 저장소는 칸 옆 오류로 막히며, 채우면 저장된다
+  await page.waitForSelector("[data-testid=workspace-form]", { timeout: 10000 });
+  check("profile opens as a form with the file's repos", (await page.locator("[data-testid=ws-repo-0]").count()) === 1 && (await page.inputValue("[data-testid=ws-repo-name-0]")) === "reporter-api");
+  check("form shows the alias added from the ticket review", ((await page.textContent("[data-testid=ws-repo-aliases-1]")) ?? "").includes("[Feature]"));
+  await page.click("[data-testid=ws-repo-add]");
+  await page.click("[data-testid=workspace-save]");
+  await page.waitForSelector("[data-testid=ws-field-error]", { timeout: 5000 });
+  check("empty repo row is rejected with a field-level error", (await page.locator("[data-testid=ws-field-error]").count()) >= 2 && ((await page.textContent("[data-testid=workspace-error]")) ?? "").includes("칸"));
+  await page.fill("[data-testid=ws-repo-name-3]", "billing-batch");
+  await page.fill("[data-testid=ws-repo-what-3]", "정산 배치");
+  await page.click("[data-testid=workspace-save]");
+  await page.waitForSelector("text=프로필을 저장했습니다 · 저장소 4개", { timeout: 5000 });
+  const savedProfile = JSON.parse(readFileSync(profilePath, "utf8"));
+  check("form save writes a valid profile with the new repo", savedProfile.repos.length === 4 && savedProfile.repos[3].name === "billing-batch" && savedProfile.repos[1].aliases.includes("[Feature]"));
+  // 내보내기: 현재 내용이 studio.workspace.json 으로 내려온다
+  const [download] = await Promise.all([page.waitForEvent("download", { timeout: 5000 }), page.click("[data-testid=workspace-export]")]);
+  check("export downloads studio.workspace.json", download.suggestedFilename() === "studio.workspace.json");
+  // 가져오기: 팀에서 받은 파일을 고르면 폼이 그 내용으로 바뀌고(저장 전), 저장하면 파일에 쓰인다
+  const importPath = join(dir, "team.workspace.json");
+  writeFileSync(importPath, JSON.stringify({ ...savedProfile, team: "가져온 팀", repos: savedProfile.repos.slice(0, 2) }, null, 2));
+  await page.setInputFiles("[data-testid=workspace-import]", importPath);
+  await page.waitForFunction(() => document.querySelector("[data-testid=ws-team]")?.value === "가져온 팀", null, { timeout: 5000 });
+  check("import fills the form without saving yet", (await page.locator("[data-testid^=ws-repo-name-]").count()) === 2 && JSON.parse(readFileSync(profilePath, "utf8")).repos.length === 4);
+  await page.click("[data-testid=workspace-save]");
+  await page.waitForSelector("text=프로필을 저장했습니다 · 저장소 2개", { timeout: 5000 });
+  check("saving the imported profile writes it to the file", JSON.parse(readFileSync(profilePath, "utf8")).team === "가져온 팀");
+  // JSON 탭은 남아 있고, 잘못된 JSON은 서버가 막는다
+  await page.click("[data-testid=workspace-card] .ant-tabs-tab:has-text('JSON')");
   await page.fill("[data-testid=workspace-editor]", "{ not json");
   await page.click("[data-testid=workspace-save]");
   await page.waitForSelector("[data-testid=workspace-error]", { timeout: 5000 });
@@ -202,6 +293,84 @@ try {
   await page.waitForSelector("[data-testid=appearance-card]", { timeout: 15000 });
   await page.waitForTimeout(300);
   check("appearance prefs survive reload", (await page.evaluate(() => document.body.style.zoom)) === "1.25" && (await page.evaluate(() => document.documentElement.dataset.theme)) === "dark");
+
+  // ── 팀 서버 로그인(OIDC): 가짜 IdP + 로그인 모드의 두 번째 서버. 사람별 데이터 분리·관리자 전용 설정·허용 목록·쿠키 위조까지 ──
+  const IDP_PORT = String(Number(PORT) + 2), PORT2 = String(Number(PORT) + 1), BASE2 = `http://127.0.0.1:${PORT2}`;
+  const CLIENT_SECRET = "e2e-secret-1234567890";
+  const idp = await startFakeIdp(IDP_PORT, CLIENT_SECRET);
+  extraStops.push(idp.close);
+  const profile2 = join(dir, "team.workspace.json");
+  copyFileSync(join(ROOT, "studio.workspace.example.json"), profile2);
+  const server2 = spawn(process.execPath, [require.resolve("next/dist/bin/next"), "start", "-p", PORT2], {
+    cwd: new URL("..", import.meta.url).pathname,
+    env: { ...process.env, DATABASE_URL: `file:${join(dir, "team.db")}`, FAKE_PROVIDER: "1", WORKSPACE_PROFILE: profile2, GH_ENV_FILE: join(dir, "team.env"),
+      OIDC_ISSUER: idp.issuer, OIDC_CLIENT_ID: "gh-e2e", OIDC_CLIENT_SECRET: CLIENT_SECRET, AUTH_SECRET: "e2e-session-secret-0123456789",
+      AUTH_ALLOWED_DOMAINS: "example.com", AUTH_ADMIN_EMAILS: "admin@example.com" },
+    stdio: ["ignore", "pipe", "pipe"], detached: true,
+  });
+  extraStops.push(() => { try { process.kill(-server2.pid, "SIGTERM"); } catch {} });
+  await waitServer(PORT2, "/api/health", [200]);
+  const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const p2 = await ctx2.newPage();
+  const call = (path, init) => p2.evaluate(async ([path, init]) => { const r = await fetch(path, init); const text = await r.text(); let json = null; try { json = JSON.parse(text); } catch {} return { status: r.status, json, text }; }, [path, init ?? {}]);
+  const jsonInit = (method, body) => ({ method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+  await p2.goto(`${BASE2}/runs`, { waitUntil: "load" });
+  check("auth: unauthenticated page is redirected to /login with next", p2.url().includes("/login?next=%2Fruns"));
+  check("auth: unauthenticated API gets 401", (await fetch(`${BASE2}/api/runs`)).status === 401);
+  check("auth: health stays reachable without a session and reports login on", (await (await fetch(`${BASE2}/api/health`)).json()).auth?.enabled === true);
+
+  idp.state.email = "tester@example.com";
+  await p2.click("[data-testid=login-button]");
+  await p2.waitForURL((u) => u.pathname === "/runs", { timeout: 15000 });
+  const meTester = (await call("/api/auth/me")).json;
+  check("auth: team member logs in through the IdP and lands on the requested page", meTester?.email === "tester@example.com" && meTester.admin === false && idp.state.authorizeHits === 1);
+  await p2.goto(`${BASE2}/`, { waitUntil: "load" });
+  await p2.waitForSelector("[data-testid=me-email], [data-testid=logout]", { timeout: 10000 });
+  check("auth: non-admin does not see the settings menu", (await p2.locator("a[href='/settings']").count()) === 0);
+  await p2.goto(`${BASE2}/settings`, { waitUntil: "load" });
+  check("auth: non-admin is bounced from /settings", new URL(p2.url()).pathname === "/");
+  check("auth: non-admin settings API is 403", (await call("/api/settings")).status === 403);
+  check("team: non-admin cannot read team stats", (await call("/api/team/stats")).status === 403 && (await p2.locator("a[href='/team']").count()) === 0);
+  check("auth: non-admin can still add to the team profile from review (PATCH)", (await call("/api/settings/workspace", jsonInit("PATCH", { ops: [{ op: "add_verify", repo: "reporter-legacy", command: "./gradlew test" }] }))).status === 200);
+  const corr = await call("/api/correct", jsonInit("POST", { text: "보내드릴께요 확인 부탁드립니다", profileId: "boss-slack", level: "L2" }));
+  check("auth: team member can run a correction", corr.status === 200 && corr.text.includes("event: done"));
+  check("auth: team member sees own run", (await call("/api/runs")).json?.length === 1);
+
+  await p2.click("[data-testid=logout]");
+  await p2.waitForURL((u) => u.pathname === "/login", { timeout: 10000 });
+  check("auth: logout clears the session", (await fetch(`${BASE2}/api/runs`, { headers: { cookie: (await ctx2.cookies()).map((c) => `${c.name}=${c.value}`).join("; ") } })).status === 401);
+  idp.state.email = "nobody@other.org";
+  await p2.click("[data-testid=login-button]");
+  await p2.waitForSelector("[data-testid=login-error]", { timeout: 15000 });
+  check("auth: email outside the allowlist is refused with a readable reason", ((await p2.textContent("[data-testid=login-error]")) ?? "").includes("허용 목록") && p2.url().includes("error=not_allowed"));
+
+  idp.state.email = "admin@example.com";
+  await p2.click("[data-testid=login-button]");
+  await p2.waitForURL((u) => u.pathname === "/", { timeout: 15000 });
+  const meAdmin = (await call("/api/auth/me")).json;
+  check("auth: admin logs in", meAdmin?.email === "admin@example.com" && meAdmin.admin === true);
+  check("auth: admin does not see the other member's runs or stats", (await call("/api/runs")).json?.length === 0 && (await call("/api/stats")).json?.collection?.runsOk === 0);
+  check("auth: admin settings API is 200", (await call("/api/settings")).status === 200);
+  await p2.goto(`${BASE2}/settings`, { waitUntil: "load" });
+  await p2.waitForSelector("[data-testid=settings-health]", { timeout: 15000 });
+  check("auth: admin opens settings and sees login on with one admin", ((await p2.textContent("[data-testid=settings-health]")) ?? "").includes("로그인 켜짐 (관리자 1명"));
+  // 팀 화면: 관리자에게 팀원의 실행이 사람별로 집계되어 보이고(본문은 없음), CSV는 같은 표
+  await p2.goto(`${BASE2}/team`, { waitUntil: "load" });
+  await p2.waitForSelector("[data-testid=team-member]", { timeout: 15000 });
+  const teamText = (await p2.textContent("[data-testid=team-page]")) ?? "";
+  check("team: admin sees per-person usage for the member who ran a correction", (await p2.locator("[data-testid=team-member]").allTextContents()).includes("tester@example.com") && !teamText.includes("보내드릴께요"));
+  const teamJson = (await call("/api/team/stats?weeks=4")).json;
+  const tester = teamJson?.members?.find((m) => m.email === "tester@example.com");
+  if (!(tester?.runsOk === 1 && tester.cards >= 1 && teamJson.weeklyActive.at(-1)?.users === 1)) console.log("team stats debug:", JSON.stringify({ tester, weeklyActive: teamJson?.weeklyActive }));
+  check("team: stats count the member's run, cards and nothing textual", tester?.runsOk === 1 && tester.cards >= 1 && teamJson.weeklyActive.at(-1)?.users === 1 && !JSON.stringify(teamJson).includes("보내드릴께요"));
+  const csv = await call("/api/team/stats?format=csv");
+  // fetch().text()는 선두 BOM을 떼고 돌려주므로 헤더 줄만 본다
+  check("team: CSV export has a header and one row per member", csv.status === 200 && csv.text.replace(/^\uFEFF/, "").startsWith("email,runs_ok") && csv.text.includes("tester@example.com") && !csv.text.includes("보내드릴께요"));
+  const sess = (await ctx2.cookies()).find((c) => c.name === "gh_session");
+  const forged = sess.value.slice(0, -2) + (sess.value.endsWith("AA") ? "BB" : "AA");
+  check("auth: a tampered session cookie is rejected", Boolean(sess) && (await fetch(`${BASE2}/api/runs`, { headers: { cookie: `gh_session=${forged}` } })).status === 401);
+  await ctx2.close();
 
   check("no page errors", pageErrors.length === 0);
   if (pageErrors.length) console.log(pageErrors);

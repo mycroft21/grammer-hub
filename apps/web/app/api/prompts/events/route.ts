@@ -19,7 +19,7 @@ export async function POST(req: Request): Promise<Response> {
   const body = await parseBody(req, Body);
   if (!body.ok) return body.res;
   const db = getDb();
-  if (!getPrompt(db, getUser().id, body.data.promptId)) return bad("프롬프트를 찾을 수 없습니다", 404);
+  if (!getPrompt(db, (await getUser()).id, body.data.promptId)) return bad("프롬프트를 찾을 수 없습니다", 404);
   recordPromptEvent(db, { promptId: body.data.promptId, versionId: body.data.versionId ?? null, action: body.data.action, slot: body.data.slot ?? null, payload: body.data.payload ?? null });
   return Response.json({ ok: true });
 }
