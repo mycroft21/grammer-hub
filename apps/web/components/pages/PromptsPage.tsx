@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Segmented, Spin, Typography } from "antd";
+import { App, Segmented, Spin, Typography } from "antd";
+import type { StudioRequest } from "@grammer-hub/core";
 import { PageHeader } from "./_shared";
 import { useStudio } from "@/components/studio/useStudio";
 import { CreateForm } from "@/components/studio/CreateForm";
@@ -22,8 +23,18 @@ export function PromptsPage() {
     if (id) { setTab("library"); setOpenId(id); }
   }, []);
   const opened = useCallback(() => setOpenId(null), []);
+  // 보관함의 '이 설정으로 새로 만들기': 만들기 탭으로 돌아가 그 설정으로 폼을 새로 연다(key로 다시 마운트)
+  const [seed, setSeed] = useState<{ req: StudioRequest; n: number } | null>(null);
   const studio = useStudio();
-  const { state } = studio;
+  const { state, reset } = studio;
+  const { modal } = App.useApp();
+  const reuse = useCallback((req: StudioRequest) => {
+    const go = () => { reset(); setSeed((s) => ({ req, n: (s?.n ?? 0) + 1 })); setTab("create"); };
+    // 만들던 것(진행 중·질문 중·보관하지 않은 결과)이 있으면 사라지므로 먼저 묻는다
+    const busyOrUnsaved = state.phase !== "form" && !(state.phase === "result" && state.savedId);
+    if (busyOrUnsaved) modal.confirm({ title: "만들던 것을 닫고 이 설정으로 새로 만들까요?", content: "진행 중인 생성이나 보관하지 않은 결과는 사라집니다.", okText: "새로 만들기", cancelText: "취소", onOk: go });
+    else go();
+  }, [reset, modal, state.phase, state.savedId]);
   const busy = state.phase === "planning" || state.phase === "generating";
 
   const save = useCallback(async () => {
@@ -38,7 +49,7 @@ export function PromptsPage() {
         extra={<Segmented data-testid="studio-tab" value={tab} onChange={(v) => setTab(v as typeof tab)} options={[{ value: "create", label: "만들기" }, { value: "library", label: "보관함" }]} />} />
       {tab === "create" ? (
         <div className="flex flex-col gap-4">
-          {state.phase === "form" && <CreateForm busy={false} error={state.error} initial={state.request} onSubmit={(req) => void studio.start(req)} onTicket={(input) => void studio.startFromTicket(input)} />}
+          {state.phase === "form" && <CreateForm key={seed?.n ?? 0} busy={false} error={state.error} initial={state.request ?? seed?.req ?? null} onSubmit={(req) => { setSeed(null); void studio.start(req); }} onTicket={(input) => { setSeed(null); void studio.startFromTicket(input); }} />}
           {state.phase === "ticket_review" && state.ticket && (
             <TicketReview ticket={state.ticket.ticket} plan={state.ticket.plan} workspace={state.ticket.workspace} busy={busy} onGenerate={(req) => void studio.generateFromTicket(req)} onBack={studio.backToForm} onWorkspaceChanged={studio.setWorkspace} />
           )}
@@ -54,7 +65,7 @@ export function PromptsPage() {
             <ResultPanel state={state} onRegenerate={(s, i) => void studio.regenerate(s, i)} onEdit={(s, v) => void studio.editSlot(s, v)} onSave={save} onReset={studio.reset} />
           )}
         </div>
-      ) : <LibraryPanel refreshKey={refreshKey} openId={openId} onOpened={opened} />}
+      ) : <LibraryPanel refreshKey={refreshKey} openId={openId} onOpened={opened} onReuse={reuse} />}
     </div>
   );
 }

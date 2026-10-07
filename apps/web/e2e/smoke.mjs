@@ -224,6 +224,42 @@ try {
   check("english prompt forces korean answers", en.includes("## Scope and constraints") && en.includes("## Done when") && en.includes("respond in Korean"));
   check("dev domain defaults to Claude Code runtime (starting points, no variables)", en.includes("## Where to start") && !en.includes("{{"));
 
+  // 입력 초기화: 위 영어 실행의 목표가 임시 저장에서 복원되고, 지우기 아이콘으로 비우면 새로고침해도 되살아나지 않는다
+  await page.goto(`http://127.0.0.1:${PORT}/prompts`, { waitUntil: "load" });
+  await page.waitForFunction(() => (document.querySelector("[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]")?.value ?? "").length > 0, null, { timeout: 5000 }).catch(() => {});
+  const restoredGoal = await page.inputValue("[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]");
+  await page.locator(".ant-input-clear-icon").first().click({ force: true });
+  await page.waitForTimeout(300);
+  await page.reload({ waitUntil: "load" });
+  await page.waitForSelector("[data-testid=studio-run]");
+  await page.waitForTimeout(500);
+  check("clearing the goal deletes the draft (no revival after reload)", restoredGoal.length > 0 && (await page.inputValue("[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]")) === "");
+  // 설정 프리셋: 채팅·영어로 바꿔 저장 → 처음부터(기본값) → 프리셋을 고르면 다시 채팅·영어. 목표 문장은 저장하지 않는다
+  const picked = async (tid) => ((await page.textContent(`[data-testid=${tid}] .ant-segmented-item-selected`)) ?? "").trim();
+  await page.click("[data-testid=studio-runtime] >> text=채팅");
+  await page.click("[data-testid=studio-lang] >> text=영어 지시문");
+  await page.click("[data-testid=preset-save]");
+  await page.fill("[data-testid=preset-name]", "채팅·영어");
+  await page.click(".ant-modal-footer .ant-btn-primary");
+  await page.waitForSelector("text=현재 설정을 프리셋으로 저장했습니다", { timeout: 5000 });
+  await page.click("[data-testid=studio-reset]");
+  const afterReset = [await picked("studio-runtime"), await picked("studio-lang")];
+  await page.click("[data-testid=studio-preset]");
+  await page.click(".ant-select-item-option >> text=채팅·영어");
+  check("reset returns to defaults and a preset refills its settings", !afterReset[0].includes("채팅") && !afterReset[1].includes("영어") && (await picked("studio-runtime")).includes("채팅") && (await picked("studio-lang")).includes("영어"));
+  const presetsJson = await (await fetch(`http://127.0.0.1:${PORT}/api/prompts/presets`)).json();
+  const withGoal = await fetch(`http://127.0.0.1:${PORT}/api/prompts/presets`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "x", settings: { ...presetsJson[0].settings, goal: "목표 문장" } }) });
+  check("presets store settings only and reject a goal", presetsJson.length === 1 && !("goal" in presetsJson[0].settings) && "clarify" in presetsJson[0].settings && withGoal.status === 400);
+  // 보관함 '이 설정으로 새로 만들기': 처음 보관한 채팅 프롬프트의 설정으로 폼이 열리고 목표는 비어 있다
+  await page.click("[data-testid=studio-runtime] >> text=Claude Code");
+  await page.click("[data-testid=studio-tab] >> text=보관함");
+  await page.waitForSelector("[data-prompt-item]", { timeout: 10000 });
+  await page.locator("[data-prompt-item]").first().click();
+  await page.waitForSelector("[data-testid=prompt-reuse]", { timeout: 10000 });
+  await page.click("[data-testid=prompt-reuse]");
+  await page.waitForSelector("[data-testid=studio-run]", { timeout: 5000 });
+  check("library 'reuse settings' opens the form with that prompt's settings and an empty goal", (await picked("studio-runtime")).includes("채팅") && (await page.inputValue("[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]")) === "");
+
   // Jira 티켓 → 프롬프트 (DEMO-1: 토큰 없이). 첨부 때문에 질문 1개 → 답변 → 생성 → 보관 → 보관함 태그
   await page.goto(`http://127.0.0.1:${PORT}/prompts`, { waitUntil: "load" });
   await page.click("[data-testid=studio-mode] >> text=Jira 티켓");
@@ -390,8 +426,15 @@ try {
   check("auth: team member can run a correction", corr.status === 200 && corr.text.includes("event: done"));
   check("auth: team member sees own run", (await call("/api/runs")).json?.length === 1);
 
+  // 임시 저장은 사람별 키, 로그아웃하면 지운다(같은 브라우저를 다음 사람이 써도 남의 입력이 안 보이게)
+  await p2.goto(`${BASE2}/prompts`, { waitUntil: "load" });
+  await fillUntil(p2, "[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]", "사람별 임시 저장 확인", "[data-testid=studio-run]:not([disabled])");
+  await p2.waitForTimeout(300);
+  const draftKeys = () => p2.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("gh:studio:draft")));
+  const keysIn = await draftKeys();
   await p2.click("[data-testid=logout]");
   await p2.waitForURL((u) => u.pathname === "/login", { timeout: 10000 });
+  check("auth: studio draft is kept per person and cleared on logout", keysIn.length === 1 && keysIn[0] === "gh:studio:draft:tester@example.com" && (await draftKeys()).length === 0);
   check("auth: logout clears the session", (await fetch(`${BASE2}/api/runs`, { headers: { cookie: (await ctx2.cookies()).map((c) => `${c.name}=${c.value}`).join("; ") } })).status === 401);
   idp.state.email = "nobody@other.org";
   await p2.click("[data-testid=login-button]");

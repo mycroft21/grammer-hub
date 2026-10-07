@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createDraft, createPrompt, createRun, ensureUser, getVersion, finishRun, getRunContext, getStats, getTeamStats, listDictionary, listOkRunIds, listProfiles, listRecentRuns, listRules,
-  linkPromptRun, listPromptRuns, openDb, recordFeedback, recordFinal, recordPromptRun, runOwnerId, saveSuggestions, seedDefaultProfiles, teamStatsCsv, upsertDictionary, upsertProfile, upsertRule,
+  deletePreset, linkPromptRun, listPresets, listPromptRuns, openDb, savePreset, recordFeedback, recordFinal, recordPromptRun, runOwnerId, saveSuggestions, seedDefaultProfiles, teamStatsCsv, upsertDictionary, upsertProfile, upsertRule,
 } from "../index";
 
 describe("db", () => {
@@ -139,6 +139,21 @@ describe("db", () => {
     expect(teamStatsCsv(t).split("\n")[0]).toContain("prompts,prompt_errors,prompt_versions");
     // 티켓 분류만 한 사람도 마지막 활동이 있다(팀 화면은 이 값으로 활동자를 고른다)
     expect(mb.lastActiveAt).not.toBeNull();
+  });
+
+  it("설정 프리셋은 사람별로 나뉘고, 남의 프리셋은 바꾸거나 지울 수 없다", () => {
+    const db = openDb(":memory:");
+    const a = ensureUser(db, "a@team.com"), b = ensureUser(db, "b@team.com");
+    const settings = { purpose: "build", subtype: null, length: "short", runtime: "claude_code", promptLanguage: "ko", includeStyleRules: false, repos: ["reporter-api"], clarify: "ask_first" };
+    const p = savePreset(db, { userId: a.id, name: "구현 · CC", settings })!;
+    expect(listPresets(db, a.id).map((x) => x.name)).toEqual(["구현 · CC"]);
+    expect(listPresets(db, b.id)).toEqual([]);
+    expect(savePreset(db, { userId: b.id, id: p.id, name: "가로채기", settings })).toBeNull();
+    expect(deletePreset(db, b.id, p.id)).toBe(false);
+    expect(savePreset(db, { userId: a.id, id: p.id, name: "새 이름", settings: { ...settings, length: "standard" } })?.name).toBe("새 이름");
+    expect(listPresets(db, a.id)[0]?.settings).toMatchObject({ length: "standard", repos: ["reporter-api"] });
+    expect(deletePreset(db, a.id, p.id)).toBe(true);
+    expect(listPresets(db, a.id)).toEqual([]);
   });
 
   it("예전에 <system> 태그로 감싸 보관한 한 덩어리는 읽을 때 태그 없이 돌려준다", () => {

@@ -1,8 +1,8 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { App, Button, Drawer, Empty, Input, List, Popconfirm, Segmented, Skeleton, Space, Tag, Tooltip, Typography } from "antd";
-import { CopyOutlined, DeleteOutlined, InboxOutlined } from "@ant-design/icons";
-import { DOMAINS, DOMAIN_LIST, PURPOSES, SLOT_KEYS, SLOT_KO, fillVariables, slotLabel, type Domain, type PromptSpec } from "@grammer-hub/core";
+import { CopyOutlined, DeleteOutlined, InboxOutlined, PlusOutlined } from "@ant-design/icons";
+import { DOMAINS, DOMAIN_LIST, PURPOSES, SLOT_KEYS, SLOT_KO, defaultLength, defaultRuntime, fillVariables, slotLabel, type Domain, type PromptLanguage, type PromptSpec, type Purpose, type StudioRequest } from "@grammer-hub/core";
 import { api, type PromptStats, type PromptSummary, type PromptVersion } from "@/lib/api";
 import { errMsg } from "@/components/pages/_shared";
 import { DOMAIN_COLOR, fmtDate } from "./labels";
@@ -14,7 +14,8 @@ function purposeOf(p: string) { return (PURPOSES as Record<string, { label: stri
 function purposeLabel(p: string) { const d = purposeOf(p); return d ? `${DOMAINS[d.domain].label} › ${d.label}` : p; }
 function domainColor(p: string) { const d = purposeOf(p); return d ? DOMAIN_COLOR[d.domain] : "default"; }
 
-export function LibraryPanel({ refreshKey, openId, onOpened }: { refreshKey: number; openId?: string | null; onOpened?: () => void }) {
+/** onReuse: 보관함 항목의 '이 설정으로 새로 만들기' — 목적·세부·언어·실행 환경·질문 정책만 채운 요청(목표는 비움)을 만들기 탭으로 넘긴다. */
+export function LibraryPanel({ refreshKey, openId, onOpened, onReuse }: { refreshKey: number; openId?: string | null; onOpened?: () => void; onReuse?: (seed: StudioRequest) => void }) {
   const { message } = App.useApp();
   const [items, setItems] = useState<PromptSummary[] | null>(null);
   const [stats, setStats] = useState<PromptStats | null>(null);
@@ -54,15 +55,15 @@ export function LibraryPanel({ refreshKey, openId, onOpened }: { refreshKey: num
           </List.Item>
         )} />
       )}
-      <PromptDrawer id={active} onClose={() => setActive(null)} onChanged={reload} />
+      <PromptDrawer id={active} onClose={() => setActive(null)} onChanged={reload} {...(onReuse ? { onReuse } : {})} />
     </div>
   );
 }
 
 /** 상세: 변수 채우기 → 복사 / 블록 보기 / 버전 / 보관 해제·삭제 */
-function PromptDrawer({ id, onClose, onChanged }: { id: string | null; onClose: () => void; onChanged: () => void }) {
+function PromptDrawer({ id, onClose, onChanged, onReuse }: { id: string | null; onClose: () => void; onChanged: () => void; onReuse?: (seed: StudioRequest) => void }) {
   const { message } = App.useApp();
-  const [data, setData] = useState<{ prompt: { id: string; title: string; purpose: string; goal: string; language: string; archived: boolean; ticketKey?: string | null }; versions: PromptVersion[] } | null>(null);
+  const [data, setData] = useState<{ prompt: { id: string; title: string; purpose: string; subtype?: string | null; goal: string; language: string; archived: boolean; ticketKey?: string | null }; versions: PromptVersion[] } | null>(null);
   const [verId, setVerId] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [tab, setTab] = useState<"fill" | "blocks" | "versions">("fill");
@@ -103,6 +104,16 @@ function PromptDrawer({ id, onClose, onChanged }: { id: string | null; onClose: 
         {data.prompt.ticketKey && <Tag color="blue" style={{ fontSize: 11 }}>{data.prompt.ticketKey}</Tag>}
       </div>) : "불러오는 중"} extra={data && (
       <Space size="small">
+        {onReuse && data.prompt.purpose in PURPOSES && ver && (
+          <Tooltip title="목적·세부 유형·언어·실행 환경·질문 정책을 채운 새 만들기 폼을 엽니다(목표는 비워 둡니다)">
+            <Button data-testid="prompt-reuse" size="small" icon={<PlusOutlined />} onClick={() => {
+              const p = data.prompt.purpose as Purpose;
+              onReuse({ purpose: p, subtype: data.prompt.subtype ?? null, goal: "", length: defaultLength(p), promptLanguage: (data.prompt.language === "en" ? "en" : "ko") as PromptLanguage,
+                runtime: ver.spec.runtime ?? defaultRuntime(p), clarify: ver.spec.clarify_policy, includeStyleRules: false });
+              onClose();
+            }}>이 설정으로 새로 만들기</Button>
+          </Tooltip>
+        )}
         <Tooltip title="목록에서 숨김"><Button size="small" icon={<InboxOutlined />} onClick={archive}>보관 해제</Button></Tooltip>
         <Popconfirm title="이 프롬프트와 모든 버전을 삭제할까요?" okText="삭제" okButtonProps={{ danger: true }} onConfirm={remove}><Button size="small" danger icon={<DeleteOutlined />} /></Popconfirm>
       </Space>)}>

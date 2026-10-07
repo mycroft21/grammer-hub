@@ -190,6 +190,19 @@ export const StudioRequest = z.object({
 });
 export type StudioRequest = z.infer<typeof StudioRequest>;
 
+/** 만들기 폼의 설정 프리셋. 목표 문장은 넣지 않는다(strict라 goal 같은 키가 오면 거부한다). 사람별로 서버에 저장한다. */
+export const PresetSettings = z.object({
+  purpose: Purpose,
+  subtype: z.string().max(60).nullable(),
+  length: PromptLength,
+  runtime: Runtime,
+  promptLanguage: PromptLanguage,
+  includeStyleRules: z.boolean(),
+  repos: z.array(z.string().max(80)).max(6),
+  clarify: ClarifyPolicy,
+}).strict();
+export type PresetSettings = z.infer<typeof PresetSettings>;
+
 /** 코드 점검 결과 */
 export const CheckResult = z.object({ id: z.string(), label: z.string(), ok: z.boolean(), detail: z.string() });
 export type CheckResult = z.infer<typeof CheckResult>;

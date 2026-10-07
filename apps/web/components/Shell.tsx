@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Layout, Menu, Tooltip, Button } from "antd";
 import { EditOutlined, IdcardOutlined, HighlightOutlined, BookOutlined, HistoryOutlined, ExperimentOutlined, MoonOutlined, SunOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SettingOutlined, LogoutOutlined, TeamOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
+import { clearDrafts } from "@/lib/studio-draft";
 import { useAuth, useThemeMode } from "./providers/AppProviders";
 
 /** group: 0 주 작업 · 1 교정 개인화 · 2 기록·분석·관리. 그룹 사이에 구분선만 둔다(접힌 아이콘 레일에서는 그룹 제목이 보이지 않으므로). */
@@ -31,7 +32,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const items = ITEMS.filter((i) => !ADMIN_ONLY.has(i.key) || !me || me.admin);
   const startsGroup = (n: number) => n > 0 && items[n - 1]?.group !== items[n]?.group;
   const selected = items.find((i) => i.key !== "/" && pathname.startsWith(i.key))?.key ?? "/";
-  const logout = async () => { try { await api.auth.logout(); } finally { window.location.href = "/login"; } };
+  // 로그아웃하면 이 브라우저에 남은 스튜디오 임시 입력도 지운다(다음 사람이 보지 않게)
+  const logout = async () => { try { clearDrafts(); await api.auth.logout(); } finally { window.location.href = "/login"; } };
   if (pathname === "/login") return <Layout className="min-h-screen"><Layout.Content className="mx-auto w-full max-w-6xl px-4 py-4">{children}</Layout.Content></Layout>;
   return (
     <Layout className="min-h-screen">

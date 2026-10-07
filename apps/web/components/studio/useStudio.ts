@@ -3,6 +3,8 @@ import { useCallback, useRef, useState } from "react";
 import { SLOT_KEYS, SLOT_KO, parseIssueKey, type CheckResult, type PlanQuestion, type PlanResult, type PromptSpec, type RenderedPrompt, type SlotKey, type StudioRequest, type Ticket, type TicketPlanResult } from "@grammer-hub/core";
 import { api, type StudioUsage, type WorkspaceStatus } from "@/lib/api";
 import { readSseRaw } from "@/lib/sse-client";
+import { useAuth } from "@/components/providers/AppProviders";
+import { draftKey } from "@/lib/studio-draft";
 
 export type Phase = "form" | "planning" | "ask" | "ticket_review" | "generating" | "result";
 
@@ -34,6 +36,7 @@ const initial: StudioState = { phase: "form", request: null, plan: null, replann
 /** 만들기 흐름: plan(질문) → generate(스트리밍) → result(재생성·보관). */
 export function useStudio() {
   const [state, setState] = useState<StudioState>(initial);
+  const me = useAuth();
   const abortRef = useRef<AbortController | null>(null);
   const cancel = useCallback(() => { abortRef.current?.abort(); abortRef.current = null; }, []);
 
@@ -182,9 +185,9 @@ export function useStudio() {
     if (!request || !spec) return null;
     const r = await api.prompts.save({ purpose: request.purpose, subtype: request.subtype ?? null, language: request.promptLanguage, goal: request.goal, ticketKey: request.ticket ? parseIssueKey(request.ticket) : null, spec, studioVersion: meta?.promptVersion ?? "", provider: meta?.provider ?? null, model: meta?.model ?? null, usage, runId });
     setState((s) => ({ ...s, savedId: r.prompt.id, spec: r.version.spec, rendered: r.version.rendered, checks: r.version.checks }));
-    try { localStorage.removeItem("gh:studio:draft"); } catch { /* noop */ }
+    try { localStorage.removeItem(draftKey(me)); } catch { /* 저장소를 못 쓰면 지울 것도 없다 */ }
     return r.prompt.id;
-  }, [state]);
+  }, [state, me]);
 
   const reset = useCallback(() => { cancel(); setState(initial); }, [cancel]);
   const backToForm = useCallback(() => { cancel(); setState((s) => ({ ...s, phase: "form", plan: null, replanning: false, ticket: null, error: null })); }, [cancel]);

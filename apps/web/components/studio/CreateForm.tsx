@@ -1,20 +1,22 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Input, Segmented, Select, Space, Switch, Tooltip, Typography } from "antd";
-import { ArrowRightOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { AGENT_DEFAULTS, DOMAINS, DOMAIN_LIST, PURPOSES, defaultLength, defaultRuntime, isAgentRuntime, type ClarifyPolicy, type Domain, type PromptLanguage, type PromptLength, type Purpose, type Runtime, type StudioRequest } from "@grammer-hub/core";
-import { api, type WorkspaceStatus } from "@/lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, App, Button, Input, Modal, Popconfirm, Segmented, Select, Space, Switch, Tooltip, Typography } from "antd";
+import { ArrowRightOutlined, DeleteOutlined, EditOutlined, ReloadOutlined, SaveOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { AGENT_DEFAULTS, DOMAINS, DOMAIN_LIST, PURPOSES, defaultLength, defaultRuntime, isAgentRuntime, type ClarifyPolicy, type Domain, type PresetSettings, type PromptLanguage, type PromptLength, type Purpose, type Runtime, type StudioRequest } from "@grammer-hub/core";
+import { api, type Preset, type WorkspaceStatus } from "@/lib/api";
+import { useAuth } from "@/components/providers/AppProviders";
+import { DRAFT_BASE, draftKey } from "@/lib/studio-draft";
 import { CLARIFY_KO, LANG_LABEL, LENGTH_KO, RUNTIME_LABEL_LONG as RUNTIME_LABEL } from "./labels";
 
-const DRAFT_KEY = "gh:studio:draft";
 type Draft = Pick<StudioRequest, "purpose" | "subtype" | "goal" | "length" | "clarify" | "promptLanguage" | "includeStyleRules"> & { runtime?: Runtime | null | undefined; repos?: string[] | undefined };
-function loadDraft(): Draft | null {
-  try { const raw = localStorage.getItem(DRAFT_KEY); return raw ? (JSON.parse(raw) as Draft) : null; } catch { return null; }
+function loadDraft(key: string): Draft | null {
+  try { const raw = localStorage.getItem(key); return raw ? (JSON.parse(raw) as Draft) : null; } catch { return null; }
 }
 
 /**
  * 만들기 폼. 실패해서 폼으로 돌아와도 입력이 남도록 (1) 마지막 요청(initial)에서 복원하고 (2) 입력값을 localStorage에 임시 저장한다.
- * 새로고침해도 마지막 목표가 살아 있다. 보관함에 저장한 뒤에는 임시 저장을 지운다.
+ * 새로고침해도 마지막 목표가 살아 있다. 목표를 비우면 임시 저장을 지우고(지운 목표가 되살아나지 않게), 보관함에 저장한 뒤에도 지운다.
+ * 임시 저장은 로그인 모드면 사람별 키(lib/studio-draft). 위쪽 프리셋은 목표 문장 없이 설정만 서버에 사람별로 저장한다.
  */
 export function CreateForm({ busy, error, initial, onSubmit, onTicket }: { busy: boolean; error: string | null; initial?: StudioRequest | null; onSubmit: (req: StudioRequest) => void; onTicket?: (input: string) => void }) {
   const [mode, setMode] = useState<"manual" | "ticket">(() => (initial?.ticket ? "ticket" : "manual"));
@@ -35,19 +37,69 @@ export function CreateForm({ busy, error, initial, onSubmit, onTicket }: { busy:
   const [status, setStatus] = useState<{ configured: boolean; workspace: WorkspaceStatus } | null>(null);
   useEffect(() => { api.prompts.ticketConfigured().then(setStatus).catch(() => setStatus(null)); }, []);
 
-  // 마지막 요청이 없을 때만(첫 진입) 임시 저장분을 복원한다
+  // 임시 저장 키는 로그인 상태를 안 뒤에 정해진다(그 전에는 읽지도 쓰지도 않는다)
+  const me = useAuth();
+  const key = me ? draftKey(me) : null;
+  const restoredOnce = useRef(false);
+  // 마지막 요청이 없을 때만(첫 진입) 임시 저장분을 복원한다. 아래 저장 효과보다 먼저 선언해야 지우기 전에 읽는다
   useEffect(() => {
+    if (!key || restoredOnce.current) return;
+    restoredOnce.current = true;
+    // 로그인 모드에서 예전 공용 키에 남은 입력은 누구 것인지 모르므로 버린다
+    if (me?.authEnabled) { try { localStorage.removeItem(DRAFT_BASE); } catch { /* 저장소를 못 쓰면 지울 것도 없다 */ } }
     if (seed) return;
-    const d = loadDraft();
-    if (d && d.goal) {
+    const d = loadDraft(key);
+    if (d && d.goal && !goal.trim()) {   // 키가 정해지기 전에 이미 입력을 시작했으면 덮지 않는다
       setDomain(PURPOSES[d.purpose]?.domain ?? "dev"); setPurpose(d.purpose); setSubtype(d.subtype ?? null); setGoal(d.goal);
       setLength(d.length); setClarify(d.clarify ?? "ask_first"); setLanguage(d.promptLanguage); setIncludeStyleRules(d.includeStyleRules); setRuntime(d.runtime ?? defaultRuntime(d.purpose)); setRepos(d.repos ?? []); setRestored(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [key]);
   useEffect(() => {
-    try { if (goal.trim()) localStorage.setItem(DRAFT_KEY, JSON.stringify({ purpose, subtype, goal, length, clarify, promptLanguage: language, includeStyleRules, runtime, repos } satisfies Draft)); } catch { /* noop */ }
-  }, [purpose, subtype, goal, length, clarify, language, includeStyleRules, runtime, repos]);
+    if (!key) return;
+    try {
+      // 목표가 비면 지운다 — 남겨 두면 지운 목표가 새로고침 뒤 되살아난다
+      if (goal.trim()) localStorage.setItem(key, JSON.stringify({ purpose, subtype, goal, length, clarify, promptLanguage: language, includeStyleRules, runtime, repos } satisfies Draft));
+      else localStorage.removeItem(key);
+    } catch { /* 저장소를 못 쓰는 브라우저(사생활 보호 모드 등)면 임시 저장 없이 동작 */ }
+  }, [key, purpose, subtype, goal, length, clarify, language, includeStyleRules, runtime, repos]);
+
+  // 설정 프리셋(목표 문장 제외). 고르면 값을 채우고, 지금 설정을 이름 붙여 저장한다
+  const { message } = App.useApp();
+  const [presets, setPresets] = useState<Preset[]>([]);
+  const [presetId, setPresetId] = useState<string | null>(null);
+  const [nameDialog, setNameDialog] = useState<{ mode: "create" | "rename"; name: string } | null>(null);
+  const loadPresets = useCallback(() => { api.presets.list().then(setPresets).catch(() => setPresets([])); }, []);
+  useEffect(() => { loadPresets(); }, [loadPresets]);
+  const currentSettings = (): PresetSettings => ({ purpose, subtype, length, runtime, promptLanguage: language, includeStyleRules, repos, clarify });
+  const applyPreset = (id: string | null) => {
+    setPresetId(id);
+    const v = presets.find((x) => x.id === id)?.settings; if (!v) return;
+    setDomain(PURPOSES[v.purpose].domain); setPurpose(v.purpose); setSubtype(v.subtype); setLength(v.length); setRuntime(v.runtime);
+    setLanguage(v.promptLanguage); setIncludeStyleRules(v.includeStyleRules); setRepos(v.repos); setClarify(v.clarify);
+  };
+  const savePresetName = async () => {
+    if (!nameDialog?.name.trim()) return;
+    const cur = presets.find((x) => x.id === presetId);
+    try {
+      const row = nameDialog.mode === "rename" && cur?.settings
+        ? await api.presets.save({ id: cur.id, name: nameDialog.name.trim(), settings: cur.settings })
+        : await api.presets.save({ name: nameDialog.name.trim(), settings: currentSettings() });
+      setNameDialog(null); setPresetId(row.id); loadPresets();
+      message.success(nameDialog.mode === "rename" ? "이름을 바꿨습니다" : "현재 설정을 프리셋으로 저장했습니다(목표 문장은 넣지 않습니다)");
+    } catch (e) { message.error(`저장 실패: ${e instanceof Error ? e.message : String(e)}`); }
+  };
+  const removePreset = async () => {
+    if (!presetId) return;
+    try { await api.presets.remove(presetId); setPresetId(null); loadPresets(); message.success("프리셋을 지웠습니다"); }
+    catch (e) { message.error(`삭제 실패: ${e instanceof Error ? e.message : String(e)}`); }
+  };
+
+  /** 처음부터: 모든 값을 기본값으로, 임시 저장 삭제(위 효과가 빈 목표를 보고 지운다), 티켓 입력도 비움. */
+  const resetAll = () => {
+    setDomain("dev"); setPurpose("investigate"); setSubtype(null); setGoal(""); setLength(defaultLength("investigate")); setRuntime(defaultRuntime("investigate"));
+    setClarify("ask_first"); setLanguage("ko"); setIncludeStyleRules(false); setRepos([]); setTicketInput(""); setRestored(false); setPresetId(null);
+  };
 
   const def = PURPOSES[purpose];
   const sub = useMemo(() => def.subtypes.find((s) => s.id === subtype) ?? null, [def, subtype]);
@@ -85,7 +137,24 @@ export function CreateForm({ busy, error, initial, onSubmit, onTicket }: { busy:
 
   return (
     <div className="flex flex-col gap-4">
-      <Segmented data-testid="studio-mode" value={mode} onChange={(v) => setMode(v as typeof mode)} options={[{ value: "manual", label: "직접 입력" }, { value: "ticket", label: "Jira 티켓" }]} />
+      <div className="flex flex-wrap items-center gap-2">
+        <Segmented data-testid="studio-mode" value={mode} onChange={(v) => setMode(v as typeof mode)} options={[{ value: "manual", label: "직접 입력" }, { value: "ticket", label: "Jira 티켓" }]} />
+        <Tooltip title="목적·분량·실행 환경 등 모든 값을 기본값으로 되돌리고 임시 저장을 지웁니다">
+          <Button data-testid="studio-reset" size="small" icon={<ReloadOutlined />} onClick={resetAll}>처음부터</Button>
+        </Tooltip>
+        <span className="ml-auto" />
+        <Select data-testid="studio-preset" size="small" style={{ minWidth: 200 }} allowClear placeholder="설정 프리셋" value={presetId ?? undefined} onChange={(v) => applyPreset(v ?? null)}
+          options={presets.map((p) => ({ value: p.id, label: p.settings ? p.name : `${p.name} (옛 설정 — 골라서 지운 뒤 다시 저장)` }))} notFoundContent={<Typography.Text type="secondary" style={{ fontSize: 12 }}>저장한 프리셋이 없습니다</Typography.Text>} />
+        {presetId && presets.find((x) => x.id === presetId)?.settings && <Tooltip title="이름 바꾸기"><Button size="small" icon={<EditOutlined />} onClick={() => setNameDialog({ mode: "rename", name: presets.find((x) => x.id === presetId)?.name ?? "" })} /></Tooltip>}
+        {presetId && <Popconfirm title="이 프리셋을 지울까요?" okText="삭제" okButtonProps={{ danger: true }} onConfirm={() => void removePreset()}><Button size="small" danger icon={<DeleteOutlined />} /></Popconfirm>}
+        <Tooltip title="목적·세부 유형·분량·실행 환경·언어·어투 규칙·대상 저장소·질문 정책을 이름 붙여 저장합니다(목표 문장 제외)">
+          <Button data-testid="preset-save" size="small" icon={<SaveOutlined />} onClick={() => setNameDialog({ mode: "create", name: `${PURPOSES[purpose].label} · ${RUNTIME_LABEL[runtime]}` })}>현재 설정 저장</Button>
+        </Tooltip>
+      </div>
+      <Modal open={nameDialog !== null} title={nameDialog?.mode === "rename" ? "프리셋 이름 바꾸기" : "현재 설정을 프리셋으로 저장"} okText="저장" cancelText="취소"
+        onOk={() => void savePresetName()} onCancel={() => setNameDialog(null)} okButtonProps={{ disabled: !nameDialog?.name.trim() }} destroyOnHidden>
+        <Input data-testid="preset-name" maxLength={40} value={nameDialog?.name ?? ""} onChange={(e) => setNameDialog((d) => (d ? { ...d, name: e.target.value } : d))} onPressEnter={() => void savePresetName()} />
+      </Modal>
       <div>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>목적</Typography.Text>
         <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -122,7 +191,7 @@ export function CreateForm({ busy, error, initial, onSubmit, onTicket }: { busy:
       )}
       <div>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>목표 — 프롬프트를 받은 모델이 끝냈을 때 무엇을 손에 쥐어야 하나</Typography.Text>
-        <Input.TextArea data-testid="studio-goal" className="mt-1" autoSize={{ minRows: 3, maxRows: 8 }} maxLength={2000} showCount value={goal} onChange={(e) => setGoal(e.target.value)}
+        <Input.TextArea data-testid="studio-goal" className="mt-1" autoSize={{ minRows: 3, maxRows: 8 }} maxLength={2000} showCount allowClear value={goal} onChange={(e) => setGoal(e.target.value)}
           placeholder={PLACEHOLDER[domain]} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && canRun) submit(); }} />
       </div>
 

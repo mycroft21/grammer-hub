@@ -10,4 +10,5 @@ export * from "./repo/stats";
 export * from "./repo/context";
 export * from "./repo/prompts";
 export * from "./repo/prompt-runs";
+export * from "./repo/presets";
 export * from "./repo/team";

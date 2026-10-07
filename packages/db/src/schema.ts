@@ -216,3 +216,13 @@ export const promptRuns = sqliteTable("prompt_runs", {
   promptId: text("prompt_id"),                   // 보관하면 그 프롬프트
   createdAt: integer("created_at").notNull().$defaultFn(now),
 }, (t) => [index("prompt_runs_user_created").on(t.userId, t.createdAt)]);
+
+/** 만들기 폼의 설정 프리셋(사람별). 목표 문장은 넣지 않는다 — 설정만(core의 PresetSettings가 모양을 정한다). */
+export const studioPresets = sqliteTable("studio_presets", {
+  id: text("id").notNull(),
+  userId: text("user_id").notNull().references(() => users.id),
+  name: text("name").notNull(),
+  settings: text("settings", { mode: "json" }).notNull().$type<Record<string, unknown>>(),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+}, (t) => [primaryKey({ columns: [t.userId, t.id] })]);

@@ -5,7 +5,7 @@ import { runChecks } from "../checks";
 import { fillVariables, renderClaude } from "../render/claude";
 import { generatePrompt, planPrompt, regenerateSlot } from "../pipeline";
 import { DOMAINS, DOMAIN_LIST, LIFECYCLE, PURPOSES, defaultLength, defaultRuntime, domainOf, findSubtype } from "../taxonomy";
-import { PromptSpec, SLOT_KEYS, type StudioRequest } from "../spec";
+import { PresetSettings, PromptSpec, SLOT_KEYS, type StudioRequest } from "../spec";
 import { buildGeneratePrompt, studioStableSystem, type StudioContext } from "../meta-prompt";
 
 const ctx = (over: Partial<StudioContext> = {}): StudioContext => ({
@@ -204,6 +204,15 @@ describe("meta prompt", () => {
     expect(p.user).toContain("<language>en</language>");
     expect(p.system[1]!.text).toContain("다음 단계로 넘길 것");
     expect(p.system[0]!.cache).toBe(true);
+  });
+});
+
+describe("PresetSettings", () => {
+  it("설정만 받고 목표 문장(goal)이 섞이면 거부한다", () => {
+    const ok = { purpose: "build", subtype: null, length: "short", runtime: "codex", promptLanguage: "en", includeStyleRules: false, repos: [], clarify: "never_ask" };
+    expect(PresetSettings.safeParse(ok).success).toBe(true);
+    expect(PresetSettings.safeParse({ ...ok, goal: "로그인 재시도 구현" }).success).toBe(false);
+    expect(PresetSettings.safeParse({ ...ok, clarify: undefined }).success).toBe(false);
   });
 });
 
