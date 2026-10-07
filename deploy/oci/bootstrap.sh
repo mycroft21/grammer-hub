@@ -18,12 +18,28 @@ SWAP_GB=${SWAP_GB:-3}
 PORT=${PORT:-3000}
 APP_USER=$(id -un)
 export DEBIAN_FRONTEND=noninteractive
-APT="sudo -E apt-get -o DPkg::Lock::Timeout=600 -y -q"
+BOOTSTRAP_LOG=${BOOTSTRAP_LOG:-$HOME/bootstrap.log}
 
 log() { printf '\n\033[1;34m▶ %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m! %s\033[0m\n' "$*"; }
 
+# DPkg::Lock::Timeout은 dpkg 잠금만 기다린다. 부팅 직후 apt-daily(자동 업데이트)가 잡는 목록 잠금은 기다리지 않고 바로 실패하므로 직접 기다린다
+wait_apt() {
+  local i=0
+  while sudo fuser /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+    [ "$i" -eq 0 ] && log "자동 업데이트(apt)가 끝나길 기다리는 중"
+    i=$((i + 1))
+    [ "$i" -lt 120 ] || { warn "10분이 지나도 apt 잠금이 풀리지 않습니다. 잠시 뒤 다시 실행하세요."; exit 1; }
+    sleep 5
+  done
+}
+apt_get() { wait_apt; sudo -E apt-get -o DPkg::Lock::Timeout=600 -y -q "$@"; }
+
 if [ "$(id -u)" = 0 ]; then warn "root가 아니라 일반 사용자(ubuntu)로 실행하세요. 필요한 곳만 sudo를 씁니다."; exit 1; fi
+
+# 실행할 때마다 같은 로그 파일에 이어 쓴다(다시 실행해도 이전 기록이 남는다)
+exec > >(tee -a "$BOOTSTRAP_LOG") 2>&1
+printf '\n===== %s bootstrap 시작 =====\n' "$(date -Is)"
 
 # ── 0. 호스트 이름 ──
 PUBLIC_IP=$(curl -fsS --max-time 5 https://api.ipify.org || curl -fsS --max-time 5 https://ifconfig.me || true)
@@ -54,14 +70,15 @@ fi
 
 # ── 2. 패키지 ──
 log "패키지 설치"
-$APT update
-$APT install git curl ca-certificates gnupg build-essential python3 openssl sqlite3 debian-keyring debian-archive-keyring apt-transport-https
+apt_get update
+apt_get install git curl ca-certificates gnupg build-essential python3 openssl sqlite3 debian-keyring debian-archive-keyring apt-transport-https
 
 # ── 3. Node 22 + pnpm (better-sqlite3 네이티브 모듈이 Node 메이저에 묶여 있어 22 고정) ──
 if ! command -v node >/dev/null || ! node -v | grep -q '^v22\.'; then
   log "Node 22 설치"
+  wait_apt   # NodeSource 설치 스크립트도 안에서 apt-get update를 부른다
   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - >/dev/null
-  $APT install nodejs
+  apt_get install nodejs
 fi
 sudo corepack enable >/dev/null 2>&1 || true
 corepack prepare pnpm@10 --activate >/dev/null
@@ -72,8 +89,8 @@ if ! command -v caddy >/dev/null; then
   log "Caddy 설치"
   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
-  $APT update
-  $APT install caddy
+  apt_get update
+  apt_get install caddy
 fi
 
 # ── 5. 방화벽: OCI Ubuntu 이미지는 iptables로 22번만 연다. 80/443을 맨 앞에 넣고 저장 ──
@@ -81,7 +98,7 @@ log "방화벽 80/443 열기"
 for p in 80 443; do
   sudo iptables -C INPUT -p tcp --dport "$p" -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 1 -p tcp --dport "$p" -j ACCEPT
 done
-if command -v netfilter-persistent >/dev/null; then sudo netfilter-persistent save >/dev/null; else $APT install iptables-persistent >/dev/null && sudo netfilter-persistent save >/dev/null; fi
+if command -v netfilter-persistent >/dev/null; then sudo netfilter-persistent save >/dev/null; else apt_get install iptables-persistent >/dev/null && sudo netfilter-persistent save >/dev/null; fi
 warn "OCI 콘솔의 보안 리스트(study-tutor-subnet)에도 0.0.0.0/0 → TCP 80, 443 인그레스가 있어야 밖에서 보입니다."
 
 # ── 6. 코드 ──
@@ -133,7 +150,18 @@ NODE_OPTIONS=--max-old-space-size=1536 pnpm build
 log "systemd 서비스"
 sed -e "s|@APP_DIR@|$APP_DIR|g" -e "s|@APP_USER@|$APP_USER|g" -e "s|@PORT@|$PORT|g" -e "s|@PNPM@|$(command -v pnpm)|g" deploy/oci/grammer-hub.service | sudo tee /etc/systemd/system/grammer-hub.service >/dev/null
 sudo systemctl daemon-reload
-sudo systemctl enable --now grammer-hub >/dev/null
+# 로그인 모드는 OIDC 세 값이 모두 있을 때만 켜진다(env.ts authEnabled). 꺼진 채 공개되면 설정 화면(.env 쓰기)까지 누구나 쓸 수 있으므로,
+# 세 값이 비어 있으면 서비스를 끄고 부팅 때도 뜨지 않게 해 둔다. update.sh도 꺼진(disabled) 서비스는 다시 올리지 않는다.
+# 값 뒤의 "# 주석"과 따옴표·공백은 dotenv처럼 무시하고 비었는지만 본다.
+env_set() { [ -n "$(sed -nE "s/^$1=//p" .env | tail -1 | sed -E 's/(^|[[:space:]]+)#.*$//; s/[[:space:]"'\'']//g')" ]; }
+if env_set OIDC_ISSUER && env_set OIDC_CLIENT_ID && env_set OIDC_CLIENT_SECRET; then
+  sudo systemctl enable --now grammer-hub >/dev/null
+  AUTH_READY=1
+else
+  sudo systemctl disable --now grammer-hub >/dev/null 2>&1 || true
+  AUTH_READY=0
+  warn "OIDC_ISSUER · OIDC_CLIENT_ID · OIDC_CLIENT_SECRET 중 비어 있는 값이 있어 서비스를 시작하지 않았습니다(로그인 없이 공개되는 것을 막기 위해)."
+fi
 log "Caddy: https://$HOST → 127.0.0.1:$PORT"
 sed -e "s|@HOST@|$HOST|g" -e "s|@PORT@|$PORT|g" deploy/oci/Caddyfile | sudo tee /etc/caddy/Caddyfile >/dev/null
 sudo systemctl enable caddy >/dev/null 2>&1 || true
@@ -144,9 +172,11 @@ chmod +x deploy/oci/backup.sh deploy/oci/update.sh
 ( crontab -l 2>/dev/null | grep -v 'deploy/oci/backup.sh' ; echo "10 3 * * * $APP_DIR/deploy/oci/backup.sh >> /var/tmp/grammer-hub-backup.log 2>&1" ) | crontab -
 
 # ── 11. 확인 ──
-for i in $(seq 1 30); do curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1 && break; sleep 1; done
-HEALTH=$(curl -fsS "http://127.0.0.1:$PORT/api/health" || echo '{}')
-log "상태: $(echo "$HEALTH" | python3 -c 'import json,sys; h=json.load(sys.stdin); c=h.get("cloud",{}); a=h.get("auth",{}); print(f"backend={c.get(\"backend\")} ready={c.get(\"ready\")} · login={\"on\" if a.get(\"enabled\") else \"off\"} admins={a.get(\"admins\")} · build={ (h.get(\"build\") or {}).get(\"id\") }")' 2>/dev/null || echo "$HEALTH" | head -c 200)"
+if [ "$AUTH_READY" = 1 ]; then
+  for i in $(seq 1 30); do curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1 && break; sleep 1; done
+  HEALTH=$(curl -fsS "http://127.0.0.1:$PORT/api/health" || echo '{}')
+  log "상태: $(echo "$HEALTH" | python3 -c 'import json,sys; h=json.load(sys.stdin); c=h.get("cloud",{}); a=h.get("auth",{}); print(f"backend={c.get(\"backend\")} ready={c.get(\"ready\")} · login={\"on\" if a.get(\"enabled\") else \"off\"} admins={a.get(\"admins\")} · build={ (h.get(\"build\") or {}).get(\"id\") }")' 2>/dev/null || echo "$HEALTH" | head -c 200)"
+fi
 
 cat <<MSG
 
@@ -157,8 +187,10 @@ IdP 콜백 URL  https://$HOST/api/auth/callback     ← 구글/Okta/Azure 앱 �
 
 채울 것:  ANTHROPIC_API_KEY · OIDC_ISSUER · OIDC_CLIENT_ID · OIDC_CLIENT_SECRET
          AUTH_ALLOWED_DOMAINS(예: example.com) · AUTH_ADMIN_EMAILS(본인 이메일 — 비우면 설정 화면을 아무도 못 엽니다)
-채운 뒤:  sudo systemctl restart grammer-hub   (OIDC·관리자 값은 재시작 없이도 다음 요청부터 반영되지만, 처음엔 재시작이 확실합니다)
+채운 뒤:  $([ "$AUTH_READY" = 1 ] && echo "sudo systemctl restart grammer-hub" || echo "sudo systemctl enable --now grammer-hub   ← 서비스가 아직 꺼져 있습니다")
+         (.env를 직접 고친 값은 재시작해야 반영됩니다. 화면의 설정 메뉴로 바꾼 값만 즉시 반영)
 코드 갱신: $APP_DIR/deploy/oci/update.sh
 로그:     journalctl -u grammer-hub -f        인증서·프록시: journalctl -u caddy -f
+설치 로그: $BOOTSTRAP_LOG (실행할 때마다 이어 씀)
 ────────────────────────────────────────────────────────────
 MSG
