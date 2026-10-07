@@ -92,6 +92,21 @@ describe("db", () => {
     expect(row?.textHash).toHaveLength(64);
   });
 
+  it("기본 프로필은 사람마다 따로 심기고, 같은 id를 써도 서로의 프로필을 가져가거나 덮어쓰지 않는다", () => {
+    const db = openDb(":memory:");
+    const a = ensureUser(db, "a@example.com");
+    const b = ensureUser(db, "b@example.com");
+    expect(seedDefaultProfiles(db, a.id)).toBe(3);
+    expect(seedDefaultProfiles(db, b.id)).toBe(3);
+    expect(listProfiles(db, a.id)).toHaveLength(3);
+    expect(listProfiles(db, b.id)).toHaveLength(3);
+    // b가 기본 프로필을 고치고 기본값을 바꿔도 a의 같은 id 프로필은 그대로
+    upsertProfile(db, { ...listProfiles(db, b.id).find((p) => p.id === "boss-report")!, name: "b의 보고용", isDefault: true });
+    expect(listProfiles(db, a.id).find((p) => p.id === "boss-report")?.name).toBe("상급자 · 보고용");
+    expect(listProfiles(db, a.id).filter((p) => p.isDefault).map((p) => p.id)).toEqual(["boss-slack"]);
+    expect(listProfiles(db, b.id).filter((p) => p.isDefault).map((p) => p.id)).toEqual(["boss-report"]);
+  });
+
   it("예전에 <system> 태그로 감싸 보관한 한 덩어리는 읽을 때 태그 없이 돌려준다", () => {
     const db = openDb(":memory:");
     const u = ensureUser(db, "a@b.c");

@@ -19,12 +19,13 @@ export function getProfile(db: Db, userId: string, id: string): SituationProfile
 export function upsertProfile(db: Db, input: SituationProfileInput): SituationProfile {
   const p = SituationProfile.parse(input);
   const values = { ...p, notes: p.notes ?? null, updatedAt: Date.now() };
+  // 키가 (user_id, id)라서 다른 사람의 같은 id 프로필을 덮어쓰지 않는다
   db.insert(situationProfiles).values(values)
-    .onConflictDoUpdate({ target: situationProfiles.id, set: values }).run();
+    .onConflictDoUpdate({ target: [situationProfiles.userId, situationProfiles.id], set: values }).run();
   if (p.isDefault) {
     db.update(situationProfiles).set({ isDefault: false })
       .where(and(eq(situationProfiles.userId, p.userId), eq(situationProfiles.isDefault, true))).run();
-    db.update(situationProfiles).set({ isDefault: true }).where(eq(situationProfiles.id, p.id)).run();
+    db.update(situationProfiles).set({ isDefault: true }).where(and(eq(situationProfiles.userId, p.userId), eq(situationProfiles.id, p.id))).run();
   }
   return p;
 }
@@ -34,7 +35,7 @@ export function deleteProfile(db: Db, userId: string, id: string): boolean {
   return r.changes > 0;
 }
 
-/** 프로필이 하나도 없을 때 기본 6종을 넣는다. 반환값은 삽입 수. */
+/** 프로필이 하나도 없을 때 기본 프로필(예시 3종)을 넣는다. 반환값은 삽입 수. */
 export function seedDefaultProfiles(db: Db, userId: string): number {
   if (listProfiles(db, userId).length > 0) return 0;
   for (const p of DEFAULT_PROFILES) upsertProfile(db, { ...p, userId });

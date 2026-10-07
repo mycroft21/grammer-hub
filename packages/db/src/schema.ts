@@ -1,4 +1,4 @@
-import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 const now = () => Date.now();
 
@@ -8,8 +8,9 @@ export const users = sqliteTable("users", {
   createdAt: integer("created_at").notNull().$defaultFn(now),
 });
 
+// 키는 (user_id, id). 기본 프로필은 사용자마다 같은 id(boss-slack 등)로 심기므로 id만으로는 사람 간에 겹친다.
 export const situationProfiles = sqliteTable("situation_profiles", {
-  id: text("id").primaryKey(),
+  id: text("id").notNull(),
   userId: text("user_id").notNull().references(() => users.id),
   name: text("name").notNull(),
   audience: text("audience").notNull(),
@@ -24,7 +25,7 @@ export const situationProfiles = sqliteTable("situation_profiles", {
   isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
-});
+}, (t) => [primaryKey({ columns: [t.userId, t.id] })]);
 
 export const styleRules = sqliteTable("style_rules", {
   id: text("id").primaryKey(),
