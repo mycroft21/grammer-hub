@@ -146,6 +146,15 @@ try {
   const body = await page.textContent("body");
   check("feedback counted (1 accept / 1 reject)", /1\/1/.test(body));
   // ── 프롬프트 스튜디오: 질문 → 생성 → 보관 → 보관함에서 변수 채워 복사 ──
+  // 프로필을 바꿔 골라도 편집 폼이 처음 고른 값에 머물지 않는다(useForm 인스턴스가 이전 값을 들고 있던 문제)
+  await page.goto(`http://127.0.0.1:${PORT}/profiles`, { waitUntil: "load" });
+  await page.click(".ant-card:has-text('상급자 · 메시지')");
+  await page.waitForSelector("aside input#name", { timeout: 5000 });
+  const firstName = await page.inputValue("aside input#name");
+  await page.click(".ant-card:has-text('고객 · 이메일 안내')");
+  await page.waitForFunction(() => document.querySelector("aside input#name")?.value === "고객 · 이메일 안내", null, { timeout: 5000 }).catch(() => {});
+  check("profile editor follows the selected card", firstName === "상급자 · 메시지" && (await page.inputValue("aside input#name")) === "고객 · 이메일 안내");
+
   await page.goto(`http://127.0.0.1:${PORT}/prompts`, { waitUntil: "load" });
   await fillUntil(page, "[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]", "재시도 로직 조사", "[data-testid=studio-run]:not([disabled])");
   await page.click("[data-testid=studio-runtime] >> text=채팅");   // 변수 채우기 흐름을 보려고 붙여넣기 모드로

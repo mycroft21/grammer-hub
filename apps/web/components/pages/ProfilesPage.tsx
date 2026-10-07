@@ -33,7 +33,10 @@ export function ProfilesPage() {
   }, [message]);
   useEffect(() => { void reload(); }, [reload]);
 
-  const open = (p: P) => { setEdit(p); setDraft(toForm(p)); };
+  // 이미 열린 카드(새 프로필 포함)를 다시 누르면 고치던 입력을 지우지 않는다
+  const open = (p: P) => { if (edit && edit.id === p.id) return; setEdit(p); setDraft(toForm(p)); };
+  // useForm 인스턴스는 Form이 다시 그려져도 이전 값을 들고 있고, 바뀐 initialValues는 그 값을 덮지 않는다. 선택이 바뀔 때마다 직접 채운다
+  useEffect(() => { if (edit) form.setFieldsValue(toForm(edit)); }, [edit, form]);
   const close = () => { setEdit(null); setDraft(null); };
   const exists = edit ? list.some((p) => p.id === edit.id) : false;
 
