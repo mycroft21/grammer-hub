@@ -4,7 +4,7 @@
 
 ## 명령 (루트에서)
 - 설치·빌드: `pnpm install` → `pnpm build` (E2E는 빌드 결과를 쓴다)
-- 타입: `pnpm typecheck` · 단위 테스트: `pnpm test` (core 132, db 3) · 한 패키지만: `pnpm --filter @grammer-hub/core test`
+- 타입: `pnpm typecheck` · 단위 테스트: `pnpm test` (core 132, db 4) · 한 패키지만: `pnpm --filter @grammer-hub/core test`
 - E2E(빌드 후): `cd apps/web && CHROMIUM_PATH=<chrome 실행 파일> node e2e/smoke.mjs` — FAKE_PROVIDER로 서버를 직접 띄우고 67개 항목을 본다(끝에 가짜 OIDC IdP + 로그인 모드 서버를 하나 더 띄워 로그인·사람별 분리·관리자 전용·팀 화면을 본다). 실제 `.env`·프로필 파일은 건드리지 않는다(GH_ENV_FILE·WORKSPACE_PROFILE 임시 파일)
 - 상태 진단: `pnpm health` (`--probe`로 백엔드 실제 호출). `pnpm doctor`는 pnpm 자체 명령이라 쓰지 않는다
 - 배포 이후 보관 자료 점검(개발자용): 배포 직후 `pnpm studio:mark`로 기준선을 찍고, `pnpm studio:since`로 그 이후 생성분만 본다(`--all`·`--json`). 기준선은 `apps/web/data/studio-baseline.json`

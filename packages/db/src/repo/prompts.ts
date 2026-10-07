@@ -21,8 +21,16 @@ export interface SaveVersionInput {
   usage?: { inputTokens: number; cachedTokens: number; outputTokens: number; costUsd: number; latencyMs: number } | null;
 }
 
+/**
+ * 예전 렌더는 한 덩어리(combined)를 `<system>…</system>` 태그로 감싸 저장했다. 지금은 태그 없이 system + user로 만든다
+ * (받는 쪽이 사용자 입력에 낀 시스템 지시로 보고 거부하므로). 보관함은 저장된 combined를 그대로 복사하므로 읽을 때 맞춘다.
+ */
+function normalizeRendered(rendered: RenderedPrompt): RenderedPrompt {
+  if (!rendered.combined.startsWith("<system>")) return rendered;
+  return { ...rendered, combined: `${rendered.system}\n\n${rendered.user}` };
+}
 const toVersion = (r: typeof promptVersions.$inferSelect): PromptVersionRow => ({
-  ...r, spec: r.spec as unknown as PromptSpec, rendered: r.rendered as unknown as RenderedPrompt, checks: r.checks as CheckResult[],
+  ...r, spec: r.spec as unknown as PromptSpec, rendered: normalizeRendered(r.rendered as unknown as RenderedPrompt), checks: r.checks as CheckResult[],
 });
 
 /** 새 프롬프트 + 첫 버전. */

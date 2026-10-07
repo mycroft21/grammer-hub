@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  createDraft, createRun, ensureUser, finishRun, getRunContext, getStats, getTeamStats, listDictionary, listOkRunIds, listProfiles, listRecentRuns, listRules,
+  createDraft, createPrompt, createRun, ensureUser, getVersion, finishRun, getRunContext, getStats, getTeamStats, listDictionary, listOkRunIds, listProfiles, listRecentRuns, listRules,
   openDb, recordFeedback, recordFinal, runOwnerId, saveSuggestions, seedDefaultProfiles, teamStatsCsv, upsertDictionary, upsertProfile, upsertRule,
 } from "../index";
 
@@ -90,5 +90,18 @@ describe("db", () => {
     const row = db.query.drafts.findFirst({ where: (d, { eq }) => eq(d.id, id) }).sync();
     expect(row?.textNfc).toBeNull();
     expect(row?.textHash).toHaveLength(64);
+  });
+
+  it("예전에 <system> 태그로 감싸 보관한 한 덩어리는 읽을 때 태그 없이 돌려준다", () => {
+    const db = openDb(":memory:");
+    const u = ensureUser(db, "a@b.c");
+    const rendered = { target: "claude", language: "ko", runtime: "claude_code", system: "S", user: "U", combined: "<system>\nS\n</system>\n\nU", variables: [] };
+    const { version } = createPrompt(db, {
+      userId: u.id, purpose: "build", subtype: null, language: "ko", goal: "목표",
+      spec: { title: "t" } as unknown as Parameters<typeof createPrompt>[1]["spec"], rendered: rendered as unknown as Parameters<typeof createPrompt>[1]["rendered"],
+      checks: [], source: "generate", studioVersion: "0.5.0",
+    });
+    expect(version.rendered.combined).toBe("S\n\nU");
+    expect(getVersion(db, version.id)?.rendered.combined).toBe("S\n\nU");
   });
 });
