@@ -70,7 +70,7 @@ export function ProfilesPage() {
   const editor = edit && (
     <Form<FormValues> key={edit.id || "new"} form={form} layout="vertical" size="middle" initialValues={toForm(edit)} onValuesChange={(_, all) => setDraft(all)} onFinish={() => void save()}>
       <Form.Item name="name" label="이름" rules={[{ required: true, message: "이름을 입력하세요." }, { max: 60, message: "60자 이내" }]}>
-        <Input placeholder="예: 상급자 · 슬랙 보고" autoFocus />
+        <Input placeholder="예: 상급자 · 메시지" autoFocus />
       </Form.Item>
       <div className="grid grid-cols-2 gap-x-3">
         <Form.Item name="audience" label="수신자"><Select options={toOptions(AUDIENCE_KO)} /></Form.Item>

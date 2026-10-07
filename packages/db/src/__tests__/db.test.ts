@@ -10,14 +10,14 @@ describe("db", () => {
     const u = ensureUser(db, "me@example.com");
     expect(ensureUser(db, "me@example.com").id).toBe(u.id);
 
-    expect(seedDefaultProfiles(db, u.id)).toBe(6);
+    expect(seedDefaultProfiles(db, u.id)).toBe(3);
     expect(seedDefaultProfiles(db, u.id)).toBe(0);
     const profiles = listProfiles(db, u.id);
     expect(profiles.filter((p) => p.isDefault).map((p) => p.id)).toEqual(["boss-slack"]);
 
     // 기본 프로필 변경 시 이전 기본은 해제
-    upsertProfile(db, { ...profiles.find((p) => p.id === "peer-slack")!, isDefault: true });
-    expect(listProfiles(db, u.id).filter((p) => p.isDefault).map((p) => p.id)).toEqual(["peer-slack"]);
+    upsertProfile(db, { ...profiles.find((p) => p.id === "customer-email")!, isDefault: true });
+    expect(listProfiles(db, u.id).filter((p) => p.isDefault).map((p) => p.id)).toEqual(["customer-email"]);
 
     const rule = upsertRule(db, { userId: u.id, text: "결론을 먼저 쓴다", scope: { channel: "messenger" }, confidence: 0.8 });
     expect(listRules(db, u.id)[0]).toMatchObject({ id: rule.id, scope: { channel: "messenger" } });

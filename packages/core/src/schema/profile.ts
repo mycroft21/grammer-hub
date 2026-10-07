@@ -28,12 +28,9 @@ export const SituationProfile = z.object({
 export type SituationProfile = z.infer<typeof SituationProfile>;
 export type SituationProfileInput = z.input<typeof SituationProfile>;
 
-/** 기본 프로필 6종 시드 (슬랙 · 한국어 기준). userId는 시드 시점에 채운다. */
+/** 기본 프로필 3종 시드: 사용자가 직접 만들기 전에 보는 예시. 사용자마다 같은 id로 심는다(키는 user_id + id). userId는 시드 시점에 채운다. */
 export const DEFAULT_PROFILES: ReadonlyArray<Omit<SituationProfileInput, "userId">> = [
-  { id: "boss-slack", name: "상급자 · 슬랙 보고", audience: "boss", channel: "messenger", lang: "ko", honorific: "haeyo", formality: 3, length: "concise", intent: "report", tone: "polite", isDefault: true },
-  { id: "boss-report", name: "상급자 · 보고서", audience: "boss", channel: "report", lang: "ko", honorific: "gaejo", formality: 5, length: "normal", intent: "report", tone: "neutral" },
-  { id: "peer-slack", name: "동료 · 슬랙 요청", audience: "peer", channel: "messenger", lang: "ko", honorific: "haeyo", formality: 2, length: "concise", intent: "request", tone: "friendly" },
+  { id: "boss-slack", name: "상급자 · 메시지", audience: "boss", channel: "messenger", lang: "ko", honorific: "haeyo", formality: 3, length: "concise", intent: "report", tone: "polite", isDefault: true },
+  { id: "boss-report", name: "상급자 · 보고용", audience: "boss", channel: "report", lang: "ko", honorific: "gaejo", formality: 5, length: "normal", intent: "report", tone: "neutral" },
   { id: "customer-email", name: "고객 · 이메일 안내", audience: "customer", channel: "email", lang: "ko", honorific: "hasipsio", formality: 5, length: "normal", intent: "inform", tone: "polite" },
-  { id: "partner-email-en", name: "파트너 · 영문 이메일", audience: "customer", channel: "email", lang: "en", honorific: "hasipsio", formality: 4, length: "normal", intent: "request", tone: "polite" },
-  { id: "team-notice", name: "팀 · 공지", audience: "public", channel: "notice", lang: "ko", honorific: "hasipsio", formality: 4, length: "normal", intent: "inform", tone: "neutral" },
 ];

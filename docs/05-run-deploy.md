@@ -76,7 +76,7 @@ pnpm dev                    # http://localhost:3000
 pnpm build && pnpm start    # http://localhost:3000
 ```
 
-첫 실행 때 `apps/web/data/grammer.db`가 만들어지고 프로필 6종이 자동으로 들어갑니다.
+첫 실행 때 `apps/web/data/grammer.db`가 만들어지고 기본 프로필 3종(상급자 · 메시지, 상급자 · 보고용, 고객 · 이메일 안내)이 예시로 들어갑니다. 로그인 모드에서는 사람마다 처음 들어올 때 각자에게 들어갑니다.
 
 ### A-3′. Jira 티켓에서 프롬프트 만들기 (선택)
 
@@ -393,7 +393,7 @@ git pull && pnpm install && pnpm build
 ```
 DB 스키마가 바뀌면 앱 시작 시 마이그레이션이 자동 적용됩니다.
 
-**초기화**: `rm -rf apps/web/data` 후 재시작하면 프로필 6종부터 다시 시작합니다. 학습 기록도 같이 사라집니다.
+**초기화**: `rm -rf apps/web/data` 후 재시작하면 기본 프로필 3종부터 다시 시작합니다. 학습 기록도 같이 사라집니다.
 
 **흔한 문제**
 
