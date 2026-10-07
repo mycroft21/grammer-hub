@@ -1,7 +1,7 @@
 import "server-only";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { EMPTY_PROFILE, EXAMPLE_PROFILE, applyProfileOps, formatProfile, parseWorkspaceProfile, type ProfileOp, type WorkspaceProfile } from "@grammer-hub/core";
+import { EMPTY_PROFILE, EXAMPLE_PROFILE, PRICES, applyProfileOps, formatProfile, parseWorkspaceProfile, type ProfileOp, type WorkspaceProfile } from "@grammer-hub/core";
 import { resetProviders } from "./providers";
 import { serverLog } from "./log";
 import { loadWorkspace, workspacePath } from "./workspace";
@@ -30,6 +30,8 @@ export const SETTINGS: SettingDef[] = [
   { key: "ANTHROPIC_API_KEY", label: "Anthropic API 키", group: "backend", kind: "secret", help: "console.anthropic.com에서 발급. 저장하면 끝 4자만 보인다.", placeholder: "sk-ant-…", showWhen: ["CLOUD_BACKEND", ["api"]] },
   { key: "CLAUDE_CLI_PATH", label: "claude 실행 파일", group: "backend", kind: "text", help: "PATH에 없으면 `which claude` 결과(예: /opt/homebrew/bin/claude).", placeholder: "claude", showWhen: ["CLOUD_BACKEND", ["claude-cli"]] },
   { key: "CLAUDE_CLI_MODEL", label: "claude-cli 모델", group: "backend", kind: "text", help: "claude -p --model 값.", placeholder: "claude-sonnet-5", showWhen: ["CLOUD_BACKEND", ["claude-cli"]] },
+  { key: "STUDIO_PLAN_MODEL", label: "의도 정리·티켓 분류 모델", group: "backend", kind: "text", help: "프롬프트 스튜디오의 짧은 단계(질문 고르기·분류)만 이 모델로. 생성·재생성은 기본 모델. 비우면 기본 모델. 클라우드에만 적용.", placeholder: "claude-sonnet-5" },
+  { key: "CORRECTION_MODEL", label: "교정 모델", group: "backend", kind: "text", help: "교정(에디터)만 이 모델로. 비우면 기본 모델. 클라우드에만 적용.", placeholder: "claude-sonnet-5" },
   { key: "LOCAL_LLM_URL", label: "로컬 LLM 주소", group: "backend", kind: "text", help: "llama.cpp 서버(OpenAI 호환) 주소.", placeholder: "http://127.0.0.1:8080", showWhen: ["DEFAULT_PROVIDER", ["local"]] },
   { key: "LOCAL_LLM_MODEL", label: "로컬 LLM 모델", group: "backend", kind: "text", help: "서버에 올라간 모델 이름.", placeholder: "gemma-4-26B-A4B-it-qat-q4_0", showWhen: ["DEFAULT_PROVIDER", ["local"]] },
   { key: "JIRA_BASE_URL", label: "Jira 주소", group: "jira", kind: "text", help: "예: https://xxx.atlassian.net", placeholder: "https://xxx.atlassian.net" },
@@ -96,6 +98,9 @@ const VALIDATORS: Record<string, (v: string) => string | null> = {
   AUTH_ALLOWED_EMAILS: (v) => (v.split(",").map((x) => x.trim()).filter(Boolean).every((x) => x.includes("@")) ? null : "이메일 주소를 쉼표로"),
   AUTH_ADMIN_EMAILS: (v) => (v.split(",").map((x) => x.trim()).filter(Boolean).every((x) => x.includes("@")) ? null : "이메일 주소를 쉼표로"),
   AUTH_SECRET: (v) => (!v || v.length >= 16 ? null : "16자 이상"),
+  // 단계별 모델은 가격표에 있는 이름만 — 오타는 연결 확인(기본 모델만 봄)에 안 걸리고, 표에 없는 이름은 비용이 0으로 기록된다
+  STUDIO_PLAN_MODEL: (v) => (!v || v in PRICES ? null : `${Object.keys(PRICES).join(", ")} 중에서`),
+  CORRECTION_MODEL: (v) => (!v || v in PRICES ? null : `${Object.keys(PRICES).join(", ")} 중에서`),
 };
 
 /**

@@ -74,6 +74,7 @@ if (backend === "claude-cli") {
     if (v.status === 0) ok(`claude CLI ${found} · ${v.stdout.trim()} · 모델 ${model}`); else bad(`claude --version 실패: ${(v.stderr || v.stdout || "").trim().slice(0, 120)}`);
   }
 }
+if (backend !== "fake") console.log(`  단계별 모델: 의도 정리·티켓 분류 ${get("STUDIO_PLAN_MODEL") || "(기본 모델)"} · 교정 ${get("CORRECTION_MODEL") || "(기본 모델)"}`);
 
 const jiraOn = Boolean(get("JIRA_BASE_URL") && get("JIRA_EMAIL") && get("JIRA_API_TOKEN"));
 console.log(`  Jira 연동: ${jiraOn ? `켜짐 (${get("JIRA_BASE_URL")})` : "꺼짐 — JIRA_BASE_URL/JIRA_EMAIL/JIRA_API_TOKEN 세 개가 다 있어야 함. DEMO-1 키는 없이도 됨"}`);

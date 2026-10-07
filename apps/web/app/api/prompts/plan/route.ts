@@ -1,5 +1,6 @@
 import { StudioRequest, planPrompt } from "@grammer-hub/core";
 import { getUser } from "@/lib/db";
+import { env } from "@/lib/env";
 import { parseBody } from "@/lib/json";
 import { recordStudioRun, runFields, studioProvider, toStudioContext } from "@/lib/studio";
 
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request): Promise<Response> {
   const body = await parseBody(req, StudioRequest);
   if (!body.ok) return body.res;
-  const p = studioProvider(body.data.provider);
+  const p = studioProvider(body.data.provider, env.studioPlanModel);
   if (!p.ok) return p.res;
   const c = await toStudioContext(body.data);
   if (!c.ok) return c.res;

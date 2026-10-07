@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { planFromTicket, ticketToText } from "@grammer-hub/core";
+import { env } from "@/lib/env";
 import { parseBody } from "@/lib/json";
 import { fetchTicket, jiraConfigured } from "@/lib/jira";
 import { getUser } from "@/lib/db";
@@ -18,7 +19,7 @@ export async function POST(req: Request): Promise<Response> {
   if (!body.ok) return body.res;
   const t = await fetchTicket(body.data.ticket);
   if (!t.ok) return Response.json({ error: { code: "ticket_unavailable", message: t.message } }, { status: t.status });
-  const p = studioProvider(body.data.provider);
+  const p = studioProvider(body.data.provider, env.studioPlanModel);
   if (!p.ok) return p.res;
   const log = runLogger("ticket", t.ticket.key);
   const ws = loadWorkspace();

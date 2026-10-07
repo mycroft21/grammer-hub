@@ -64,6 +64,8 @@ PII_BLOCK=                          # 비워두면 전부 마스킹 후 복원. 
 DATABASE_URL=file:./data/grammer.db
 ```
 
+**단계별 모델**(선택): 기본 모델(API는 claude-sonnet-5, claude-cli는 `CLAUDE_CLI_MODEL`)을 무겁게 두었다면, 짧은 단계만 빠른 모델로 돌릴 수 있습니다. `STUDIO_PLAN_MODEL`은 프롬프트 스튜디오의 의도 정리·티켓 분류(질문 고르기·분류, 짧은 JSON), `CORRECTION_MODEL`은 교정입니다. 생성·재생성은 계속 기본 모델입니다. 비우면 기본 모델, 클라우드에만 적용(로컬 LLM은 `LOCAL_LLM_MODEL` 하나). 설정 화면은 가격표(`packages/core/src/providers/pricing.ts`)에 있는 이름만 받습니다. `.env`에 직접 쓸 때도 같은 이름을 쓰세요: 표에 없는 이름은 비용이 0으로 기록되고, 연결 확인은 기본 모델만 보므로 오타가 드러나지 않습니다. 실행 기록(`prompt_runs`·교정 기록)에 단계마다 실제 모델이 남으므로 바꾼 뒤 지연·비용을 비교할 수 있습니다.
+
 API 키가 아직 없어도 UI는 볼 수 있습니다. `.env`에 `FAKE_PROVIDER=1`을 넣으면 규칙 기반 가짜 교정으로 전체 흐름이 돌아갑니다(품질은 무의미, 흐름 확인용).
 
 ### A-4. 실행

@@ -21,7 +21,7 @@ export async function POST(req: Request): Promise<Response> {
   if (!profile) return bad(`프로필을 찾을 수 없습니다: ${profileId}`, 404);
 
   let provider;
-  try { provider = getProvider(body.data.provider ?? null); }
+  try { provider = getProvider(body.data.provider ?? null, env.correctionModel); }
   catch (e) { return Response.json({ error: { code: "provider_unavailable", message: String(e) } }, { status: 503 }); }
   if (provider.id === "cloud" && !cloudReady()) {
     return Response.json({ error: { code: "provider_unavailable", message: "ANTHROPIC_API_KEY가 설정되지 않았습니다" } }, { status: 503 });

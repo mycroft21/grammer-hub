@@ -19,6 +19,9 @@ export const env = {
   get cloudBackend() { return (s("CLOUD_BACKEND") === "claude-cli" ? "claude-cli" : "api") as "api" | "claude-cli"; },
   get claudeCliPath() { return s("CLAUDE_CLI_PATH") || "claude"; },
   get claudeCliModel() { return s("CLAUDE_CLI_MODEL") || "claude-sonnet-5"; },
+  /** 단계별 클라우드 모델(비우면 기본 모델). 의도 정리·티켓 분류처럼 짧은 JSON 단계와 교정을 빠른 모델로 돌린다. 로컬 LLM에는 적용하지 않는다 */
+  get studioPlanModel() { return s("STUDIO_PLAN_MODEL") || null; },
+  get correctionModel() { return s("CORRECTION_MODEL") || null; },
   /** Jira 티켓 → 프롬프트. 셋 다 있어야 켜진다. DEMO-* 키는 없이도 동작. */
   get jiraBaseUrl() { return s("JIRA_BASE_URL"); },
   get jiraEmail() { return s("JIRA_EMAIL"); },
