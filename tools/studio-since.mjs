@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * 배포 기준선 이후에 보관된 프롬프트만 골라 본다 — "이번 배포로 메타프롬프트가 나아졌나"를 보는 개발자용 도구.
+ * 맨 위 '실행' 줄은 prompt_runs 기준이라 보관하지 않은 생성·실패까지 센다.
  * 화면에는 두지 않는다. 기준선은 DB 옆의 studio-baseline.json에 저장한다(커밋 대상이 아니다).
  *
  *   pnpm studio:mark              # 지금(시각·HEAD·studio 버전)을 기준선으로 저장. 배포 직후에 한 번 실행한다
@@ -72,6 +73,15 @@ const params = (...rest) => (user ? [user.id, ...rest] : rest);
 
 const prompts = db.prepare(`select p.id, p.title, p.purpose, p.language, p.goal, p.ticket_key, p.current_version_id, p.archived, p.created_at from prompts p where ${byUser} p.created_at > ? order by p.created_at`).all(...params(since));
 const versions = db.prepare(`select v.id, v.prompt_id, v.version_no, v.checks, v.source, v.slot, v.studio_version, v.cost_usd, v.created_at, p.title from prompt_versions v join prompts p on p.id = v.prompt_id where ${byUser} v.created_at > ? order by v.created_at`).all(...params(since));
+// 실행 기록(보관 여부 무관). 마이그레이션 전 DB면 표가 없을 수 있다
+const hasRuns = Boolean(db.prepare("select 1 from sqlite_master where type = 'table' and name = 'prompt_runs'").get());
+const runRows = hasRuns ? db.prepare(`select kind, status, count(*) n, coalesce(sum(cost_usd), 0) cost from prompt_runs where ${user ? "user_id = ? and" : ""} created_at > ? group by kind, status`).all(...params(since)) : [];
+const runs = { generate: 0, generateError: 0, regenerate: 0, plan: 0, ticket: 0, error: 0, costUsd: 0 };
+for (const r of runRows) {
+  runs.costUsd += r.cost;
+  if (r.status === "error") { runs.error += r.n; if (r.kind === "generate") runs.generateError += r.n; }
+  else if (r.kind in runs) runs[r.kind] += r.n;
+}
 const events = db.prepare(`select e.action, e.slot, count(*) n from prompt_events e join prompts p on p.id = e.prompt_id where ${byUser} e.created_at > ? group by e.action, e.slot`).all(...params(since));
 
 const bump = (o, k, n = 1) => { if (k) o[k] = (o[k] ?? 0) + n; };
@@ -102,7 +112,7 @@ const rows = prompts.slice(-LIMIT).reverse().map((p) => ({
 }));
 
 if (AS_JSON) {
-  console.log(JSON.stringify({ baseline, since, db: DB_PATH, user: EMAIL ?? null, totals: { prompts: prompts.length, versions: versions.length, costUsd }, bySource, byStudio, bySlot, byPurpose, byFailedCheck, byAction, recent: rows }, null, 2));
+  console.log(JSON.stringify({ baseline, since, db: DB_PATH, user: EMAIL ?? null, totals: { prompts: prompts.length, versions: versions.length, costUsd }, runs, bySource, byStudio, bySlot, byPurpose, byFailedCheck, byAction, recent: rows }, null, 2));
   process.exit(0);
 }
 
@@ -118,6 +128,8 @@ else console.log(`기준선       없음 — 전체를 보여줍니다. 배포�
 const nowStudio = studioVersion();
 if (baseline?.studioVersion && nowStudio && baseline.studioVersion !== nowStudio) console.log(`             ! 코드의 studio 버전이 ${nowStudio}로 올라갔습니다. 기준선은 ${baseline.studioVersion}입니다`);
 console.log(`DB           ${DB_PATH}\n사용자       ${EMAIL ?? "전체"}`);
+const genTotal = runs.generate + runs.generateError;
+if (hasRuns) console.log(`실행         생성 ${runs.generate}건${genTotal ? ` (실패 ${runs.generateError} · 실패율 ${Math.round((runs.generateError / genTotal) * 100)}%)` : ""} · 재생성 ${runs.regenerate} · 의도 정리 ${runs.plan} · 티켓 분류 ${runs.ticket} · 실패 전체 ${runs.error} · $${runs.costUsd.toFixed(4)}`);
 console.log(`이후         보관 ${prompts.length}건 · 새 버전 ${versions.length}개${costUsd > 0 ? ` · $${costUsd.toFixed(4)}` : ""}`);
 if (prompts.length === 0 && versions.length === 0) { console.log("\n기준선 이후에 보관된 자료가 없습니다.\n"); process.exit(0); }
 console.log("");

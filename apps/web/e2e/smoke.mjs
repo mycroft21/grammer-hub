@@ -181,6 +181,17 @@ try {
   const drawerText = await page.textContent(".ant-drawer [data-testid=studio-rendered]");
   check("filled prompt replaces the variable", drawerText.includes("function retry() {}") && !drawerText.includes("{{code}}"));
 
+  // 스튜디오 실행 기록: 위 흐름(의도 정리 2회 + 생성 1회, 보관함 저장)이 기록 화면 프롬프트 탭에 남고, 저장한 생성은 보관함으로 이어진다
+  await page.goto(`http://127.0.0.1:${PORT}/runs`, { waitUntil: "load" });
+  await page.click("[data-testid=runs-tab] >> text=프롬프트");
+  await page.waitForSelector("[data-testid=prompt-runs] .ant-table-row", { timeout: 10000 });
+  const promptRunText = await page.locator("[data-testid=prompt-runs] .ant-table-row").allTextContents();
+  check("prompt runs tab lists plan and generate runs", promptRunText.length >= 3 && promptRunText.some((t) => t.includes("생성")) && promptRunText.filter((t) => t.includes("의도 정리")).length >= 2);
+  check("saved generate run links to the library", (await page.locator("[data-testid=run-prompt-link]").count()) === 1);
+  await page.click("[data-testid=run-prompt-link]");
+  await page.waitForSelector(".ant-drawer [data-testid=studio-rendered]", { timeout: 10000 });
+  check("library link opens the saved prompt", ((await page.textContent(".ant-drawer")) ?? "").includes("테스트 프롬프트"));
+
   // 다회차 질문: 답을 반영하면 새 질문이 아래에 붙고 위 답은 남는다 → 즉시 생성. 폼의 '모호하면 묻기'가 프롬프트의 질문 정책이 된다.
   await page.goto(`http://127.0.0.1:${PORT}/prompts`, { waitUntil: "load" });
   await fillUntil(page, "[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]", "여러 번 묻는 재시도 조사", "[data-testid=studio-run]:not([disabled])");

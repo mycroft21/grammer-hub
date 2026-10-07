@@ -1,5 +1,5 @@
 import { PromptSpec, STUDIO_PROMPT_VERSION, renderClaude, runChecks } from "@grammer-hub/core";
-import { createPrompt, listPrompts, promptStats } from "@grammer-hub/db";
+import { createPrompt, linkPromptRun, listPrompts, promptStats } from "@grammer-hub/db";
 import { getDb, getUser } from "@/lib/db";
 import { bad, parseBody } from "@/lib/json";
 import { SavePromptBody } from "@/lib/studio";
@@ -25,5 +25,6 @@ export async function POST(req: Request): Promise<Response> {
     spec: spec.data, rendered: renderClaude(spec.data, { purpose: body.data.purpose }), checks: runChecks(spec.data, { purpose: body.data.purpose }), source: "generate",
     studioVersion: body.data.studioVersion || STUDIO_PROMPT_VERSION, provider: body.data.provider ?? null, model: body.data.model ?? null, usage: body.data.usage ?? null,
   });
+  if (body.data.runId) linkPromptRun(db, user.id, body.data.runId, r.prompt.id);
   return Response.json(r);
 }

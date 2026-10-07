@@ -250,7 +250,7 @@ Phase 2 증류와 같은 방식으로 "프롬프트 구조 선호 규칙"을 뽑
 |---|---|
 | 코어 | `packages/core/src/promptstudio/` — `spec.ts`(PromptSpec·Need·PlanResult·StudioRequest), `taxonomy.ts`, `needs.ts`(장부 → 질문·가정·확인), `workspace.ts`(프로필 스키마·저장소 확정·블록), `agent-defaults.ts`(범위·보고 고정 문장, 분량 표), `ticket.ts`(Jira 정규화·이름 치환·분류 프롬프트), `meta-prompt.ts`(고정 블록 캐시 + 단계 블록), `render/claude.ts`, `checks.ts`(12개), `partial.ts`(슬롯 스트리밍), `pipeline.ts`(plan/planFromTicket/generate/regenerate, PII 마스킹) |
 | 테스트 | `packages/core/src/promptstudio/__tests__/studio.test.ts` (분류 무결성, 렌더 ko/en, 점검, 파서, fake provider 파이프라인, PII 왕복) |
-| DB | `prompts`, `prompt_versions`(스펙·렌더·점검 스냅샷, 생성/재생성/직접 수정 출처), `prompt_events`(view/copy/fill/regenerate/edit/archive) — 마이그레이션 `0002` |
+| DB | `prompts`, `prompt_versions`(스펙·렌더·점검 스냅샷, 생성/재생성/직접 수정 출처), `prompt_events`(view/copy/fill/regenerate/edit/archive) — 마이그레이션 `0002`. **`prompt_runs`(v0.5.2, `0005`)**: 모델을 부른 네 경로(의도 정리·티켓 분류·생성·재생성)를 보관 여부와 상관없이 성공·실패(사용자 중단 = `aborted`) 모두 남긴다. 분류·토큰·비용·지연·점검 수·상태만 두고 목표·티켓 본문·결과 같은 원문 컬럼은 없다. 생성이 끝나면 SSE `run` 이벤트로 id를 알리고, 보관(`POST /api/prompts`의 `runId`) 시 본인 실행에만 `prompt_id`를 잇는다. 재생성은 보관된 프롬프트면 그 id를 잇는다. 기록 화면의 '프롬프트' 탭(`GET /api/prompts/runs`), 팀 집계, `studio:since`의 '실행' 줄이 이 표를 본다 |
 | API | `POST /api/prompts/plan` · `POST /api/prompts/generate`(SSE: meta/slot/spec/rendered/checks/usage/done) · `POST /api/prompts/regenerate` · `GET/POST /api/prompts` · `GET/PATCH/DELETE /api/prompts/[id]` · `POST /api/prompts/[id]/versions` · `POST /api/prompts/events` |
 | UI | `/prompts` — `components/studio/{CreateForm,AskStep,SlotCard,ResultPanel,LibraryPanel,useStudio}` |
 | fake provider | `FAKE_PROVIDER=1`이면 스키마 모양으로 스튜디오 요청을 판별해 결정적 plan/spec을 돌려준다(E2E·키 없는 데모) |

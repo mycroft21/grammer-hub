@@ -28,7 +28,7 @@ export function TeamPage() {
     api.team.stats(weeks).then(setData).catch((e) => message.error(`팀 통계를 불러오지 못했습니다: ${errMsg(e)}`)).finally(() => setLoading(false));
   }, [weeks, message]);
 
-  const members = useMemo(() => (data?.members ?? []).filter((m) => m.runsOk + m.runsError + m.prompts + m.promptVersions > 0), [data]);
+  const members = useMemo(() => (data?.members ?? []).filter((m) => m.lastActiveAt != null), [data]);
   const idle = (data?.members.length ?? 0) - members.length;
   const total = useMemo(() => {
     const sum = (k: keyof TeamMember) => members.reduce((a, m) => a + (Number(m[k]) || 0), 0);
@@ -50,9 +50,9 @@ export function TeamPage() {
     { title: "평균 지연", dataIndex: "latencyAvgMs", key: "lat", width: 90, align: "right", className: num, sorter: (a, b) => (a.latencyAvgMs ?? 0) - (b.latencyAvgMs ?? 0), render: (ms: number | null) => (ms != null ? `${(ms / 1000).toFixed(1)}초` : "-") },
     { title: <Tooltip title="교정 비용. 1달러 = 1,380원">교정 비용</Tooltip>, dataIndex: "costUsd", key: "cost", width: 100, align: "right", className: num, sorter: (a, b) => a.costUsd - b.costUsd, render: (usd: number) => won(usd) },
     { title: <Tooltip title="입력 중 캐시에서 온 토큰 비율. 낮으면 고정 블록이 캐시를 못 타고 있다">캐시율</Tooltip>, key: "cache", width: 80, align: "right", className: num, sorter: (a, b) => (pct(a.cachedTokens, a.inputTokens + a.cachedTokens) ?? -1) - (pct(b.cachedTokens, b.inputTokens + b.cachedTokens) ?? -1), render: (_, m) => { const r = pct(m.cachedTokens, m.inputTokens + m.cachedTokens); return r == null ? "-" : `${r}%`; } },
-    { title: "프롬프트", dataIndex: "prompts", key: "prompts", width: 90, align: "right", className: num, sorter: (a, b) => a.prompts - b.prompts, render: (n: number, m) => <span>{n}{m.promptRegens ? <Typography.Text type="secondary" style={{ fontSize: 11 }}> · 재생성 {m.promptRegens}</Typography.Text> : null}</span> },
+    { title: <Tooltip title="성공한 생성 수(보관하지 않은 것 포함). 재생성·실패는 따로">프롬프트</Tooltip>, dataIndex: "prompts", key: "prompts", width: 120, align: "right", className: num, sorter: (a, b) => a.prompts - b.prompts, render: (n: number, m) => <span>{n}{m.promptRegens ? <Typography.Text type="secondary" style={{ fontSize: 11 }}> · 재생성 {m.promptRegens}</Typography.Text> : null}{m.promptErrors ? <Typography.Text type="danger" style={{ fontSize: 11 }}> +{m.promptErrors}오류</Typography.Text> : null}</span> },
     { title: <Tooltip title="복사·변수 채움 횟수. 만들기만 하고 안 쓰면 0">프롬프트 사용</Tooltip>, dataIndex: "promptCopies", key: "copies", width: 110, align: "right", className: num, sorter: (a, b) => a.promptCopies - b.promptCopies },
-    { title: "스튜디오 비용", dataIndex: "studioCostUsd", key: "scost", width: 110, align: "right", className: num, sorter: (a, b) => a.studioCostUsd - b.studioCostUsd, render: (usd: number) => won(usd) },
+    { title: <Tooltip title="의도 정리·티켓 분류·생성·재생성 비용 합(보관 여부 무관)">스튜디오 비용</Tooltip>, dataIndex: "studioCostUsd", key: "scost", width: 110, align: "right", className: num, sorter: (a, b) => a.studioCostUsd - b.studioCostUsd, render: (usd: number) => won(usd) },
   ];
 
   return (

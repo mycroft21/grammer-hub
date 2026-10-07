@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createDraft, createPrompt, createRun, ensureUser, getVersion, finishRun, getRunContext, getStats, getTeamStats, listDictionary, listOkRunIds, listProfiles, listRecentRuns, listRules,
-  openDb, recordFeedback, recordFinal, runOwnerId, saveSuggestions, seedDefaultProfiles, teamStatsCsv, upsertDictionary, upsertProfile, upsertRule,
+  linkPromptRun, listPromptRuns, openDb, recordFeedback, recordFinal, recordPromptRun, runOwnerId, saveSuggestions, seedDefaultProfiles, teamStatsCsv, upsertDictionary, upsertProfile, upsertRule,
 } from "../index";
 
 describe("db", () => {
@@ -105,6 +105,40 @@ describe("db", () => {
     expect(listProfiles(db, a.id).find((p) => p.id === "boss-report")?.name).toBe("상급자 · 보고용");
     expect(listProfiles(db, a.id).filter((p) => p.isDefault).map((p) => p.id)).toEqual(["boss-slack"]);
     expect(listProfiles(db, b.id).filter((p) => p.isDefault).map((p) => p.id)).toEqual(["boss-report"]);
+  });
+
+  it("스튜디오 실행 기록: 사람별로 나뉘고, 보관 연결은 본인 실행만, 팀 집계는 보관하지 않은 생성·실패·분류 비용까지 센다", () => {
+    const db = openDb(":memory:");
+    const a = ensureUser(db, "a@team.com"), b = ensureUser(db, "b@team.com");
+    const base = { provider: "cloud", model: "m", studioVersion: "0.5.2", purpose: "build", language: "ko" } as const;
+    const usage = { inputTokens: 100, cachedTokens: 50, outputTokens: 20, costUsd: 0.1, latencyMs: 1000 };
+    recordPromptRun(db, { ...base, userId: a.id, kind: "plan", status: "ok", usage: { ...usage, costUsd: 0.01 } });
+    const gen = recordPromptRun(db, { ...base, userId: a.id, kind: "generate", status: "ok", usage, checksPassed: 9, checksTotal: 10 });
+    recordPromptRun(db, { ...base, userId: a.id, kind: "generate", status: "ok", usage });          // 보관하지 않은 생성
+    recordPromptRun(db, { ...base, userId: a.id, kind: "generate", status: "error", errorCode: "aborted", latencyMs: 300 });
+    recordPromptRun(db, { ...base, userId: a.id, kind: "regenerate", status: "ok", usage: { ...usage, costUsd: 0.02 } });
+    recordPromptRun(db, { ...base, userId: b.id, kind: "ticket", status: "ok", ticketKey: "EP-1", usage: { ...usage, costUsd: 0.03 } });
+
+    expect(listPromptRuns(db, a.id)).toHaveLength(5);
+    expect(listPromptRuns(db, b.id).map((r) => r.kind)).toEqual(["ticket"]);
+    expect(listPromptRuns(db, a.id).find((r) => r.id === gen)).toMatchObject({ checksPassed: 9, checksTotal: 10, costUsd: 0.1, promptId: null });
+    // 원문 컬럼이 없다(목표·티켓 본문·결과)
+    expect(Object.keys(listPromptRuns(db, a.id)[0]!)).not.toEqual(expect.arrayContaining(["goal"]));
+    expect(Object.keys(listPromptRuns(db, a.id)[0]!).some((k) => /goal|text|spec|rendered|description/i.test(k))).toBe(false);
+
+    expect(linkPromptRun(db, b.id, gen, "p-x")).toBe(false);       // 남의 실행은 못 잇는다
+    expect(linkPromptRun(db, a.id, gen, "p-1")).toBe(true);
+    expect(listPromptRuns(db, a.id).find((r) => r.id === gen)?.promptId).toBe("p-1");
+
+    const t = getTeamStats(db, 8);
+    const ma = t.members.find((m) => m.email === "a@team.com")!, mb = t.members.find((m) => m.email === "b@team.com")!;
+    expect([ma.prompts, ma.promptErrors, ma.promptRegens]).toEqual([2, 1, 1]);
+    expect(ma.studioCostUsd).toBeCloseTo(0.23);
+    expect(mb.studioCostUsd).toBeCloseTo(0.03);
+    expect(ma.lastActiveAt).not.toBeNull();
+    expect(teamStatsCsv(t).split("\n")[0]).toContain("prompts,prompt_errors,prompt_versions");
+    // 티켓 분류만 한 사람도 마지막 활동이 있다(팀 화면은 이 값으로 활동자를 고른다)
+    expect(mb.lastActiveAt).not.toBeNull();
   });
 
   it("예전에 <system> 태그로 감싸 보관한 한 덩어리는 읽을 때 태그 없이 돌려준다", () => {

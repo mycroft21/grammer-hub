@@ -1,8 +1,9 @@
 import "server-only";
-import { PromptLanguage, Purpose, defaultRuntime, renderRulesSnapshot, ticketCut, ticketToText, type StudioContext, type StudioRequest } from "@grammer-hub/core";
+import { PromptLanguage, Purpose, STUDIO_PROMPT_VERSION, defaultRuntime, renderRulesSnapshot, ticketCut, ticketToText, type StudioContext, type StudioRequest } from "@grammer-hub/core";
 import { fetchTicket } from "./jira";
 import { loadWorkspace } from "./workspace";
-import { listRules } from "@grammer-hub/db";
+import { listRules, recordPromptRun, type PromptRunInput } from "@grammer-hub/db";
+import { serverLog } from "./log";
 import { z } from "zod";
 import { getDb, getUser } from "./db";
 import { env, cloudReady } from "./env";
@@ -59,4 +60,19 @@ export const SavePromptBody = z.object({
   provider: z.string().max(20).nullable().optional(),
   model: z.string().max(80).nullable().optional(),
   usage: z.object({ inputTokens: z.number(), cachedTokens: z.number(), outputTokens: z.number(), costUsd: z.number(), latencyMs: z.number() }).nullable().optional(),
+  runId: z.string().max(60).nullable().optional(),   // 이 결과를 만든 생성 실행(기록에 보관함 링크를 잇는다)
 });
+
+/**
+ * 스튜디오 실행 한 건을 기록한다(원문 없이 분류·수치·비용·상태만). 모델을 부른 뒤에만 부른다.
+ * 기록이 실패해도 사용자 응답은 막지 않는다 — 실패는 로그에 이름만 남긴다.
+ */
+export function recordStudioRun(i: Omit<PromptRunInput, "studioVersion">): string | null {
+  try { return recordPromptRun(getDb(), { ...i, studioVersion: STUDIO_PROMPT_VERSION }); }
+  catch (e) { serverLog("studio", "실행 기록 실패", { kind: i.kind, error: e instanceof Error ? e.name : "unknown" }); return null; }
+}
+
+/** 요청에서 실행 기록용 분류 필드만 뽑는다(목표 문장은 넣지 않는다). */
+export function runFields(req: StudioRequest, ctx: StudioContext): Pick<PromptRunInput, "purpose" | "subtype" | "ticketKey" | "runtime" | "language"> {
+  return { purpose: req.purpose, subtype: req.subtype ?? null, ticketKey: ctx.ticketKey ?? null, runtime: ctx.runtime, language: req.promptLanguage };
+}

@@ -18,6 +18,7 @@ export interface StudioState {
   usage: StudioUsage | null;
   meta: { promptVersion: string; provider: string; model: string } | null;
   savedId: string | null;                // 보관함에 저장된 프롬프트 id
+  runId: string | null;                  // 이 결과를 만든 생성 실행 기록 id(보관할 때 잇는다)
   busySlot: SlotKey | null;              // 재생성 중인 슬롯
   error: string | null;
   progress: { stage: "requesting" | "thinking" | "writing"; startedAt: number; expectedMs: number | null };
@@ -28,7 +29,7 @@ export interface StudioState {
 const STAGE_MSG: Record<StudioState["progress"]["stage"], string> = { requesting: "요청 보냄", thinking: "모델 검토 시작", writing: "슬롯 작성 시작(첫 토큰)" };
 const withLog = (s: StudioState, msg: string): StudioState => ({ ...s, log: [...s.log, { t: Date.now() - s.progress.startedAt, msg }] });
 
-const initial: StudioState = { phase: "form", request: null, plan: null, replanning: false, slots: {}, spec: null, rendered: null, checks: [], usage: null, meta: null, savedId: null, busySlot: null, error: null, progress: { stage: "requesting", startedAt: 0, expectedMs: null }, log: [], ticket: null };
+const initial: StudioState = { phase: "form", request: null, plan: null, replanning: false, slots: {}, spec: null, rendered: null, checks: [], usage: null, meta: null, savedId: null, runId: null, busySlot: null, error: null, progress: { stage: "requesting", startedAt: 0, expectedMs: null }, log: [], ticket: null };
 
 /** 만들기 흐름: plan(질문) → generate(스트리밍) → result(재생성·보관). */
 export function useStudio() {
@@ -39,7 +40,7 @@ export function useStudio() {
   const generate = useCallback(async (req: StudioRequest) => {
     cancel();
     const ac = new AbortController(); abortRef.current = ac;
-    setState((s) => ({ ...s, phase: "generating", request: req, slots: {}, spec: null, rendered: null, checks: [], usage: null, savedId: null, error: null, progress: { stage: "requesting", startedAt: Date.now(), expectedMs: null }, log: [...s.log, { t: 0, msg: `생성 요청 · ${req.purpose}${req.subtype ? `/${req.subtype}` : ""} · ${req.length} · ${req.promptLanguage}` }] }));
+    setState((s) => ({ ...s, phase: "generating", request: req, slots: {}, spec: null, rendered: null, checks: [], usage: null, savedId: null, runId: null, error: null, progress: { stage: "requesting", startedAt: Date.now(), expectedMs: null }, log: [...s.log, { t: 0, msg: `생성 요청 · ${req.purpose}${req.subtype ? `/${req.subtype}` : ""} · ${req.length} · ${req.promptLanguage}` }] }));
     let res: Response;
     try { res = await api.prompts.generate(req, ac.signal); }
     catch (e) { if (!ac.signal.aborted) setState((s) => ({ ...s, phase: "form", error: String(e) })); return; }
@@ -59,6 +60,7 @@ export function useStudio() {
             case "rendered": return withLog({ ...s, rendered: ev.data as RenderedPrompt }, "프롬프트 렌더 완료");
             case "checks": { const c = ev.data as CheckResult[]; return withLog({ ...s, checks: c }, `규격 점검 ${c.filter((x) => x.ok).length}/${c.length}`); }
             case "usage": { const u = ev.data as StudioUsage; return withLog({ ...s, usage: u }, `완료 · ${(u.latencyMs / 1000).toFixed(1)}초 · 출력 ${u.outputTokens}토큰`); }
+            case "run": return { ...s, runId: (ev.data as { id: string }).id };
             case "done": return { ...s, phase: "result" };
             case "error": { const d = ev.data as { code: string; message: string }; return withLog({ ...s, phase: "form", error: d.message }, `오류 ${d.code}: ${d.message}`); }
             default: return s;
@@ -152,7 +154,7 @@ export function useStudio() {
     if (!request || !spec) return;
     setState((s) => ({ ...s, busySlot: slot, error: null }));
     try {
-      const r = await api.prompts.regenerate({ request, spec, slot, instruction });
+      const r = await api.prompts.regenerate({ request, spec, slot, instruction, promptId: state.savedId });
       setState((s) => ({ ...s, spec: r.spec, rendered: r.rendered, checks: r.checks, busySlot: null }));
       if (state.savedId) await api.prompts.addVersion(state.savedId, { spec: r.spec, source: "regenerate", slot, provider: state.meta?.provider ?? null, model: state.meta?.model ?? null });
     } catch (e) {
@@ -176,9 +178,9 @@ export function useStudio() {
   }, [state.spec, state.savedId]);
 
   const save = useCallback(async () => {
-    const { request, spec, meta, usage } = state;
+    const { request, spec, meta, usage, runId } = state;
     if (!request || !spec) return null;
-    const r = await api.prompts.save({ purpose: request.purpose, subtype: request.subtype ?? null, language: request.promptLanguage, goal: request.goal, ticketKey: request.ticket ? parseIssueKey(request.ticket) : null, spec, studioVersion: meta?.promptVersion ?? "", provider: meta?.provider ?? null, model: meta?.model ?? null, usage });
+    const r = await api.prompts.save({ purpose: request.purpose, subtype: request.subtype ?? null, language: request.promptLanguage, goal: request.goal, ticketKey: request.ticket ? parseIssueKey(request.ticket) : null, spec, studioVersion: meta?.promptVersion ?? "", provider: meta?.provider ?? null, model: meta?.model ?? null, usage, runId });
     setState((s) => ({ ...s, savedId: r.prompt.id, spec: r.version.spec, rendered: r.version.rendered, checks: r.version.checks }));
     try { localStorage.removeItem("gh:studio:draft"); } catch { /* noop */ }
     return r.prompt.id;

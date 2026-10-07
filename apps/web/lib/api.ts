@@ -31,6 +31,8 @@ export const api = {
   final: (runId: string, finalText: string) => fetch(`/api/runs/${runId}/final`, json("POST", { finalText })).then(j<{ ok: true }>),
   runs: () => fetch("/api/runs").then(j<RunSummary[]>),
   stats: () => fetch("/api/stats").then(j<Stats>),
+  /** 스튜디오 실행 기록(본인 것만) */
+  promptRuns: () => fetch("/api/prompts/runs").then(j<PromptRun[]>),
   prompts: {
     ticket: (ticket: string, signal?: AbortSignal) => fetch("/api/prompts/ticket", { ...json("POST", { ticket }), signal: signal ?? null }).then(j<{ ticket: Ticket; plan: TicketPlanResult; usage: StudioUsage; configured: boolean; workspace: WorkspaceStatus }>),
     /** Jira 설정 여부 + 작업 공간 프로필 요약(저장소 이름은 폼 선택지로) */
@@ -38,10 +40,10 @@ export const api = {
     plan: (req: StudioRequest, signal?: AbortSignal) => fetch("/api/prompts/plan", { ...json("POST", req), signal: signal ?? null }).then(j<{ plan: PlanResult; usage: StudioUsage }>),
     /** SSE 응답. 파싱은 호출자가 readSseRaw로. */
     generate: (req: StudioRequest, signal?: AbortSignal) => fetch("/api/prompts/generate", { ...json("POST", req), signal: signal ?? null }),
-    regenerate: (body: { request: StudioRequest; spec: PromptSpec; slot: SlotKey; instruction?: string | null }) => fetch("/api/prompts/regenerate", json("POST", body)).then(j<{ spec: PromptSpec; rendered: RenderedPrompt; checks: CheckResult[] }>),
+    regenerate: (body: { request: StudioRequest; spec: PromptSpec; slot: SlotKey; instruction?: string | null; promptId?: string | null }) => fetch("/api/prompts/regenerate", json("POST", body)).then(j<{ spec: PromptSpec; rendered: RenderedPrompt; checks: CheckResult[] }>),
     list: (archived = false) => fetch(`/api/prompts${archived ? "?archived=1" : ""}`).then(j<{ items: PromptSummary[]; stats: PromptStats }>),
     get: (id: string) => fetch(`/api/prompts/${id}`).then(j<{ prompt: PromptRow; versions: PromptVersion[] }>),
-    save: (body: { purpose: StudioRequest["purpose"]; subtype: string | null; language: "ko" | "en"; goal: string; ticketKey?: string | null; spec: PromptSpec; studioVersion: string; provider: string | null; model: string | null; usage: StudioUsage | null }) =>
+    save: (body: { purpose: StudioRequest["purpose"]; subtype: string | null; language: "ko" | "en"; goal: string; ticketKey?: string | null; spec: PromptSpec; studioVersion: string; provider: string | null; model: string | null; usage: StudioUsage | null; runId?: string | null }) =>
       fetch("/api/prompts", json("POST", body)).then(j<{ prompt: PromptRow; version: PromptVersion }>),
     addVersion: (id: string, body: { spec: PromptSpec; source: "regenerate" | "edit"; slot?: SlotKey | null; provider?: string | null; model?: string | null }) =>
       fetch(`/api/prompts/${id}/versions`, json("POST", body)).then(j<PromptVersion>),
@@ -108,10 +110,17 @@ export interface TeamMember {
   userId: string; email: string; runsOk: number; runsError: number; lastActiveAt: number | null;
   costUsd: number; inputTokens: number; cachedTokens: number; outputTokens: number; latencyAvgMs: number | null;
   cards: number; accepted: number; rejected: number; muted: number; edits: number; finals: number; prefers: number;
-  prompts: number; promptVersions: number; promptRegens: number; promptCopies: number; studioCostUsd: number;
+  prompts: number; promptErrors: number; promptVersions: number; promptRegens: number; promptCopies: number; studioCostUsd: number;
 }
 export interface TeamStats { since: number; weeks: number; members: TeamMember[]; team: Stats; weeklyActive: { weekStart: number; users: number }[] }
 
+/** packages/db repo/prompt-runs.ts 의 행 모양(원문 없음) */
+export interface PromptRun {
+  id: string; userId: string; kind: "plan" | "ticket" | "generate" | "regenerate"; purpose: string | null; subtype: string | null; ticketKey: string | null;
+  runtime: string | null; language: string | null; provider: string; model: string; status: "ok" | "error"; errorCode: string | null;
+  checksPassed: number | null; checksTotal: number | null; inputTokens: number; cachedTokens: number; outputTokens: number; costUsd: number;
+  latencyMs: number | null; studioVersion: string; promptId: string | null; createdAt: number;
+}
 export interface StudioUsage { inputTokens: number; cachedTokens: number; cacheWriteTokens: number; outputTokens: number; costUsd: number; latencyMs: number }
 export interface PromptRow { id: string; userId: string; title: string; purpose: string; subtype: string | null; language: string; goal: string; ticketKey: string | null; currentVersionId: string | null; archived: boolean; createdAt: number; updatedAt: number }
 export interface PromptSummary extends PromptRow { versionCount: number; passed: number; total: number; variables: string[] }

@@ -187,3 +187,32 @@ export const promptEvents = sqliteTable("prompt_events", {
   payload: text("payload", { mode: "json" }).$type<Record<string, unknown>>(),
   createdAt: integer("created_at").notNull().$defaultFn(now),
 }, (t) => [index("prompt_events_prompt").on(t.promptId)]);
+
+/**
+ * 스튜디오 실행 기록. 보관 여부와 상관없이 모델을 부른 모든 경로(의도 정리·티켓 분류·생성·재생성)를 성공·실패 모두 남긴다.
+ * 분류·수치·비용·상태만 둔다 — 목표 문장·티켓 본문·생성 결과 같은 원문은 넣지 않는다.
+ */
+export const promptRuns = sqliteTable("prompt_runs", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  kind: text("kind").notNull(),                  // plan | ticket | generate | regenerate
+  purpose: text("purpose"),                      // 티켓 분류가 실패하면 없음
+  subtype: text("subtype"),
+  ticketKey: text("ticket_key"),
+  runtime: text("runtime"),
+  language: text("language"),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  status: text("status").notNull(),              // ok | error
+  errorCode: text("error_code"),                 // aborted = 사용자 중단
+  checksPassed: integer("checks_passed"),
+  checksTotal: integer("checks_total"),
+  inputTokens: integer("input_tokens").notNull().default(0),
+  cachedTokens: integer("cached_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  costUsd: real("cost_usd").notNull().default(0),
+  latencyMs: integer("latency_ms"),
+  studioVersion: text("studio_version").notNull(),
+  promptId: text("prompt_id"),                   // 보관하면 그 프롬프트
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+}, (t) => [index("prompt_runs_user_created").on(t.userId, t.createdAt)]);

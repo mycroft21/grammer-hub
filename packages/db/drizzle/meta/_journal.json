@@ -36,6 +36,13 @@
       "when": 1791358317572,
       "tag": "0004_tricky_moonstone",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791363003033,
+      "tag": "0005_quick_scarlet_spider",
+      "breakpoints": true
     }
   ]
 }

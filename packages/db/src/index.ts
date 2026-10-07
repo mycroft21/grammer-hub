@@ -9,4 +9,5 @@ export * from "./repo/samples";
 export * from "./repo/stats";
 export * from "./repo/context";
 export * from "./repo/prompts";
+export * from "./repo/prompt-runs";
 export * from "./repo/team";

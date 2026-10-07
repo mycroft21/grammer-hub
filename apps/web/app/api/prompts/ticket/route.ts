@@ -2,8 +2,9 @@ import { z } from "zod";
 import { planFromTicket, ticketToText } from "@grammer-hub/core";
 import { parseBody } from "@/lib/json";
 import { fetchTicket, jiraConfigured } from "@/lib/jira";
+import { getUser } from "@/lib/db";
 import { runLogger } from "@/lib/log";
-import { studioProvider } from "@/lib/studio";
+import { recordStudioRun, studioProvider } from "@/lib/studio";
 import { loadWorkspace, workspaceStatus } from "@/lib/workspace";
 
 export const runtime = "nodejs";
@@ -22,8 +23,17 @@ export async function POST(req: Request): Promise<Response> {
   const log = runLogger("ticket", t.ticket.key);
   const ws = loadWorkspace();
   log("티켓 가져옴", { type: t.ticket.type, descChars: t.ticket.description.length, comments: t.ticket.comments.length, attachments: t.ticket.attachments.length, redactedPeople: t.ticket.redactedPeople, profile: ws.profile ? "on" : "off" });
-  const r = await planFromTicket(p.provider, ticketToText(t.ticket), { signal: req.signal, profile: ws.profile, ticket: t.ticket });
-  if (r.error) { log(`분류 실패 ${r.error.code}`); return Response.json({ error: r.error }, { status: 502 }); }
+  const user = await getUser();
+  const t0 = Date.now();
+  const base = { userId: user.id, kind: "ticket" as const, provider: p.provider.id, model: p.provider.model, ticketKey: t.ticket.key };
+  let r: Awaited<ReturnType<typeof planFromTicket>>;
+  try { r = await planFromTicket(p.provider, ticketToText(t.ticket), { signal: req.signal, profile: ws.profile, ticket: t.ticket }); }
+  catch (e) { recordStudioRun({ ...base, status: "error", errorCode: req.signal.aborted ? "aborted" : "exception", latencyMs: Date.now() - t0 }); throw e; }
+  if (r.error) {
+    recordStudioRun({ ...base, status: "error", errorCode: req.signal.aborted ? "aborted" : r.error.code, usage: r.usage, latencyMs: Date.now() - t0 });
+    log(`분류 실패 ${r.error.code}`); return Response.json({ error: r.error }, { status: 502 });
+  }
+  recordStudioRun({ ...base, status: "ok", usage: r.usage, purpose: r.plan?.purpose ?? null, subtype: r.plan?.subtype ?? null });
   log("분류 완료", { purpose: r.plan?.purpose, subtype: r.plan?.subtype, mode: r.plan?.mode, questions: r.plan?.questions.length, assumptions: r.plan?.assumptions.length, verify: r.plan?.verify_in_repo.length, repos: r.plan?.repos.join("+") || undefined, latencyMs: r.usage?.latencyMs });
   return Response.json({ ticket: t.ticket, plan: r.plan, usage: r.usage, configured: jiraConfigured(), workspace: workspaceStatus() });
 }

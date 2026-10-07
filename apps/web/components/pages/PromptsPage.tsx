@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Segmented, Spin, Typography } from "antd";
 import { PageHeader } from "./_shared";
 import { useStudio } from "@/components/studio/useStudio";
@@ -15,6 +15,13 @@ import { RunLog } from "@/components/RunLog";
 export function PromptsPage() {
   const [tab, setTab] = useState<"create" | "library">("create");
   const [refreshKey, setRefreshKey] = useState(0);
+  // 기록 화면의 보관함 링크(/prompts?prompt=<id>)로 오면 보관함 탭에서 그 프롬프트를 연다
+  const [openId, setOpenId] = useState<string | null>(null);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("prompt");
+    if (id) { setTab("library"); setOpenId(id); }
+  }, []);
+  const opened = useCallback(() => setOpenId(null), []);
   const studio = useStudio();
   const { state } = studio;
   const busy = state.phase === "planning" || state.phase === "generating";
@@ -47,7 +54,7 @@ export function PromptsPage() {
             <ResultPanel state={state} onRegenerate={(s, i) => void studio.regenerate(s, i)} onEdit={(s, v) => void studio.editSlot(s, v)} onSave={save} onReset={studio.reset} />
           )}
         </div>
-      ) : <LibraryPanel refreshKey={refreshKey} />}
+      ) : <LibraryPanel refreshKey={refreshKey} openId={openId} onOpened={opened} />}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { Db } from "../client";
-import { correctionRuns, drafts, feedbackEvents, promptEvents, promptVersions, prompts, runFinals, suggestions, users } from "../schema";
+import { correctionRuns, drafts, feedbackEvents, promptEvents, promptRuns, promptVersions, prompts, runFinals, suggestions, users } from "../schema";
 import { getStats, type Stats } from "./stats";
 
 /**
@@ -16,7 +16,8 @@ export interface TeamMember {
   edits: number;                 // 직접 수정(복사 시 제안 적용본과 최종본이 다른 실행)
   finals: number;                // 복사(최종본 기록) 수
   prefers: number;               // 톤 대안 선택
-  prompts: number; promptVersions: number; promptRegens: number; promptCopies: number; studioCostUsd: number;
+  /** 스튜디오(prompt_runs 기준, 보관 여부 무관): 성공한 생성 수·실패한 실행 수·재생성 수·전체 비용(의도 정리·분류 포함). 버전·복사는 보관함 기준 */
+  prompts: number; promptErrors: number; promptVersions: number; promptRegens: number; promptCopies: number; studioCostUsd: number;
 }
 export interface WeeklyActive { weekStart: number; users: number }
 export interface TeamStats { since: number; weeks: number; members: TeamMember[]; team: Stats; weeklyActive: WeeklyActive[] }
@@ -33,7 +34,7 @@ export function getTeamStats(db: Db, weeks = 8): TeamStats {
   const member = (userId: string): TeamMember => {
     let m = byUser.get(userId);
     if (!m) {
-      m = { userId, email: "", runsOk: 0, runsError: 0, lastActiveAt: null, costUsd: 0, inputTokens: 0, cachedTokens: 0, outputTokens: 0, latencyAvgMs: null, cards: 0, accepted: 0, rejected: 0, muted: 0, edits: 0, finals: 0, prefers: 0, prompts: 0, promptVersions: 0, promptRegens: 0, promptCopies: 0, studioCostUsd: 0 };
+      m = { userId, email: "", runsOk: 0, runsError: 0, lastActiveAt: null, costUsd: 0, inputTokens: 0, cachedTokens: 0, outputTokens: 0, latencyAvgMs: null, cards: 0, accepted: 0, rejected: 0, muted: 0, edits: 0, finals: 0, prefers: 0, prompts: 0, promptErrors: 0, promptVersions: 0, promptRegens: 0, promptCopies: 0, studioCostUsd: 0 };
       byUser.set(userId, m);
     }
     return m;
@@ -70,15 +71,22 @@ export function getTeamStats(db: Db, weeks = 8): TeamStats {
   for (const r of db.select({ userId: drafts.userId, n: sql<number>`count(*)` }).from(runFinals)
     .innerJoin(correctionRuns, eq(correctionRuns.id, runFinals.runId)).innerJoin(drafts, eq(drafts.id, correctionRuns.draftId))
     .where(gte(runFinals.copiedAt, since)).groupBy(drafts.userId).all()) member(r.userId).finals = r.n;
-  // 프롬프트 스튜디오: 생성 건수·버전(재생성·수정)·비용·복사
-  for (const r of db.select({ userId: prompts.userId, n: sql<number>`count(*)` }).from(prompts).where(gte(prompts.createdAt, since)).groupBy(prompts.userId).all()) member(r.userId).prompts = r.n;
-  for (const r of db.select({ userId: prompts.userId, source: promptVersions.source, n: sql<number>`count(*)`, cost: sql<number>`coalesce(sum(${promptVersions.costUsd}), 0)` })
-    .from(promptVersions).innerJoin(prompts, eq(prompts.id, promptVersions.promptId)).where(gte(promptVersions.createdAt, since)).groupBy(prompts.userId, promptVersions.source).all()) {
+  // 프롬프트 스튜디오: 실행 기록에서 생성·재생성 수·실패·비용(보관하지 않은 생성도 센다)
+  for (const r of db.select({ userId: promptRuns.userId, kind: promptRuns.kind, status: promptRuns.status, n: sql<number>`count(*)`, cost: sql<number>`coalesce(sum(${promptRuns.costUsd}), 0)`, last: sql<number>`max(${promptRuns.createdAt})` })
+    .from(promptRuns).where(gte(promptRuns.createdAt, since)).groupBy(promptRuns.userId, promptRuns.kind, promptRuns.status).all()) {
     const m = member(r.userId);
-    m.promptVersions += r.n; m.studioCostUsd += r.cost;
-    if (r.source === "regenerate") m.promptRegens += r.n;
-    const last = db.select({ last: sql<number>`max(${promptVersions.createdAt})` }).from(promptVersions).innerJoin(prompts, eq(prompts.id, promptVersions.promptId)).where(eq(prompts.userId, r.userId)).get();
-    if (last?.last) m.lastActiveAt = Math.max(m.lastActiveAt ?? 0, last.last);
+    m.studioCostUsd += r.cost;
+    if (r.status === "error") m.promptErrors += r.n;
+    else if (r.kind === "generate") m.prompts += r.n;
+    else if (r.kind === "regenerate") m.promptRegens += r.n;
+    m.lastActiveAt = Math.max(m.lastActiveAt ?? 0, r.last) || null;
+  }
+  // 보관함: 저장된 버전 수(재생성·직접 수정 포함)
+  for (const r of db.select({ userId: prompts.userId, n: sql<number>`count(*)`, last: sql<number>`max(${promptVersions.createdAt})` }).from(promptVersions).innerJoin(prompts, eq(prompts.id, promptVersions.promptId))
+    .where(gte(promptVersions.createdAt, since)).groupBy(prompts.userId).all()) {
+    const m = member(r.userId);
+    m.promptVersions = r.n;
+    m.lastActiveAt = Math.max(m.lastActiveAt ?? 0, r.last) || null;   // 모델 없이 직접 수정만 해도 활동이다
   }
   for (const r of db.select({ userId: prompts.userId, n: sql<number>`count(*)` }).from(promptEvents)
     .innerJoin(prompts, eq(prompts.id, promptEvents.promptId)).where(and(gte(promptEvents.createdAt, since), sql`${promptEvents.action} in ('copy', 'fill')`)).groupBy(prompts.userId).all()) member(r.userId).promptCopies = r.n;
@@ -95,12 +103,12 @@ export function getTeamStats(db: Db, weeks = 8): TeamStats {
 
 /** 팀 표를 CSV로(엑셀용 BOM). 텍스트 없음. */
 export function teamStatsCsv(t: TeamStats): string {
-  const head = ["email", "runs_ok", "runs_error", "last_active", "cost_usd", "input_tokens", "cached_tokens", "output_tokens", "latency_avg_ms", "cards", "accepted", "rejected", "muted", "accept_rate", "direct_edits", "finals", "clean_copy_rate", "prefers", "prompts", "prompt_versions", "prompt_regens", "prompt_copies", "studio_cost_usd"];
+  const head = ["email", "runs_ok", "runs_error", "last_active", "cost_usd", "input_tokens", "cached_tokens", "output_tokens", "latency_avg_ms", "cards", "accepted", "rejected", "muted", "accept_rate", "direct_edits", "finals", "clean_copy_rate", "prefers", "prompts", "prompt_errors", "prompt_versions", "prompt_regens", "prompt_copies", "studio_cost_usd"];
   const rows = t.members.map((m) => {
     const judged = m.accepted + m.rejected;
     return [m.email, m.runsOk, m.runsError, m.lastActiveAt ? new Date(m.lastActiveAt).toISOString() : "", m.costUsd.toFixed(4), m.inputTokens, m.cachedTokens, m.outputTokens, m.latencyAvgMs ?? "",
       m.cards, m.accepted, m.rejected, m.muted, judged ? (m.accepted / judged).toFixed(3) : "", m.edits, m.finals, m.finals ? ((m.finals - m.edits) / m.finals).toFixed(3) : "", m.prefers,
-      m.prompts, m.promptVersions, m.promptRegens, m.promptCopies, m.studioCostUsd.toFixed(4)];
+      m.prompts, m.promptErrors, m.promptVersions, m.promptRegens, m.promptCopies, m.studioCostUsd.toFixed(4)];
   });
   const esc = (v: unknown) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   return "﻿" + [head, ...rows].map((r) => r.map(esc).join(",")).join("\n") + "\n";

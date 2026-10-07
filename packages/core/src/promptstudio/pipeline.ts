@@ -52,9 +52,12 @@ export async function planPrompt(provider: CorrectionProvider, ctxIn: StudioCont
   const p = buildPlanPrompt(ctx);
   const r = await collect(provider, p.system, p.user, PLAN_SCHEMA, undefined, signal);
   if (r.error) return { plan: null, usage: null, error: r.error };
+  const u = r.usage ?? { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
+  const usage: StudioUsage = { ...u, costUsd: provider.cost(u), latencyMs: Date.now() - t0 };
   let raw: PlanRaw | null = null;
   try { const j = PlanRaw.safeParse(JSON.parse(r.raw)); raw = j.success ? j.data : null; } catch { raw = null; }
-  if (!raw) return { plan: null, usage: null, error: { code: "schema_invalid", message: "의도 정리 결과가 스키마와 맞지 않습니다." } };
+  // 스키마가 틀려도 모델은 이미 불렀다 → 실행 기록이 비용을 남기도록 사용량은 돌려준다
+  if (!raw) return { plan: null, usage, error: { code: "schema_invalid", message: "의도 정리 결과가 스키마와 맞지 않습니다." } };
   // 세부 유형 검증: 목록에 없으면 기본으로. 장부는 허용된 항목(where + 이 세부 유형의 mustKnow)만 남긴다.
   const sub = findSubtype(ctxIn.purpose, raw.subtype);
   const shown = findSubtype(ctxIn.purpose, ctxIn.subtype);   // 모델이 본 장부 목록은 요청 시점의 세부 유형 기준
@@ -67,8 +70,7 @@ export async function planPrompt(provider: CorrectionProvider, ctxIn: StudioCont
   // 다회차 질문: 이미 답한 항목은 모델이 다시 ask로 내도 코드가 filled로 고정한다(같은 질문 반복 방지, 장부 항목 수가 질문 총량의 상한)
   const d = deriveNeeds(applyAnswers(raw.needs, ctxIn.answers ?? {}), { profile, allowedIds: allowed, repoMatches, trustModelWhere: true });
   const plan: PlanResult = { summary: raw.summary, subtype: sub.id, needs: d.needs, mode: d.mode, questions: d.questions, assumptions: d.assumptions, verify_in_repo: d.verify_in_repo, repos: d.repos };
-  const u = r.usage ?? { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
-  return { plan: unmaskDeep(plan, m), usage: { ...u, costUsd: provider.cost(u), latencyMs: Date.now() - t0 }, error: null };
+  return { plan: unmaskDeep(plan, m), usage, error: null };
 }
 
 /**
@@ -85,9 +87,11 @@ export async function planFromTicket(provider: CorrectionProvider, ticketText: s
   const p = buildTicketPlanPrompt(m.masked, { profile, repoMatches, issueKey: key });
   const r = await collect(provider, p.system, p.user, TICKET_PLAN_SCHEMA, undefined, o.signal);
   if (r.error) return { plan: null, usage: null, error: r.error };
+  const u = r.usage ?? { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
+  const usage: StudioUsage = { ...u, costUsd: provider.cost(u), latencyMs: Date.now() - t0 };
   let raw: TicketPlanRaw | null = null;
   try { const j = TicketPlanRaw.safeParse(JSON.parse(r.raw)); raw = j.success ? j.data : null; } catch { raw = null; }
-  if (!raw) return { plan: null, usage: null, error: { code: "schema_invalid", message: "티켓 분류 결과가 스키마와 맞지 않습니다." } };
+  if (!raw) return { plan: null, usage, error: { code: "schema_invalid", message: "티켓 분류 결과가 스키마와 맞지 않습니다." } };
   const d = deriveNeeds(raw.needs, { profile, repoMatches, allowedIds: UNIVERSAL_NEEDS.map((n) => n.id) });
   const plan: TicketPlanResult = {
     ...raw, subtype: findSubtype(raw.purpose, raw.subtype).id, needs: d.needs,
@@ -95,8 +99,7 @@ export async function planFromTicket(provider: CorrectionProvider, ticketText: s
     repos: d.repos, repo_evidence: repoMatches.length ? repoMatches.map((x) => `${x.repo.name}: ${x.evidence}`).join("; ") : null,
     suggested_purpose: suggestPurpose(raw.purpose, d.needs),
   };
-  const u = r.usage ?? { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
-  return { plan: unmaskDeep(plan, m), usage: { ...u, costUsd: provider.cost(u), latencyMs: Date.now() - t0 }, error: null };
+  return { plan: unmaskDeep(plan, m), usage, error: null };
 }
 
 export type StudioEvent =
@@ -108,7 +111,7 @@ export type StudioEvent =
   | { event: "checks"; data: CheckResult[] }
   | { event: "usage"; data: StudioUsage }
   | { event: "done"; data: Record<string, never> }
-  | { event: "error"; data: { code: string; message: string } };
+  | { event: "error"; data: { code: string; message: string; usage?: StudioUsage } };   // usage: 모델 호출 뒤 실패(스키마 오류)일 때만
 
 /** 2단계: Spec 생성(슬롯 단위 스트리밍) → 렌더 → 점검 */
 export async function* generatePrompt(provider: CorrectionProvider, ctxIn: StudioContext, signal?: AbortSignal): AsyncGenerator<StudioEvent, { spec: PromptSpec | null; rendered: RenderedPrompt | null; checks: CheckResult[]; usage: StudioUsage | null }> {
@@ -138,13 +141,13 @@ export async function* generatePrompt(provider: CorrectionProvider, ctxIn: Studi
     const strict = PromptSpecStrict.safeParse(j);
     spec = strict.success ? strict.data : (PromptSpec.safeParse(j).success ? PromptSpec.parse(j) : null);
   } catch { spec = null; }
-  if (!spec) { yield { event: "error", data: { code: "schema_invalid", message: "생성 결과가 스키마와 맞지 않습니다." } }; return { spec: null, rendered: null, checks: [], usage: null }; }
+  const u = r.usage ?? { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
+  const usage: StudioUsage = { ...u, costUsd: provider.cost(u), latencyMs: Date.now() - t0 };
+  if (!spec) { yield { event: "error", data: { code: "schema_invalid", message: "생성 결과가 스키마와 맞지 않습니다.", usage } }; return { spec: null, rendered: null, checks: [], usage: null }; }
   spec = normalizeSpec(unmaskDeep(spec, m), ctxIn);
 
   const rendered = renderClaude(spec, { purpose: ctxIn.purpose });
   const checks = runChecks(spec, { purpose: ctxIn.purpose });
-  const u = r.usage ?? { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
-  const usage: StudioUsage = { ...u, costUsd: provider.cost(u), latencyMs: Date.now() - t0 };
   yield { event: "spec", data: spec };
   yield { event: "rendered", data: rendered };
   yield { event: "checks", data: checks };
@@ -192,14 +195,17 @@ export function normalizeSpec(spec: PromptSpec, ctx: StudioContext): PromptSpec 
 
 /** 블록 재생성: 한 슬롯만 다시 만들고 전체를 다시 렌더·점검한다. */
 export async function regenerateSlot(provider: CorrectionProvider, ctxIn: StudioContext, spec: PromptSpec, slot: SlotKey, instruction: string | null, signal?: AbortSignal) {
+  const t0 = Date.now();
   const { ctx, m } = maskCtx(ctxIn);
   const p = buildRegeneratePrompt(ctx, spec, slot, instruction);
   const r = await collect(provider, p.system, p.user, SPEC_SCHEMA, undefined, signal);
-  if (r.error) return { spec: null, rendered: null, checks: [] as CheckResult[], error: r.error };
+  if (r.error) return { spec: null, rendered: null, checks: [] as CheckResult[], usage: null, error: r.error };
+  const u = r.usage ?? { inputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
+  const usage: StudioUsage = { ...u, costUsd: provider.cost(u), latencyMs: Date.now() - t0 };
   let next: PromptSpec | null = null;
   try { const j = PromptSpec.safeParse(JSON.parse(r.raw)); next = j.success ? j.data : null; } catch { next = null; }
-  if (!next) return { spec: null, rendered: null, checks: [] as CheckResult[], error: { code: "schema_invalid", message: "재생성 결과가 스키마와 맞지 않습니다." } };
+  if (!next) return { spec: null, rendered: null, checks: [] as CheckResult[], usage, error: { code: "schema_invalid", message: "재생성 결과가 스키마와 맞지 않습니다." } };
   // 고정 슬롯은 원본 유지, 요청한 슬롯과 그 rationale만 채택
   const merged = normalizeSpec({ ...spec, [slot]: unmaskDeep(next[slot], m), rationale: { ...spec.rationale, ...(slot in next.rationale ? { [slot]: unmaskDeep((next.rationale as Record<string, string>)[slot] ?? "", m) } : {}) } } as PromptSpec, ctxIn);
-  return { spec: merged, rendered: renderClaude(merged, { purpose: ctxIn.purpose }), checks: runChecks(merged, { purpose: ctxIn.purpose }), error: null };
+  return { spec: merged, rendered: renderClaude(merged, { purpose: ctxIn.purpose }), checks: runChecks(merged, { purpose: ctxIn.purpose }), usage, error: null };
 }
