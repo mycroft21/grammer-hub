@@ -2,7 +2,8 @@ import { z } from "zod";
 import { planFromTicket, ticketToText } from "@grammer-hub/core";
 import { env } from "@/lib/env";
 import { parseBody } from "@/lib/json";
-import { fetchTicket, jiraConfigured } from "@/lib/jira";
+import { fetchTicket } from "@/lib/jira";
+import { jiraStatus } from "@/lib/jira-oauth";
 import { getUser } from "@/lib/db";
 import { runLogger } from "@/lib/log";
 import { recordStudioRun, studioProvider } from "@/lib/studio";
@@ -17,12 +18,12 @@ const Body = z.object({ ticket: z.string().min(2).max(300), provider: z.enum(["c
 export async function POST(req: Request): Promise<Response> {
   const body = await parseBody(req, Body);
   if (!body.ok) return body.res;
-  const t = await fetchTicket(body.data.ticket);
-  if (!t.ok) return Response.json({ error: { code: "ticket_unavailable", message: t.message } }, { status: t.status });
+  const user = await getUser();
+  const t = await fetchTicket(body.data.ticket, user.id);
+  if (!t.ok) return Response.json({ error: { code: t.code ?? "ticket_unavailable", message: t.message } }, { status: t.status });
   const p = studioProvider(body.data.provider, env.studioPlanModel);
   if (!p.ok) return p.res;
   const log = runLogger("ticket", t.ticket.key);
-  const user = await getUser();
   const ws = loadMergedWorkspace(user.id);
   log("티켓 가져옴", { type: t.ticket.type, descChars: t.ticket.description.length, comments: t.ticket.comments.length, attachments: t.ticket.attachments.length, redactedPeople: t.ticket.redactedPeople, profile: ws.profile ? "on" : "off" });
   const t0 = Date.now();
@@ -36,10 +37,12 @@ export async function POST(req: Request): Promise<Response> {
   }
   recordStudioRun({ ...base, status: "ok", usage: r.usage, purpose: r.plan?.purpose ?? null, subtype: r.plan?.subtype ?? null });
   log("분류 완료", { purpose: r.plan?.purpose, subtype: r.plan?.subtype, mode: r.plan?.mode, questions: r.plan?.questions.length, assumptions: r.plan?.assumptions.length, verify: r.plan?.verify_in_repo.length, repos: r.plan?.repos.join("+") || undefined, latencyMs: r.usage?.latencyMs });
-  return Response.json({ ticket: t.ticket, plan: r.plan, usage: r.usage, configured: jiraConfigured(), workspace: workspaceStatus(user.id) });
+  return Response.json({ ticket: t.ticket, plan: r.plan, usage: r.usage, configured: jiraStatus(user.id).connected, workspace: workspaceStatus(user.id) });
 }
 
-/** 연동 상태: Jira 설정 여부 + 작업 공간 프로필 요약(저장소 이름 목록 포함 — 폼의 선택지로 쓴다). */
+/** 연동 상태: 나에게 Jira가 쓸 수 있는지(로그인 모드면 내 연결) + 작업 공간 요약(저장소 이름 목록 포함 — 폼의 선택지로 쓴다). */
 export async function GET(): Promise<Response> {
-  return Response.json({ configured: jiraConfigured(), workspace: workspaceStatus((await getUser()).id) });
+  const user = await getUser();
+  const jira = jiraStatus(user.id);
+  return Response.json({ configured: jira.connected, jira, workspace: workspaceStatus(user.id) });
 }

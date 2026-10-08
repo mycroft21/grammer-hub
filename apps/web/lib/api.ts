@@ -42,7 +42,7 @@ export const api = {
   prompts: {
     ticket: (ticket: string, signal?: AbortSignal) => fetch("/api/prompts/ticket", { ...json("POST", { ticket }), signal: signal ?? null }).then(j<{ ticket: Ticket; plan: TicketPlanResult; usage: StudioUsage; configured: boolean; workspace: WorkspaceStatus }>),
     /** Jira 설정 여부 + 작업 공간 프로필 요약(저장소 이름은 폼 선택지로) */
-    ticketConfigured: () => fetch("/api/prompts/ticket").then(j<{ configured: boolean; workspace: WorkspaceStatus }>),
+    ticketConfigured: () => fetch("/api/prompts/ticket").then(j<{ configured: boolean; jira: JiraStatusDto; workspace: WorkspaceStatus }>),
     plan: (req: StudioRequest, signal?: AbortSignal) => fetch("/api/prompts/plan", { ...json("POST", req), signal: signal ?? null }).then(j<{ plan: PlanResult; usage: StudioUsage }>),
     /** SSE 응답. 파싱은 호출자가 readSseRaw로. */
     generate: (req: StudioRequest, signal?: AbortSignal) => fetch("/api/prompts/generate", { ...json("POST", req), signal: signal ?? null }),
@@ -72,6 +72,10 @@ export const api = {
     saveWorkspace: (overlay: WorkspaceOverlay) => fetch("/api/me/workspace", json("PUT", { overlay })).then(j<MyWorkspaceDto & { ok: true }>),
     /** 검토 화면의 "프로필에 추가" — 기본은 내 작업 공간에 */
     patchWorkspace: (ops: ProfileOp[]) => fetch("/api/me/workspace", json("PATCH", { ops })).then(j<{ ok: true; changes: string[]; workspace: WorkspaceStatus }>),
+    /** 내 Jira 연결(로그인 모드: 사람마다 OAuth) */
+    jira: () => fetch("/api/me/jira").then(j<JiraStatusDto>),
+    jiraDisconnect: () => fetch("/api/me/jira", { method: "DELETE" }).then(j<JiraStatusDto & { ok: true }>),
+    jiraCheck: () => fetch("/api/me/jira/check", { method: "POST" }).then(j<ProbeDto>),
   },
   settings: {
     get: () => fetch("/api/settings").then(j<SettingsDto>),
@@ -96,6 +100,7 @@ export const api = {
 export interface MeDto { authEnabled: boolean; email: string; name: string | null; admin: boolean }
 export interface SettingDefDto { key: string; label: string; group: "backend" | "jira" | "team" | "behavior"; kind: "text" | "secret" | "select" | "bool"; help: string; options?: { value: string; label: string }[]; placeholder?: string; restart?: boolean; showWhen?: [string, string[]] }
 export interface SettingsDto { items: { key: string; value: string; masked: boolean; set: boolean; source: "file" | "os" | "default" }[]; envFile: string; exists: boolean; defs: SettingDefDto[] }
+export interface JiraStatusDto { mode: "oauth" | "token" | "off"; reason: string | null; site: string | null; connected: boolean; stale: boolean; connectedAt: number | null }
 export interface MyWorkspaceDto {
   overlay: WorkspaceOverlay; drops: OverlayDrop[]; teamError: string | null; workspace: WorkspaceStatus;
   team: { team: string | null; repos: { name: string; what: string; aliases: string[]; verify: string[] }[]; conventions: string[]; defaults: WorkspaceProfile["defaults"] } | null;

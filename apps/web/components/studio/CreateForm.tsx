@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, App, Button, Input, Modal, Popconfirm, Segmented, Select, Space, Switch, Tooltip, Typography } from "antd";
 import { ArrowRightOutlined, DeleteOutlined, EditOutlined, ReloadOutlined, SaveOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { AGENT_DEFAULTS, DOMAINS, DOMAIN_LIST, PURPOSES, defaultLength, defaultRuntime, isAgentRuntime, type ClarifyPolicy, type Domain, type PresetSettings, type PromptLanguage, type PromptLength, type Purpose, type Runtime, type StudioRequest } from "@grammer-hub/core";
-import { api, type Preset, type WorkspaceStatus } from "@/lib/api";
+import { api, type Preset, type WorkspaceStatus, type JiraStatusDto } from "@/lib/api";
 import { useAuth } from "@/components/providers/AppProviders";
 import { DRAFT_BASE, draftKey } from "@/lib/studio-draft";
 import { CLARIFY_KO, LANG_LABEL, LENGTH_KO, RUNTIME_LABEL_LONG as RUNTIME_LABEL } from "./labels";
@@ -34,7 +34,7 @@ export function CreateForm({ busy, error, initial, onSubmit, onTicket }: { busy:
   const [repos, setRepos] = useState<string[]>(() => initial?.hints?.repos ?? []);
   const [restored, setRestored] = useState(false);
   // 연동 상태(Jira 설정, 작업 공간 프로필). 한 번만 읽는다. 실패해도 폼은 동작한다.
-  const [status, setStatus] = useState<{ configured: boolean; workspace: WorkspaceStatus } | null>(null);
+  const [status, setStatus] = useState<{ configured: boolean; jira?: JiraStatusDto; workspace: WorkspaceStatus } | null>(null);
   useEffect(() => { api.prompts.ticketConfigured().then(setStatus).catch(() => setStatus(null)); }, []);
 
   // 임시 저장 키는 로그인 상태를 안 뒤에 정해진다(그 전에는 읽지도 쓰지도 않는다)
@@ -126,7 +126,9 @@ export function CreateForm({ busy, error, initial, onSubmit, onTicket }: { busy:
             <Button data-testid="ticket-fetch" type="primary" loading={busy} disabled={!ticketInput.trim() || !onTicket} onClick={() => onTicket?.(ticketInput.trim())}>가져와서 정리</Button>
           </Space.Compact>
           <Typography.Text type="secondary" style={{ fontSize: 12 }} className="mt-1 block" data-testid="ticket-status">
-            {status ? (status.configured ? "Jira 연동 켜짐" : "Jira 연동 꺼짐 — `.env`에 JIRA_BASE_URL · JIRA_EMAIL · JIRA_API_TOKEN") : "연동 상태 확인 중…"} · 토큰 없이 흐름만 보려면 <code>DEMO-1</code>(자세한 티켓) / <code>DEMO-2</code>(제목뿐인 티켓)
+            {!status ? "연동 상태 확인 중…"
+              : status.jira?.mode === "oauth" ? (status.jira.connected ? <>Jira 연결됨(내 권한) · {status.jira.site}</> : <>Jira가 연결되지 않았습니다 — <a href="/me" data-testid="jira-connect-link">내 설정에서 연결</a>{status.jira.stale ? "(다시 연결 필요)" : ""}</>)
+              : status.configured ? "Jira 연동 켜짐" : <>Jira 연동 꺼짐 — {status.jira?.reason ?? "관리자 설정 필요"}</>} · 연결 없이 흐름만 보려면 <code>DEMO-1</code>(자세한 티켓) / <code>DEMO-2</code>(제목뿐인 티켓)
           </Typography.Text>
           {wsLine && <Typography.Text type="secondary" style={{ fontSize: 12 }} className="block" data-testid="workspace-status">{wsLine}</Typography.Text>}
         </div>

@@ -3,7 +3,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { getProvider } from "@/lib/providers";
 import { env, cloudReady } from "@/lib/env";
-import { jiraConfigured } from "@/lib/jira";
+import { jiraMode } from "@/lib/jira-oauth";
 import { loadWorkspace } from "@/lib/workspace";
 import { profileSummary } from "@grammer-hub/core";
 
@@ -47,7 +47,8 @@ export async function GET(req: Request): Promise<Response> {
       ...(probeRequested && !probe ? { probeIgnored: "로그인 모드에서는 공개 health의 실제 호출을 하지 않습니다. 설정 화면의 연결 확인(관리자)을 쓰세요." } : {}),
     },
     defaultProvider: env.defaultProvider,
-    jira: { configured: jiraConfigured(), baseUrl: env.jiraBaseUrl || null },
+    // oauth = 로그인 모드에서 사람마다 연결(앱 설정 완료), token = 단일 사용자 모드의 공용 토큰
+    jira: (() => { const m = jiraMode(); return { configured: m.mode !== "off", mode: m.mode, reason: m.reason, baseUrl: env.jiraBaseUrl || null }; })(),
     auth: { enabled: env.authEnabled, issuer: env.authEnabled ? env.oidcIssuer : null, appUrl: env.appUrl || null, allowedDomains: env.authAllowedDomains.length, allowedEmails: env.authAllowedEmails.length, admins: env.authAdminEmails.length, sessionSecretSet: Boolean(process.env["AUTH_SECRET"]) },
     workspace: (() => { const w = loadWorkspace(); return { exists: w.exists, path: w.path.startsWith(ROOT) ? w.path.slice(ROOT.length + 1) : "(루트 밖)", error: w.error, ...(profileSummary(w.profile) ?? {}) }; })(),
     local: { url: env.localLlmUrl, model: env.localLlmModel },

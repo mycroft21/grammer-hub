@@ -6,3 +6,4 @@ export * from "./pii/index";
 export * from "./pipeline/index";
 export * from "./promptstudio/index";
 export * from "./probe";
+export * from "./jira-oauth";

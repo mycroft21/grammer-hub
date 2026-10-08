@@ -22,7 +22,8 @@ const server = spawn(process.execPath, [require.resolve("next/dist/bin/next"), "
   // 작업 공간 프로필은 예시의 임시 복사본(DEMO-2의 [partner] 태그 → eximbay-partner 확정 경로를 검사)
   // 설정 화면 검사는 실제 .env를 건드리지 않도록 GH_ENV_FILE을 임시 파일로 돌린다
   // Jira는 빈 값으로 고정한다: Next가 .env를 자동으로 읽어 실제 계정으로 외부 호출을 하지 않게(빈 값도 "설정됨"이라 .env가 덮지 않는다)
-  env: { ...process.env, DATABASE_URL: `file:${join(dir, "e2e.db")}`, FAKE_PROVIDER: "1", ALLOWED_EMAIL: "e2e@example.com", WORKSPACE_PROFILE: profilePath, GH_ENV_FILE: join(dir, "e2e.env"), JIRA_BASE_URL: "", JIRA_EMAIL: "", JIRA_API_TOKEN: "" },
+  env: { ...process.env, DATABASE_URL: `file:${join(dir, "e2e.db")}`, FAKE_PROVIDER: "1", ALLOWED_EMAIL: "e2e@example.com", WORKSPACE_PROFILE: profilePath, GH_ENV_FILE: join(dir, "e2e.env"), JIRA_BASE_URL: "", JIRA_EMAIL: "", JIRA_API_TOKEN: "",
+    JIRA_OAUTH_CLIENT_ID: "", JIRA_OAUTH_CLIENT_SECRET: "", ATLASSIAN_AUTH_URL: "", ATLASSIAN_API_URL: "" },
   stdio: ["ignore", "pipe", "pipe"], detached: true,
 });
 const extraStops = [];
@@ -73,6 +74,60 @@ async function startFakeIdp(port, clientSecret) {
   return { state, issuer, close: () => srv.close() };
 }
 
+/**
+ * 가짜 Atlassian(OAuth 3LO + Jira REST 일부). authorize는 묻지 않고 바로 콜백으로, refresh token은 실제처럼 회전(한 번 쓰면 무효).
+ * state.account로 다음 연결의 계정을 정하고, SEC-1은 admin 계정만 볼 수 있다(사람별 권한·캐시 분리 검사용).
+ */
+async function startFakeAtlassian(port, clientId, clientSecret) {
+  const base = `http://127.0.0.1:${port}`;
+  const codes = new Map(), access = new Map(), refresh = new Map();
+  const state = { account: "tester", siteUrl: "https://e2e.atlassian.net", expiresIn: 3600, revoked: new Set(), refreshHits: 0, revokedApiHits: 0, scope: "" };
+  const issue = (key) => ({ key, fields: { summary: `[e2e] ${key} 정산 리포트 개선`, description: "정산 리포트에 환불 건을 함께 보여 준다", issuetype: { name: "Task" }, status: { name: "To Do" }, priority: { name: "Medium" }, labels: [], components: [], comment: { comments: [] }, attachment: [], issuelinks: [] } });
+  const mint = (account) => { const at = randomUUID(), rt = randomUUID(); access.set(at, account); refresh.set(rt, account); return { access_token: at, refresh_token: rt, expires_in: state.expiresIn, scope: state.scope, token_type: "Bearer" }; };
+  const srv = http.createServer(async (req, res) => {
+    const u = new URL(req.url, base);
+    const json = (o, status = 200) => { res.statusCode = status; res.setHeader("content-type", "application/json"); res.end(JSON.stringify(o)); };
+    if (u.pathname === "/authorize") {
+      const code = randomUUID();
+      state.scope = u.searchParams.get("scope") ?? "";
+      if (u.searchParams.get("client_id") !== clientId) return json({ error: "invalid_client" }, 400);
+      codes.set(code, state.account);
+      res.statusCode = 302; res.setHeader("location", `${u.searchParams.get("redirect_uri")}?code=${code}&state=${encodeURIComponent(u.searchParams.get("state"))}`); return res.end();
+    }
+    if (u.pathname === "/oauth/token") {
+      let body = ""; for await (const c of req) body += c;
+      const p = JSON.parse(body || "{}");
+      if (p.client_id !== clientId || p.client_secret !== clientSecret) return json({ error: "access_denied" }, 401);
+      if (p.grant_type === "authorization_code") {
+        const account = codes.get(p.code); codes.delete(p.code);
+        if (!account) return json({ error: "invalid_grant" }, 403);
+        return json(mint(account));
+      }
+      if (p.grant_type === "refresh_token") {
+        state.refreshHits++;
+        const account = refresh.get(p.refresh_token);
+        refresh.delete(p.refresh_token);   // 회전: 쓴 refresh token은 무효
+        if (!account || state.revoked.has(account)) return json({ error: "invalid_grant" }, 403);
+        return json(mint(account));
+      }
+      return json({ error: "unsupported_grant_type" }, 400);
+    }
+    // 사용자가 Atlassian에서 앱 접근을 끊으면 남은 access token도 401(만료 전 401 → refresh 1회 → invalid_grant 경로)
+    const tokenOwner = access.get((req.headers.authorization ?? "").replace(/^Bearer /, ""));
+    const who = tokenOwner && !state.revoked.has(tokenOwner) ? tokenOwner : undefined;
+    if (tokenOwner && !who) state.revokedApiHits++;
+    if (u.pathname === "/oauth/token/accessible-resources") return who ? json([{ id: "cloud-e2e", url: state.siteUrl, name: "E2E", scopes: ["read:jira-work"] }]) : json({}, 401);
+    if (u.pathname.startsWith("/ex/jira/cloud-e2e/")) {
+      if (!who) return json({ message: "Unauthorized" }, 401);
+      if (u.pathname.endsWith("/rest/api/3/myself")) return json({ accountId: `acc-${who}`, displayName: who });
+      const m = /\/rest\/api\/3\/issue\/([A-Z]+-\d+)$/.exec(u.pathname);
+      if (m) return m[1] === "SEC-1" && who !== "admin" ? json({ errorMessages: ["없음"] }, 404) : json(issue(m[1]));
+    }
+    res.statusCode = 404; res.end();
+  });
+  await new Promise((r) => srv.listen(port, "127.0.0.1", r));
+  return { state, url: base, close: () => srv.close() };
+}
 
 /** 하이드레이션 전에 fill하면 React 상태에 반영되지 않는다. 교정 버튼이 활성화될 때까지 재시도. */
 async function fillDraft(page, text) {
@@ -418,13 +473,18 @@ try {
   const IDP_PORT = String(Number(PORT) + 2), PORT2 = String(Number(PORT) + 1), BASE2 = `http://127.0.0.1:${PORT2}`;
   const CLIENT_SECRET = "e2e-secret-1234567890";
   const idp = await startFakeIdp(IDP_PORT, CLIENT_SECRET);
+  const atl = await startFakeAtlassian(String(Number(PORT) + 3), "jira-e2e", "jira-e2e-secret");
+  extraStops.push(atl.close);
   extraStops.push(idp.close);
   const profile2 = join(dir, "team.workspace.json");
   copyFileSync(join(ROOT, "studio.workspace.example.json"), profile2);
   const server2 = spawn(process.execPath, [require.resolve("next/dist/bin/next"), "start", "-p", PORT2], {
     cwd: new URL("..", import.meta.url).pathname,
     env: { ...process.env, DATABASE_URL: `file:${join(dir, "team.db")}`, FAKE_PROVIDER: "1", WORKSPACE_PROFILE: profile2, GH_ENV_FILE: join(dir, "team.env"),
-      OIDC_ISSUER: idp.issuer, OIDC_CLIENT_ID: "gh-e2e", OIDC_CLIENT_SECRET: CLIENT_SECRET, APP_URL: "", JIRA_BASE_URL: "", JIRA_EMAIL: "", JIRA_API_TOKEN: "", AUTH_SECRET: "e2e-session-secret-0123456789",
+      OIDC_ISSUER: idp.issuer, OIDC_CLIENT_ID: "gh-e2e", OIDC_CLIENT_SECRET: CLIENT_SECRET, APP_URL: "", AUTH_SECRET: "e2e-session-secret-0123456789",
+      // 로그인 모드 Jira = 사람마다 OAuth. 공용 토큰 값이 있어도 쓰지 않는지 보려고 일부러 넣어 둔다(가짜 주소라 호출되면 실패)
+      JIRA_BASE_URL: "https://E2E.atlassian.net/", JIRA_EMAIL: "shared@example.com", JIRA_API_TOKEN: "shared-token-should-not-be-used",
+      JIRA_OAUTH_CLIENT_ID: "jira-e2e", JIRA_OAUTH_CLIENT_SECRET: "jira-e2e-secret", ATLASSIAN_AUTH_URL: atl.url, ATLASSIAN_API_URL: atl.url,
       AUTH_ALLOWED_DOMAINS: "example.com", AUTH_ADMIN_EMAILS: "admin@example.com" },
     stdio: ["ignore", "pipe", "pipe"], detached: true,
   });
@@ -468,6 +528,23 @@ try {
   check("auth: team member can run a correction", corr.status === 200 && corr.text.includes("event: done"));
   check("auth: team member sees own run", (await call("/api/runs")).json?.length === 1);
 
+  // Jira(로그인 모드): 연결 전엔 공용 토큰으로 대신 가져오지 않는다 → 내 설정에서 OAuth 연결 → 내 권한으로만 조회
+  const tk = (key) => call("/api/prompts/ticket", jsonInit("POST", { ticket: key }));
+  const unconnected = await tk("EP-1");
+  check("jira: before connecting, tickets are refused (no shared token fallback)", unconnected.status === 401 && unconnected.json?.error?.code === "jira_not_connected");
+  atl.state.account = "tester"; atl.state.expiresIn = 30;   // 30초 → 매번 만료 1분 전이라 매 호출 refresh(회전 검사)
+  await p2.goto(`${BASE2}/me`, { waitUntil: "load" });
+  await p2.click("[data-testid=jira-connect]");
+  await p2.waitForSelector("[data-testid=jira-notice]", { timeout: 15000 });
+  check("jira: connect through Atlassian lands back on My settings as connected", new URL(p2.url()).pathname === "/me" && ((await p2.textContent("[data-testid=jira-state]")) ?? "").includes("연결됨") && atl.state.scope.includes("offline_access"));
+  const ep1 = await tk("EP-1");
+  check("jira: ticket comes through my connection with a browse link on the site", ep1.status === 200 && ep1.json?.ticket?.url === "https://e2e.atlassian.net/browse/EP-1");
+  const sec = await tk("SEC-1");
+  check("jira: a ticket my account cannot see stays hidden", sec.status === 404);
+  const chk = (await call("/api/me/jira/check", { method: "POST" })).json;
+  check("jira: rotating refresh tokens keep working across calls", chk?.ok === true && chk.summary.includes("tester") && atl.state.refreshHits >= 3);
+  const testerJiraToken = (await ctx2.cookies()).find((c) => c.name === "gh_session")?.value ?? "";
+
   // 임시 저장은 사람별 키, 로그아웃하면 지운다(같은 브라우저를 다음 사람이 써도 남의 입력이 안 보이게)
   await p2.goto(`${BASE2}/prompts`, { waitUntil: "load" });
   await fillUntil(p2, "[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]", "사람별 임시 저장 확인", "[data-testid=studio-run]:not([disabled])");
@@ -493,6 +570,42 @@ try {
   check("workspace: the member's personal alias is not in the admin's workspace", Array.isArray(adminLegacy?.aliases) && !adminLegacy.aliases.includes("tester-only"));
   check("auth: admin does not see the other member's runs or stats", (await call("/api/runs")).json?.length === 0 && (await call("/api/stats")).json?.collection?.runsOk === 0);
   check("auth: admin settings API is 200", (await call("/api/settings")).status === 200);
+  const jiraProbe = (await call("/api/settings/probe", jsonInit("POST", { target: "jira" }))).json;
+  check("probe: admin checks the Jira OAuth app (callback and client) without echoing the secret", jiraProbe?.ok === true && jiraProbe.steps.map((x) => x.label).join(",") === "콜백 URL,앱" && !JSON.stringify(jiraProbe).includes("jira-e2e-secret"));
+  atl.state.account = "admin"; atl.state.expiresIn = 3600;
+  await p2.goto(`${BASE2}/me`, { waitUntil: "load" });
+  await p2.click("[data-testid=jira-connect]");
+  await p2.waitForSelector("[data-testid=jira-notice]", { timeout: 15000 });
+  const adminSec = await call("/api/prompts/ticket", jsonInit("POST", { ticket: "SEC-1" }));
+  const asTesterTicket = (key) => fetch(`${BASE2}/api/prompts/ticket`, { method: "POST", headers: { "content-type": "application/json", cookie: `gh_session=${testerJiraToken}` }, body: JSON.stringify({ ticket: key }) });
+  // tester의 이 호출은 30초 토큰을 refresh해 1시간 토큰을 받는다 → 아래 철회 검사가 '만료 전 401 → refresh 1회' 경로를 탄다
+  check("jira: the admin sees SEC-1 but the member still cannot (cache is per person)", adminSec.status === 200 && (await asTesterTicket("SEC-1")).status === 404);
+  atl.state.revoked.add("tester");   // tester가 Atlassian에서 앱 접근을 끊음 → API 401, refresh는 invalid_grant
+  const revoked = await asTesterTicket("EP-9");
+  const testerStatus = await (await fetch(`${BASE2}/api/me/jira`, { headers: { cookie: `gh_session=${testerJiraToken}` } })).json();
+  const revokedBody = await revoked.json().catch(() => null);
+  const adminAfter = await call("/api/prompts/ticket", jsonInit("POST", { ticket: "EP-2" }));
+  check("jira: a revoked connection (401 before expiry → one refresh → invalid_grant) is removed and asks to reconnect; others are unaffected",
+    revoked.status === 401 && revokedBody?.error?.code === "jira_not_connected" && testerStatus.connected === false && adminAfter.status === 200 && atl.state.revokedApiHits >= 1);
+  // 동의 화면에서 다른 사이트를 고르면 저장하지 않고 이유를 알린다(기존 연결은 그대로)
+  atl.state.siteUrl = "https://other.atlassian.net";
+  await p2.goto(`${BASE2}/me`, { waitUntil: "load" });
+  await p2.click("[data-testid=jira-connect]");
+  await p2.waitForSelector("[data-testid=jira-notice]", { timeout: 15000 });
+  check("jira: consenting to a different site is refused and the old connection stays", ((await p2.textContent("[data-testid=jira-notice]")) ?? "").includes("사이트를 골라") && (await call("/api/me/jira")).json?.connected === true);
+  atl.state.siteUrl = "https://e2e.atlassian.net";
+  // 관리자가 Jira 주소를 바꾸면 기존 연결은 '다시 연결 필요'
+  await call("/api/settings", jsonInit("PUT", { values: { JIRA_BASE_URL: "https://moved.atlassian.net" } }));
+  const movedStatus = (await call("/api/me/jira")).json;
+  await call("/api/settings", jsonInit("PUT", { values: { JIRA_BASE_URL: "https://E2E.atlassian.net/" } }));
+  check("jira: changing the Jira site marks existing connections stale", movedStatus?.connected === false && movedStatus.stale === true && (await call("/api/me/jira")).json?.connected === true);
+  // 연결 끊기: 토큰을 지우고 이후 조회는 연결을 요구
+  await p2.goto(`${BASE2}/me`, { waitUntil: "load" });
+  await p2.click("[data-testid=jira-disconnect]");
+  await p2.getByRole("button", { name: "끊기", exact: true }).click();
+  await p2.waitForFunction(() => document.querySelector("[data-testid=jira-state]")?.textContent?.includes("연결 안 됨"), null, { timeout: 10000 });
+  const afterDisc = await call("/api/prompts/ticket", jsonInit("POST", { ticket: "EP-77" }));
+  check("jira: disconnecting removes the connection and later tickets ask to connect", afterDisc.status === 401 && afterDisc.json?.error?.code === "jira_not_connected");
   const oidcProbe = (await call("/api/settings/probe", jsonInit("POST", { target: "oidc" }))).json;
   check("probe: admin checks OIDC issuer, callback and client against the IdP", oidcProbe?.ok === true && oidcProbe.steps.map((x) => `${x.label}:${x.state}`).join(",") === "발급자:ok,콜백 URL:warn,클라이언트:ok" && !JSON.stringify(oidcProbe).includes("e2e-secret"));
   await p2.goto(`${BASE2}/settings`, { waitUntil: "load" });

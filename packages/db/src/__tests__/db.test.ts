@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createDraft, createPrompt, createRun, ensureUser, getVersion, finishRun, getRunContext, getStats, getTeamStats, listDictionary, listOkRunIds, listProfiles, listRecentRuns, listRules,
-  deletePreset, getWorkspaceOverlay, saveWorkspaceOverlay, linkPromptRun, listPresets, listPromptRuns, openDb, savePreset, recordFeedback, recordFinal, recordPromptRun, runOwnerId, saveSuggestions, seedDefaultProfiles, teamStatsCsv, upsertDictionary, upsertProfile, upsertRule,
+  deletePreset, deleteIntegration, getIntegration, saveIntegration, updateIntegrationTokens, getWorkspaceOverlay, saveWorkspaceOverlay, linkPromptRun, listPresets, listPromptRuns, openDb, savePreset, recordFeedback, recordFinal, recordPromptRun, runOwnerId, saveSuggestions, seedDefaultProfiles, teamStatsCsv, upsertDictionary, upsertProfile, upsertRule,
 } from "../index";
 
 describe("db", () => {
@@ -173,6 +173,27 @@ describe("db", () => {
     saveWorkspaceOverlay(db, a.id, { version: 1, repos: [{ name: "y" }] });
     expect(getWorkspaceOverlay(db, a.id)).toEqual({ version: 1, repos: [{ name: "y" }] });
     expect(getWorkspaceOverlay(db, b.id)).toBeNull();
+  });
+
+  it("외부 연결은 사람·종류당 한 행, 다시 연결하면 토큰만 바뀌고 처음 연결 시각은 유지", () => {
+    const db = openDb(":memory:");
+    const a = ensureUser(db, "a@example.com"), b = ensureUser(db, "b@example.com");
+    const row = { userId: a.id, kind: "jira" as const, siteUrl: "https://x.atlassian.net", cloudId: "c1", scopes: "read:jira-work", accessTokenEnc: "enc1", accessExpiresAt: 1, refreshTokenEnc: "r1" };
+    saveIntegration(db, row);
+    const first = getIntegration(db, a.id, "jira")!;
+    saveIntegration(db, { ...row, accessTokenEnc: "enc2", refreshTokenEnc: "r2" });
+    const second = getIntegration(db, a.id, "jira")!;
+    expect([second.accessTokenEnc, second.refreshTokenEnc, second.createdAt]).toEqual(["enc2", "r2", first.createdAt]);
+    expect(getIntegration(db, b.id, "jira")).toBeNull();
+    expect(deleteIntegration(db, b.id, "jira")).toBe(false);
+    // 갱신 저장은 시작할 때의 refresh token이 그대로일 때만(그 사이 다시 연결·끊기면 덮지 않음)
+    const toks = { accessTokenEnc: "enc3", accessExpiresAt: 2, refreshTokenEnc: "r3", scopes: "read:jira-work" };
+    expect(updateIntegrationTokens(db, a.id, "jira", "r1", toks)).toBe(false);
+    expect(updateIntegrationTokens(db, a.id, "jira", "r2", toks)).toBe(true);
+    expect(getIntegration(db, a.id, "jira")!.refreshTokenEnc).toBe("r3");
+    expect(deleteIntegration(db, a.id, "jira")).toBe(true);
+    expect(updateIntegrationTokens(db, a.id, "jira", "r3", toks)).toBe(false);
+    expect(getIntegration(db, a.id, "jira")).toBeNull();
   });
 
   it("예전에 <system> 태그로 감싸 보관한 한 덩어리는 읽을 때 태그 없이 돌려준다", () => {

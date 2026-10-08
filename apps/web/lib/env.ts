@@ -26,6 +26,12 @@ export const env = {
   get jiraBaseUrl() { return s("JIRA_BASE_URL"); },
   get jiraEmail() { return s("JIRA_EMAIL"); },
   get jiraApiToken() { return s("JIRA_API_TOKEN"); },
+  /** 로그인 모드의 Jira = 사람마다 Atlassian OAuth(3LO). 앱은 developer.atlassian.com에 등록. 공용 토큰(위 두 값)은 단일 사용자 모드에서만 쓴다 */
+  get jiraOauthClientId() { return s("JIRA_OAUTH_CLIENT_ID"); },
+  get jiraOauthClientSecret() { return s("JIRA_OAUTH_CLIENT_SECRET"); },
+  /** 테스트(E2E 가짜 Atlassian)용 주소. 운영에서는 비워 둔다 */
+  get atlassianAuthUrl() { return (s("ATLASSIAN_AUTH_URL") || "https://auth.atlassian.com").replace(/\/+$/, ""); },
+  get atlassianApiUrl() { return (s("ATLASSIAN_API_URL") || "https://api.atlassian.com").replace(/\/+$/, ""); },
   /** 진행 로그를 파일에도 남길 경로(선택). 터미널에는 항상 찍힌다. */
   get logFile() { return s("LOG_FILE") || null; },
   /** 작업 공간 프로필 파일 경로(루트 기준). 비우면 루트 studio.workspace.json */
@@ -40,6 +46,8 @@ export const env = {
   get authEnabled() { return Boolean(s("OIDC_ISSUER") && s("OIDC_CLIENT_ID") && s("OIDC_CLIENT_SECRET")); },
   /** 세션 쿠키 서명 키. 비우면 클라이언트 시크릿을 대신 쓴다(동작은 하지만 따로 두는 것을 권장). */
   get authSecret() { return s("AUTH_SECRET") || s("OIDC_CLIENT_SECRET"); },
+  /** AUTH_SECRET을 따로 정했는지. 사람별 Jira 토큰 암호화 키는 이것으로만 만든다(OIDC 시크릿 교체로 연결이 깨지지 않게) */
+  get authSecretExplicit() { return Boolean(s("AUTH_SECRET")); },
   get authAllowedDomains() { return list("AUTH_ALLOWED_DOMAINS").map((d) => d.replace(/^@/, "")); },
   get authAllowedEmails() { return list("AUTH_ALLOWED_EMAILS"); },
   /** 설정 화면·.env 편집이 허용되는 사람. 비어 있으면 로그인 모드에서는 아무도 설정을 못 바꾼다(.env를 서버에서 직접 고친다). */

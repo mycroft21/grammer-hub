@@ -12,10 +12,11 @@ import { getProvider } from "./providers";
 /** 요청 → StudioContext. 어투 규칙은 사용자가 켰을 때만(기본 중립). 티켓 키가 있으면 가져와 <ticket>으로 넣는다. */
 export async function toStudioContext(req: StudioRequest): Promise<{ ok: true; ctx: StudioContext } | { ok: false; res: Response }> {
   const ctx = await baseContext(req);
-  ctx.profile = loadMergedWorkspace((await getUser()).id).profile;
+  const user = await getUser();
+  ctx.profile = loadMergedWorkspace(user.id).profile;
   if (req.ticket) {
-    const t = await fetchTicket(req.ticket);
-    if (!t.ok) return { ok: false, res: Response.json({ error: { code: "ticket_unavailable", message: t.message } }, { status: t.status }) };
+    const t = await fetchTicket(req.ticket, user.id);
+    if (!t.ok) return { ok: false, res: Response.json({ error: { code: t.code ?? "ticket_unavailable", message: t.message } }, { status: t.status }) };
     ctx.ticket = ticketToText(t.ticket);
     ctx.ticketKey = t.ticket.key;
     const cut = ticketCut(t.ticket);

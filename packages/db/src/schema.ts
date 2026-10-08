@@ -234,3 +234,20 @@ export const userWorkspaceOverlays = sqliteTable("user_workspace_overlays", {
   overlay: text("overlay", { mode: "json" }).notNull().$type<Record<string, unknown>>(),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
 });
+
+/**
+ * 사람별 외부 연결(지금은 Jira OAuth 하나). 토큰은 웹 쪽에서 AES-256-GCM으로 암호화한 값만 둔다.
+ * 계정 id·이름은 저장하지 않는다(개인정보 보관 최소화 — 표시는 연결 확인 때 그때만 조회).
+ */
+export const userIntegrations = sqliteTable("user_integrations", {
+  userId: text("user_id").notNull().references(() => users.id),
+  kind: text("kind", { enum: ["jira"] }).notNull(),
+  siteUrl: text("site_url").notNull(),
+  cloudId: text("cloud_id").notNull(),
+  scopes: text("scopes").notNull(),
+  accessTokenEnc: text("access_token_enc").notNull(),
+  accessExpiresAt: integer("access_expires_at").notNull(),
+  refreshTokenEnc: text("refresh_token_enc").notNull(),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+}, (t) => [primaryKey({ columns: [t.userId, t.kind] })]);

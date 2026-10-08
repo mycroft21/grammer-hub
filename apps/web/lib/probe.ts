@@ -1,8 +1,9 @@
 import "server-only";
-import { probeJira, probeOidc, probeResult, type ProbeResult } from "@grammer-hub/core";
+import { probeJira, probeJiraOauth, probeOidc, probeResult, type ProbeResult } from "@grammer-hub/core";
 import { ClaudeCliProvider } from "@grammer-hub/core/node";
 import { redirectUri } from "./auth/oidc";
 import { env } from "./env";
+import { jiraCallbackUrl } from "./jira-oauth";
 import { getProvider } from "./providers";
 
 export type ProbeTarget = "cloud" | "local" | "jira" | "oidc";
@@ -24,6 +25,9 @@ export async function runProbe(target: ProbeTarget, origin: string): Promise<Pro
     const h = await getProvider("local").health().catch((e: unknown) => ({ ok: false, detail: String(e) }));
     return probeResult([{ label: "로컬 LLM", state: h.ok ? "ok" : "fail", detail: h.ok ? `${env.localLlmUrl} 응답함` : `${env.localLlmUrl} — ${h.detail ?? "응답 없음"}` }]);
   }
-  if (target === "jira") return probeJira({ baseUrl: env.jiraBaseUrl, email: env.jiraEmail, token: env.jiraApiToken });
+  // 로그인 모드는 사람마다 OAuth로 연결하므로 관리자는 앱 설정(ID·시크릿·콜백)을 본다. 공용 토큰은 단일 사용자 모드에서만
+  if (target === "jira") return env.authEnabled
+    ? probeJiraOauth({ authUrl: env.atlassianAuthUrl, clientId: env.jiraOauthClientId, clientSecret: env.jiraOauthClientSecret, callbackUrl: jiraCallbackUrl(origin), siteUrl: env.jiraBaseUrl, authSecretSet: env.authSecretExplicit })
+    : probeJira({ baseUrl: env.jiraBaseUrl, email: env.jiraEmail, token: env.jiraApiToken });
   return probeOidc({ issuer: env.oidcIssuer, clientId: env.oidcClientId, clientSecret: env.oidcClientSecret, callbackUrl: redirectUri(origin), appUrlSet: Boolean(env.appUrl) });
 }
