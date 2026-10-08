@@ -1,4 +1,4 @@
-import { DOMAINS, PURPOSES, UNIVERSAL_PRINCIPLES, findSubtype } from "./taxonomy";
+import { DOMAINS, DOMAIN_LIST, PURPOSES, UNIVERSAL_PRINCIPLES, findSubtype } from "./taxonomy";
 import type { ClarifyPolicy, PromptLanguage, PromptLength, PromptSpec, Purpose, Runtime, SlotKey } from "./spec";
 import { SLOT_KEYS, isAgentRuntime } from "./spec";
 import { needsCatalog, needsRules } from "./needs";
@@ -7,7 +7,7 @@ import { agentDefaultsFor } from "./agent-defaults";
 import type { SystemBlock } from "../prompt/build";
 import type { TicketCut } from "./ticket";
 
-export const STUDIO_PROMPT_VERSION = "0.5.2";
+export const STUDIO_PROMPT_VERSION = "0.6.0";
 
 /**
  * 고정 블록(캐시 대상). 날짜·ID 같은 가변 값 금지.
@@ -126,6 +126,8 @@ export interface StudioContext {
   hints?: { startingPoints?: string[] | undefined; context?: string | undefined; repos?: string[] | undefined; verifyInRepo?: string[] | undefined } | null | undefined;
   /** 작업 공간 프로필(루트 studio.workspace.json). 없으면 null */
   profile?: WorkspaceProfile | null | undefined;
+  /** 의도 정리에서 목적·세부 유형을 모델이 고른다(purpose·subtype은 무시) */
+  classify?: boolean | undefined;
 }
 
 function hintsBlock(ctx: StudioContext): string {
@@ -161,7 +163,50 @@ function answersBlock(ctx: StudioContext): string {
  * 1단계: 의도 정리. 세부 유형을 고르고 필요 정보 장부를 채운다. 질문·가정은 코드가 장부에서 만든다(needs.ts).
  * 장부 항목 = (개발 대분류이고 프로필에 저장소가 있으면) where + 세부 유형의 mustKnow.
  */
+/** 분류 모드용: 대분류 → 중분류(id) → 세부 유형(id)과 그 세부 유형에서 확인할 장부 항목. */
+function taxonomyWithNeeds(): string {
+  return DOMAIN_LIST.map((d) => {
+    const dom = DOMAINS[d];
+    return [`### ${dom.label} — ${dom.short}`, ...dom.purposes.map((pid) => {
+      const p = PURPOSES[pid];
+      return `- ${pid} (${p.label}: ${p.short})\n` + p.subtypes.map((st) => `  - ${st.id} (${st.label}: ${st.hint})${st.mustKnow.length ? ` 장부: ${st.mustKnow.map((m) => `${m.id}=${m.question}[${m.options.join(" | ")}]`).join("; ")}` : ""}`).join("\n");
+    })].join("\n");
+  }).join("\n");
+}
+
+/**
+ * 간단 흐름의 첫 의도 정리: 목표 한 문장만 받았으므로 목적(purpose)·세부 유형(subtype)도 모델이 고른다.
+ * 장부는 고른 세부 유형의 항목(+개발이면 where)만 쓰게 하고, 허용 목록은 코드가 다시 거른다(pipeline.planPrompt).
+ */
+function buildClassifyPlanPrompt(ctx: StudioContext): { system: SystemBlock[]; user: string } {
+  const ws = workspaceFor(ctx);
+  const dyn = [
+    "## 분류 규칙",
+    "사용자가 목표 한 문장만 적었다. 아래 분류 체계에서 이 목표에 맞는 purpose(중분류 id)와 subtype(세부 유형 id)을 고른다.",
+    "- 코드 조사·수정이 필요한 목표는 개발. 결과물이 설계안·비교표·문서면 plan, 코드 변경이면 build, 동작·원인을 파악하는 것이면 investigate, 이미 있는 변경을 보는 것이면 review.",
+    "- 코드와 무관하면: 모르는 것을 조사하면 리서치, 수치·원인·영향을 따지면 분석, 계획·제안서면 기획, 보낼 글을 쓰면 글쓰기, 고르기·결정이면 의사결정.",
+    "- 애매하면 결과물(사용자가 끝에 손에 쥐는 것)을 기준으로 고른다.",
+    "",
+    taxonomyWithNeeds(),
+    "",
+    needsRules(),
+    ctx.profile?.repos.length ? `- 개발 목적이면 where(대상 저장소·서비스) 항목도 쓴다. 선택지는 프로필의 저장소: ${ctx.profile.repos.map((r) => r.name).join(", ")}` : "",
+  ].filter(Boolean);
+  const user = [
+    `<goal>`, ctx.goal, `</goal>`,
+    hintsBlock(ctx),
+    answersBlock(ctx),
+    "",
+    "다음을 판단하라.",
+    "1. 위 분류 체계에서 purpose와 subtype을 고른다.",
+    "2. 고른 세부 유형의 장부 항목(개발이면 where 포함)마다 status를 정한다. 다른 세부 유형의 항목은 쓰지 않는다. 목표 문장·답변에 답이 있으면 filled.",
+    "3. summary에 이해한 목표를 한 문장으로.",
+  ].filter(Boolean).join("\n");
+  return { system: [{ text: studioStableSystem(), cache: true }, { text: [dyn.join("\n"), ws].filter(Boolean).join("\n\n"), cache: false }], user };
+}
+
 export function buildPlanPrompt(ctx: StudioContext): { system: SystemBlock[]; user: string } {
+  if (ctx.classify) return buildClassifyPlanPrompt(ctx);
   const s = findSubtype(ctx.purpose, ctx.subtype);
   const dev = DOMAINS[PURPOSES[ctx.purpose].domain].id === "dev";
   const catalog = needsCatalog(s, dev ? ctx.profile : null, { universal: false });
@@ -172,10 +217,10 @@ export function buildPlanPrompt(ctx: StudioContext): { system: SystemBlock[]; us
     answersBlock(ctx),
     "",
     "다음을 판단하라.",
-    "1. 세부 유형 목록 중 이 목표에 맞는 것을 고른다(subtype). 목록: " + PURPOSES[ctx.purpose].subtypes.map((x) => `${x.id}(${x.label}: ${x.hint})`).join(", "),
+    ctx.subtype ? `1. 세부 유형은 ${ctx.subtype}로 정해져 있다(subtype에 그대로).` : "1. 세부 유형 목록 중 이 목표에 맞는 것을 고른다(subtype). 목록: " + PURPOSES[ctx.purpose].subtypes.map((x) => `${x.id}(${x.label}: ${x.hint})`).join(", "),
     "2. 아래 장부 항목마다 status를 정한다(규칙은 시스템 블록). 목표 문장·답변에 답이 있으면 filled.",
     catalog,
-    "3. summary에 이해한 목표를 한 문장으로.",
+    "3. summary에 이해한 목표를 한 문장으로. purpose는 null로 둔다(목적은 정해져 있다).",
   ].filter(Boolean).join("\n");
   return {
     system: [

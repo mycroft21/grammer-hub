@@ -102,11 +102,14 @@ function fakeStudio(input: ProviderInput): unknown | null {
     };
   }
   if ("needs" in props && "subtype" in props) {
+    // 분류 모드(간단 흐름): 목표 낱말로 목적을 고른다. 목적이 정해진 요청이면 null
+    const classify = /분류 체계에서 purpose와 subtype을 고른다/.test(input.user);
+    const purpose = !classify ? null : /메시지|메일|공지|보고/.test(goal) ? "write_business" : /비교/.test(goal) ? "research_compare" : /설계|계획/.test(goal) ? "plan" : "investigate";
     // 다회차: 목표에 '여러 번'이 있으면 1회차 depth, 2회차 next를 묻는다. 답한 depth도 계속 ask로 내서 코드의 고정을 검증한다.
     if (goal.includes("여러 번")) {
       const keys = new Set([...(/<answers>\n([\s\S]*?)\n<\/answers>/.exec(input.user)?.[1] ?? "").matchAll(/^- ([^:]+):/gm)].map((m) => m[1]));
       return {
-        summary: `이해한 목표: ${goal}`, subtype: null,
+        purpose, summary: `이해한 목표: ${goal}`, subtype: null,
         needs: [
           { id: "next", label: "파악한 뒤 무엇을 하나요", status: keys.has("depth") ? "ask" : "assume", value: "버그 수정 전 흐름 정리", options: keys.has("depth") ? ["기능 추가", "버그 수정"] : [], question: keys.has("depth") ? "파악한 뒤 무엇을 하나요?" : null, why: "깊이를 정하고 나니 다음 행동이 결과물을 바꾼다" },
           { id: "depth", label: "어느 깊이까지", status: "ask", value: "진입점과 흐름만", options: ["흐름만", "분기·예외까지"], question: "어느 깊이까지 다룰까요?", why: "깊이에 따라 성공 기준과 분량이 달라집니다." },
@@ -116,7 +119,7 @@ function fakeStudio(input: ProviderInput): unknown | null {
     // 의도 정리: 목표가 짧고 답변이 없으면 depth를 묻고, 아니면 전부 filled/assume.
     const short = !answered && goal.length < 30;
     return {
-      summary: `이해한 목표: ${goal}`, subtype: null,
+      purpose, summary: `이해한 목표: ${goal}`, subtype: null,
       needs: [
         { id: "next", label: "파악한 뒤 무엇을 하나요", status: "assume", value: "버그 수정 전 흐름 정리", options: [], question: null, why: "목표 문장에서 유추" },
         { id: "depth", label: "어느 깊이까지", status: short ? "ask" : "filled", value: short ? "진입점과 흐름만" : "분기·예외까지", options: short ? ["흐름만", "분기·예외까지"] : [], question: short ? "어느 깊이까지 다룰까요?" : null, why: short ? "깊이에 따라 성공 기준과 분량이 달라집니다." : "답변으로 정해졌다" },

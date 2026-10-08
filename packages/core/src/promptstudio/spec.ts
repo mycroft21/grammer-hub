@@ -151,6 +151,7 @@ export type PlanQuestion = z.infer<typeof PlanQuestion>;
 
 /** 모델이 내는 것(장부까지만). 질문·가정은 코드가 파생한다. */
 export const PlanRaw = z.object({
+  purpose: Purpose.nullable(),                 // 분류 모드(간단 흐름의 첫 의도 정리)에서 모델이 고른 중분류. 목적이 정해진 요청에서는 무시
   summary: z.string(),                         // 모델이 이해한 목표 한 문장
   subtype: z.string().nullable(),              // 분류 체계의 세부 유형 id(추정)
   needs: z.array(Need),
@@ -158,6 +159,7 @@ export const PlanRaw = z.object({
 export type PlanRaw = z.infer<typeof PlanRaw>;
 
 export const PlanResult = PlanRaw.extend({
+  purpose: Purpose,                            // 코드가 확정한 목적(분류 모드면 모델 선택, 아니면 요청 값)
   mode: z.enum(["ready", "ask"]),
   assumptions: z.array(z.string()),            // assume 항목 + 상한 초과로 내려간 ask 항목
   questions: z.array(PlanQuestion),            // ask 항목, 최대 MAX_QUESTIONS
@@ -187,21 +189,11 @@ export const StudioRequest = z.object({
   assumptions: z.array(z.string()).optional(),            // 사용자가 수정한 가정
   includeStyleRules: z.boolean().default(false),          // 기본 꺼짐 = 중립
   provider: z.enum(["cloud", "local"]).nullable().optional(),
+  /** 간단 흐름의 첫 의도 정리: 목적·세부 유형을 모델이 고른다(purpose는 자리값으로 무시). 의도 정리에만 쓰고 생성 요청에는 넣지 않는다 */
+  classify: z.boolean().optional(),
 });
 export type StudioRequest = z.infer<typeof StudioRequest>;
 
-/** 만들기 폼의 설정 프리셋. 목표 문장은 넣지 않는다(strict라 goal 같은 키가 오면 거부한다). 사람별로 서버에 저장한다. */
-export const PresetSettings = z.object({
-  purpose: Purpose,
-  subtype: z.string().max(60).nullable(),
-  length: PromptLength,
-  runtime: Runtime,
-  promptLanguage: PromptLanguage,
-  includeStyleRules: z.boolean(),
-  repos: z.array(z.string().max(80)).max(6),
-  clarify: ClarifyPolicy,
-}).strict();
-export type PresetSettings = z.infer<typeof PresetSettings>;
 
 /** 코드 점검 결과 */
 export const CheckResult = z.object({ id: z.string(), label: z.string(), ok: z.boolean(), detail: z.string() });

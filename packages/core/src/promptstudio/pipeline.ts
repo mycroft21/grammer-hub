@@ -58,10 +58,14 @@ export async function planPrompt(provider: CorrectionProvider, ctxIn: StudioCont
   try { const j = PlanRaw.safeParse(JSON.parse(r.raw)); raw = j.success ? j.data : null; } catch { raw = null; }
   // 스키마가 틀려도 모델은 이미 불렀다 → 실행 기록이 비용을 남기도록 사용량은 돌려준다
   if (!raw) return { plan: null, usage, error: { code: "schema_invalid", message: "의도 정리 결과가 스키마와 맞지 않습니다." } };
+  // 목적: 분류 모드면 모델이 고른 값(스키마 enum이라 목록 밖 값은 없다. null이면 기본 investigate), 아니면 요청 값
+  const purpose = ctxIn.classify ? raw.purpose ?? "investigate" : ctxIn.purpose;
   // 세부 유형 검증: 목록에 없으면 기본으로. 장부는 허용된 항목(where + 이 세부 유형의 mustKnow)만 남긴다.
-  const sub = findSubtype(ctxIn.purpose, raw.subtype);
-  const shown = findSubtype(ctxIn.purpose, ctxIn.subtype);   // 모델이 본 장부 목록은 요청 시점의 세부 유형 기준
-  const dev = DOMAINS[PURPOSES[ctxIn.purpose].domain].id === "dev";
+  // 목적이 정해진 요청에서 세부 유형도 정해져 있으면(확인 화면에서 고름) 그 값이 확정값 — 모델이 다른 걸 골라도 바꾸지 않는다
+  const sub = findSubtype(purpose, !ctxIn.classify && ctxIn.subtype ? ctxIn.subtype : raw.subtype);
+  // 모델이 본 장부 목록: 분류 모드는 고른 세부 유형 것, 아니면 요청 시점의 세부 유형 것
+  const shown = ctxIn.classify ? sub : findSubtype(purpose, ctxIn.subtype);
+  const dev = DOMAINS[PURPOSES[purpose].domain].id === "dev";
   const allowed = [...new Set([...(dev && ctxIn.profile?.repos.length ? ["where"] : []), ...shown.mustKnow.map((mk) => mk.id), ...sub.mustKnow.map((mk) => mk.id)])];
   // 사용자가 폼에서 저장소를 골랐으면 그것이 확정값(다시 묻지 않는다). 아니면 목표 문장에서 프로필 별칭을 찾는다.
   const profile = dev ? ctxIn.profile ?? null : null;
@@ -69,7 +73,7 @@ export async function planPrompt(provider: CorrectionProvider, ctxIn: StudioCont
   const repoMatches = picked.length ? picked : profile ? resolveRepos(profile, { title: ctxIn.goal }) : [];
   // 다회차 질문: 이미 답한 항목은 모델이 다시 ask로 내도 코드가 filled로 고정한다(같은 질문 반복 방지, 장부 항목 수가 질문 총량의 상한)
   const d = deriveNeeds(applyAnswers(raw.needs, ctxIn.answers ?? {}), { profile, allowedIds: allowed, repoMatches, trustModelWhere: true });
-  const plan: PlanResult = { summary: raw.summary, subtype: sub.id, needs: d.needs, mode: d.mode, questions: d.questions, assumptions: d.assumptions, verify_in_repo: d.verify_in_repo, repos: d.repos };
+  const plan: PlanResult = { purpose, summary: raw.summary, subtype: sub.id, needs: d.needs, mode: d.mode, questions: d.questions, assumptions: d.assumptions, verify_in_repo: d.verify_in_repo, repos: d.repos };
   return { plan: unmaskDeep(plan, m), usage, error: null };
 }
 

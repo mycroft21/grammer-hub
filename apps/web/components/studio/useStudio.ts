@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useRef, useState } from "react";
-import { SLOT_KEYS, SLOT_KO, parseIssueKey, type CheckResult, type PlanQuestion, type PlanResult, type PromptSpec, type RenderedPrompt, type SlotKey, type StudioRequest, type Ticket, type TicketPlanResult } from "@grammer-hub/core";
+import { PURPOSES, SLOT_KEYS, SLOT_KO, defaultLength, defaultRuntime, parseIssueKey, type CheckResult, type PlanQuestion, type PlanResult, type PromptSpec, type RenderedPrompt, type SlotKey, type StudioRequest, type Ticket, type TicketPlanResult } from "@grammer-hub/core";
 import { api, type StudioUsage, type WorkspaceStatus } from "@/lib/api";
 import { readSseRaw } from "@/lib/sse-client";
 import { useAuth } from "@/components/providers/AppProviders";
@@ -25,13 +25,27 @@ export interface StudioState {
   error: string | null;
   progress: { stage: "requesting" | "thinking" | "writing"; startedAt: number; expectedMs: number | null };
   log: { t: number; msg: string }[];
+  /** 의도 정리 결과가 올 때마다 1씩(확인 화면을 새 결과로 다시 그리는 키) */
+  planSeq: number;
+  /** 간단 흐름: 입력 화면이 읽은 작업 공간(확인 화면의 저장소 선택지) */
+  workspace: WorkspaceStatus | null;
   /** 티켓 흐름: 가져온 티켓과 분류 결과(+작업 공간 프로필 요약) */
   ticket: { ticket: Ticket; plan: TicketPlanResult; workspace: WorkspaceStatus | null } | null;
 }
 const STAGE_MSG: Record<StudioState["progress"]["stage"], string> = { requesting: "요청 보냄", thinking: "모델 검토 시작", writing: "슬롯 작성 시작(첫 토큰)" };
+/**
+ * 생성이 실패하면 간단 흐름은 확인 화면으로(폼으로 가면 확인 화면에서 바꾼 설정·답이 사라진다).
+ * 티켓 흐름은 지금처럼 폼으로 — 검토 화면은 오류를 보여 주지 않고 다시 마운트되면 고친 내용도 plan 값으로 돌아간다.
+ */
+const backPhase = (s: StudioState): Phase => (s.plan && !s.ticket ? "ask" : "form");
 const withLog = (s: StudioState, msg: string): StudioState => ({ ...s, log: [...s.log, { t: Date.now() - s.progress.startedAt, msg }] });
 
-const initial: StudioState = { phase: "form", request: null, plan: null, replanning: false, slots: {}, spec: null, rendered: null, checks: [], usage: null, meta: null, savedId: null, runId: null, busySlot: null, error: null, progress: { stage: "requesting", startedAt: 0, expectedMs: null }, log: [], ticket: null };
+// 프롬프트 언어는 사람이 거의 바꾸지 않으므로 이 브라우저에서 마지막에 고른 값을 기억한다
+const LANG_KEY = "gh:studio:lang";
+const lastLanguage = (): StudioRequest["promptLanguage"] | null => { try { const v = localStorage.getItem(LANG_KEY); return v === "ko" || v === "en" ? v : null; } catch { return null; } };
+const rememberLanguage = (v: StudioRequest["promptLanguage"]) => { try { localStorage.setItem(LANG_KEY, v); } catch { /* 저장소를 못 쓰면 기억하지 않는다 */ } };
+
+const initial: StudioState = { phase: "form", request: null, plan: null, replanning: false, slots: {}, spec: null, rendered: null, checks: [], usage: null, meta: null, savedId: null, runId: null, busySlot: null, error: null, progress: { stage: "requesting", startedAt: 0, expectedMs: null }, log: [], ticket: null, workspace: null, planSeq: 0 };
 
 /** 만들기 흐름: plan(질문) → generate(스트리밍) → result(재생성·보관). */
 export function useStudio() {
@@ -46,10 +60,10 @@ export function useStudio() {
     setState((s) => ({ ...s, phase: "generating", request: req, slots: {}, spec: null, rendered: null, checks: [], usage: null, savedId: null, runId: null, error: null, progress: { stage: "requesting", startedAt: Date.now(), expectedMs: null }, log: [...s.log, { t: 0, msg: `생성 요청 · ${req.purpose}${req.subtype ? `/${req.subtype}` : ""} · ${req.length} · ${req.promptLanguage}` }] }));
     let res: Response;
     try { res = await api.prompts.generate(req, ac.signal); }
-    catch (e) { if (!ac.signal.aborted) setState((s) => ({ ...s, phase: "form", error: String(e) })); return; }
+    catch (e) { if (!ac.signal.aborted) setState((s) => ({ ...s, phase: backPhase(s), error: String(e) })); return; }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setState((s) => ({ ...s, phase: "form", error: body?.error?.message ?? res.statusText }));
+      setState((s) => ({ ...s, phase: backPhase(s), error: body?.error?.message ?? res.statusText }));
       return;
     }
     try {
@@ -65,44 +79,78 @@ export function useStudio() {
             case "usage": { const u = ev.data as StudioUsage; return withLog({ ...s, usage: u }, `완료 · ${(u.latencyMs / 1000).toFixed(1)}초 · 출력 ${u.outputTokens}토큰`); }
             case "run": return { ...s, runId: (ev.data as { id: string }).id };
             case "done": return { ...s, phase: "result" };
-            case "error": { const d = ev.data as { code: string; message: string }; return withLog({ ...s, phase: "form", error: d.message }, `오류 ${d.code}: ${d.message}`); }
+            case "error": { const d = ev.data as { code: string; message: string }; return withLog({ ...s, phase: backPhase(s), error: d.message }, `오류 ${d.code}: ${d.message}`); }
             default: return s;
           }
         });
       }
     } catch (e) {
-      if (!ac.signal.aborted) setState((s) => ({ ...s, phase: "form", error: String(e) }));
+      if (!ac.signal.aborted) setState((s) => ({ ...s, phase: backPhase(s), error: String(e) }));
     } finally {
-      setState((s) => (s.phase === "generating" ? { ...s, phase: s.spec ? "result" : "form", error: s.spec ? s.error : (s.error ?? "생성이 중단되었습니다") } : s));
+      setState((s) => (s.phase === "generating" ? { ...s, phase: s.spec ? "result" : backPhase(s), error: s.spec ? s.error : (s.error ?? "생성이 중단되었습니다") } : s));
     }
   }, [cancel]);
 
   /**
-   * 의도 정리 한 회차. 이미 물은 질문(prev) 밖의 새 질문이 있으면 아래에 붙여 다시 묻고, 없으면 생성으로 넘어간다.
+   * 의도 정리 한 회차 → 언제나 확인 화면(질문이 없어도). 이미 물은 질문(prev) 밖의 새 질문은 아래에 붙인다.
    * 답한 항목은 서버가 filled로 고정하므로 같은 질문이 돌아오지 않고, 장부 항목 수가 질문 총량의 상한이 된다.
+   * 분류 모드(간단 흐름의 첫 회차)면 모델이 고른 목적으로 요청을 바꾸고, 사용자가 아직 고르지 않은 실행 환경·분량을 그 목적의 기본값으로 채운다.
    */
-  const planRound = useCallback(async (req: StudioRequest, prev: PlanQuestion[], ac: AbortController) => {
+  const planRound = useCallback(async (req: StudioRequest, prev: PlanQuestion[], ac: AbortController, defaults?: WorkspaceStatus["defaults"]) => {
     const r = await api.prompts.plan(req, ac.signal);
     if (ac.signal.aborted) return;
     const fresh = r.plan.questions.filter((q) => !prev.some((p) => p.id === q.id));
-    setState((s) => withLog(s, `의도 정리 ${fresh.length ? `→ ${prev.length ? "추가 " : ""}질문 ${fresh.length}개` : `→ 바로 생성(가정 ${r.plan.assumptions.length}개)`}${r.plan.verify_in_repo.length ? ` · 코드에서 확인 ${r.plan.verify_in_repo.length}개` : ""} · ${(r.usage.latencyMs / 1000).toFixed(1)}초`));
+    setState((s) => withLog(s, `의도 정리${req.classify ? ` · 목적 ${r.plan.purpose}/${r.plan.subtype ?? "-"}` : ""} ${fresh.length ? `→ ${prev.length ? "추가 " : ""}질문 ${fresh.length}개` : `→ 질문 없음(가정 ${r.plan.assumptions.length}개)`}${r.plan.verify_in_repo.length ? ` · 코드에서 확인 ${r.plan.verify_in_repo.length}개` : ""} · ${(r.usage.latencyMs / 1000).toFixed(1)}초`));
     // 장부에서 나온 대상 저장소·코드에서 확인할 것은 생성 단계의 힌트가 된다(사용자에게 묻지 않는다)
     const hints = { ...(req.hints ?? {}), ...(r.plan.repos.length ? { repos: r.plan.repos } : {}), ...(r.plan.verify_in_repo.length ? { verifyInRepo: r.plan.verify_in_repo } : {}) };
-    const next: StudioRequest = { ...req, ...(r.plan.subtype ? { subtype: r.plan.subtype } : {}), ...(Object.keys(hints).length ? { hints } : {}) };
-    if (fresh.length) { setState((s) => ({ ...s, phase: "ask", replanning: false, plan: { ...r.plan, mode: "ask", questions: [...prev, ...fresh] }, request: next })); return; }
-    setState((s) => ({ ...s, replanning: false, plan: r.plan }));
-    await generate({ ...next, assumptions: r.plan.assumptions });
-  }, [generate]);
+    const { classify, ...rest } = req;
+    const p = r.plan.purpose;
+    // 작업 공간 기본값(팀 + 내 것)은 개발 목적에만 — 티켓 검토 화면과 같은 규칙
+    const dev = PURPOSES[p].domain === "dev";
+    const next: StudioRequest = {
+      ...rest, purpose: p, ...(r.plan.subtype ? { subtype: r.plan.subtype } : {}), ...(Object.keys(hints).length ? { hints } : {}),
+      ...(classify ? { runtime: (dev && defaults?.runtime) || defaultRuntime(p), length: (dev && defaults?.length) || defaultLength(p) } : {}),
+    };
+    setState((s) => ({ ...s, phase: "ask", replanning: false, error: null, plan: { ...r.plan, questions: [...prev, ...fresh] }, request: next, planSeq: s.planSeq + 1 }));
+  }, []);
 
-  /** 의도 정리. ask면 질문 단계로, ready면 바로 생성으로. never_ask면 plan을 건너뛴다. */
-  const start = useCallback(async (req: StudioRequest) => {
+  /** 간단 흐름: 목표 한 문장 → 의도 정리(목적까지 추론) → 확인 화면. 언어는 이 브라우저에서 마지막에 고른 값. */
+  const start = useCallback(async (goal: string, ctx: { workspace: WorkspaceStatus | null } = { workspace: null }) => {
     cancel();
-    if (req.clarify === "never_ask") { await generate(req); return; }
     const ac = new AbortController(); abortRef.current = ac;
-    setState({ ...initial, phase: "planning", request: req, progress: { stage: "requesting", startedAt: Date.now(), expectedMs: null }, log: [{ t: 0, msg: "의도 정리 요청" }] });
-    try { await planRound(req, [], ac); }
+    const defaults = ctx.workspace?.defaults;
+    const lang = lastLanguage() ?? defaults?.promptLanguage ?? "ko";
+    // purpose는 자리값(분류 모드에서 서버가 무시하고 모델이 고른다)
+    const req: StudioRequest = { purpose: "investigate", subtype: null, goal, length: "standard", clarify: "ask_first", promptLanguage: lang, runtime: null, includeStyleRules: false, provider: null, classify: true };
+    setState({ ...initial, phase: "planning", request: req, workspace: ctx.workspace, progress: { stage: "requesting", startedAt: Date.now(), expectedMs: null }, log: [{ t: 0, msg: "의도 정리 요청(목적 추론)" }] });
+    try { await planRound(req, [], ac, defaults); }
     catch (e) { if (!ac.signal.aborted) setState((s) => ({ ...s, phase: "form", error: e instanceof Error ? e.message : String(e) })); }
-  }, [cancel, generate, planRound]);
+  }, [cancel, planRound]);
+
+  /** 확인 화면에서 바꾼 설정(재호출 없이 반영되는 것: 실행 환경·분량·질문 정책·언어·어투·저장소). */
+  const updateRequest = useCallback((patch: Partial<StudioRequest>) => {
+    if (patch.promptLanguage) rememberLanguage(patch.promptLanguage);
+    setState((s) => (s.request ? { ...s, request: { ...s.request, ...patch } } : s));
+  }, []);
+
+  /** 목적·세부 유형을 바꾸면 질문 목록이 달라지므로 그 목적으로 고정해 의도 정리를 다시 한다(이전 답·질문은 버린다). */
+  const replanAs = useCallback(async (purpose: StudioRequest["purpose"], subtype: string | null) => {
+    const req = state.request; if (!req) return;
+    cancel();
+    const ac = new AbortController(); abortRef.current = ac;
+    const changed = purpose !== req.purpose;
+    const dev = PURPOSES[purpose].domain === "dev";
+    const defaults = dev ? state.workspace?.defaults : undefined;
+    const { answers: _a, assumptions: _s, ...base } = req;
+    // 이전 장부의 코드에서 확인할 것은 버리고, 사용자가 고른 저장소는 개발 목적일 때만 남긴다(비개발에선 저장소 칩이 없어 지울 수 없다)
+    const hints = dev && req.hints?.repos?.length ? { repos: req.hints.repos } : null;
+    // 목적이 바뀌면 그 목적의 기본 실행 환경·분량(개발이면 작업 공간 기본값 우선). 같은 목적에서 세부 유형만 바꾸면 사용자가 고른 값 유지
+    const next: StudioRequest = { ...base, purpose, subtype, hints, ...(changed ? { runtime: defaults?.runtime || defaultRuntime(purpose), length: defaults?.length || defaultLength(purpose) } : {}) };
+    // 요청은 결과가 온 뒤에 바꾼다(planRound) — 실패하면 이전 목적의 요청·장부가 그대로 짝을 이룬다
+    setState((s) => withLog({ ...s, replanning: true, error: null }, `목적 변경 → ${purpose}/${subtype ?? "-"} · 의도 정리 다시`));
+    try { await planRound(next, [], ac); }
+    catch (e) { if (!ac.signal.aborted) setState((s) => ({ ...s, replanning: false, error: e instanceof Error ? e.message : String(e) })); }
+  }, [state.request, state.workspace, cancel, planRound]);
 
   /**
    * 질문에 답한 뒤. now=false면 답(위 질문을 고친 것 포함)을 반영해 의도 정리를 다시 하고, now=true면 즉시 생성한다.
@@ -112,8 +160,12 @@ export function useStudio() {
     const req = state.request; const plan = state.plan;
     if (!req || !plan) return;
     // where 답이 대상 저장소다. 앞 회차가 남긴 hints.repos를 그대로 두면 서버가 그것을 '사용자 선택'으로 보고 고친 답을 덮는다
-    const hints = answers["where"] ? { ...(req.hints ?? {}), repos: [answers["where"]] } : req.hints;
-    const next: StudioRequest = { ...req, answers, ...(hints ? { hints } : {}) };
+    // 단, 확인 화면에서 여러 저장소를 골랐고 where 답이 그중 하나면 고른 목록을 그대로 둔다
+    const picked = req.hints?.repos ?? [];
+    const hints = answers["where"] && !picked.includes(answers["where"]) ? { ...(req.hints ?? {}), repos: [answers["where"]] } : req.hints;
+    // 실패한 생성이 남긴 가정은 버린다 — 의도 정리에 <assumptions>로 들어가면 모델이 그 항목을 채운 것으로 보고 질문을 지운다
+    const { assumptions: _stale, ...clean } = req;
+    const next: StudioRequest = { ...clean, answers, ...(hints ? { hints } : {}) };
     if (now) {
       const unanswered = plan.questions.filter((q) => !answers[q.id]);
       const assumptions = [...plan.assumptions, ...unanswered.map((q) => { const n = plan.needs.find((x) => x.id === q.id); return n?.value ? `${n.label}: ${n.value}` : `${q.question} → 기본값으로 가정`; })];
@@ -192,5 +244,5 @@ export function useStudio() {
   const reset = useCallback(() => { cancel(); setState(initial); }, [cancel]);
   const backToForm = useCallback(() => { cancel(); setState((s) => ({ ...s, phase: "form", plan: null, replanning: false, ticket: null, error: null })); }, [cancel]);
 
-  return { state, start, startFromTicket, generateFromTicket, setWorkspace, answer, generate, regenerate, editSlot, save, reset, backToForm, cancel };
+  return { state, start, startFromTicket, generateFromTicket, setWorkspace, answer, updateRequest, replanAs, generate, regenerate, editSlot, save, reset, backToForm, cancel };
 }

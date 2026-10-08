@@ -218,16 +218,6 @@ export const promptRuns = sqliteTable("prompt_runs", {
   createdAt: integer("created_at").notNull().$defaultFn(now),
 }, (t) => [index("prompt_runs_user_created").on(t.userId, t.createdAt)]);
 
-/** 만들기 폼의 설정 프리셋(사람별). 목표 문장은 넣지 않는다 — 설정만(core의 PresetSettings가 모양을 정한다). */
-export const studioPresets = sqliteTable("studio_presets", {
-  id: text("id").notNull(),
-  userId: text("user_id").notNull().references(() => users.id),
-  name: text("name").notNull(),
-  settings: text("settings", { mode: "json" }).notNull().$type<Record<string, unknown>>(),
-  createdAt: integer("created_at").notNull().$defaultFn(now),
-  updatedAt: integer("updated_at").notNull().$defaultFn(now),
-}, (t) => [primaryKey({ columns: [t.userId, t.id] })]);
-
 /** 내 작업 공간(사람별 한 행). 팀 파일(studio.workspace.json) 위에 얹는 개인 층 — 모양은 core의 WorkspaceOverlay가 정한다. */
 export const userWorkspaceOverlays = sqliteTable("user_workspace_overlays", {
   userId: text("user_id").primaryKey().references(() => users.id),

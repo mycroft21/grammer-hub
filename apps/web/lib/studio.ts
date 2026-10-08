@@ -31,6 +31,7 @@ async function baseContext(req: StudioRequest): Promise<StudioContext> {
   if (req.hints) ctx.hints = req.hints;
   if (req.assumptions) ctx.assumptions = req.assumptions;
   if (req.clarify) ctx.clarify = req.clarify;
+  if (req.classify) ctx.classify = true;
   if (req.includeStyleRules) {
     const rules = listRules(getDb(), (await getUser()).id);
     if (rules.some((r) => r.status !== "demoted")) ctx.styleRules = renderRulesSnapshot(rules, null);

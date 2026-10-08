@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { findSubtype } from "../taxonomy";
 import { FakeProvider } from "../../providers/fake";
 import { DEMO_TICKET, DEMO_TICKET_TERSE, adfToText, buildTicketPlanPrompt, jiraIssueToTicket, parseIssueKey, redactPeople, ticketCut, ticketToText } from "../ticket";
 import { generatePrompt, planFromTicket, planPrompt, regenerateSlot } from "../pipeline";
@@ -325,8 +326,10 @@ describe("needs ledger → questions", () => {
     const picked = await planPrompt(provider, { purpose: "investigate", subtype: "source", goal: "재시도 로직 조사", length: "short", language: "ko", runtime: "claude_code", profile: EXAMPLE_PROFILE, hints: { repos: ["reporter-api"] } });
     expect(picked.plan?.repos).toEqual(["reporter-api"]);
     expect(picked.plan?.needs.find((n) => n.id === "where")?.status).toBe("filled");
-    // 모델이 요청과 다른 세부 유형을 골라도 장부가 사라지지 않는다(보여 준 목록 ∪ 고른 유형)
+    // 사용자가 정한 세부 유형(확인 화면)은 확정값: 모델이 다른 세부 유형을 골라도(가짜 프로바이더는 null → 기본) 그대로이고, 장부는 그 세부 유형 것만 남는다
     const shown = await planPrompt(provider, { purpose: "investigate", subtype: "logic", goal: "재시도 로직 조사", length: "short", language: "ko", runtime: "claude_code" });
-    expect(shown.plan?.needs.length).toBeGreaterThan(0);
+    expect(shown.plan?.subtype).toBe("logic");
+    const logicIds = new Set(findSubtype("investigate", "logic").mustKnow.map((m) => m.id));
+    expect(shown.plan?.needs.every((n) => logicIds.has(n.id) || n.id === "where")).toBe(true);
   });
 });

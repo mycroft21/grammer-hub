@@ -240,18 +240,33 @@ try {
   const profilesNow = await (await fetch(`http://127.0.0.1:${PORT}/api/profiles`)).json();
   check("next visit asks about the temporary profile and dropping it deletes it", profilesNow.every((p) => !p.temporary) && profilesNow.some((p) => p.name === "협력사 · 메일" && p.temporary === false));
 
+  // 간단 흐름: 목표 한 칸 → 확인(목적·실행 환경은 의도 정리가 추론, 질문은 아래) → 결과(출력 먼저, 상세 보기는 접힘)
+  const selVal = async (tid) => (await page.getAttribute(`[data-testid=${tid}] .ant-select-content`, "title")) ?? ((await page.textContent(`[data-testid=${tid}]`)) ?? "");
+  const pickOption = async (tid, title) => { await page.click(`[data-testid=${tid}]`); await page.click(`.ant-select-dropdown:visible .ant-select-item-option[title="${title}"]`); };
   await page.goto(`http://127.0.0.1:${PORT}/prompts`, { waitUntil: "load" });
+  check("the create form is a single goal box (no purpose/runtime/preset controls up front)", (await page.locator("[data-testid=studio-domain], [data-testid=studio-runtime], [data-testid=studio-preset], [data-testid=studio-mode]").count()) === 0);
+  await fillUntil(page, "[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]", "utf-8", "[data-testid=studio-run]:not([disabled])");
+  check("a key-like word (utf-8) is not taken as a Jira ticket", !((await page.textContent("[data-testid=studio-run]")) ?? "").includes("티켓"));
   await fillUntil(page, "[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]", "재시도 로직 조사", "[data-testid=studio-run]:not([disabled])");
-  await page.click("[data-testid=studio-runtime] >> text=채팅");   // 변수 채우기 흐름을 보려고 붙여넣기 모드로
   await page.click("[data-testid=studio-run]");
-  await page.waitForSelector("[data-testid=studio-ask]", { timeout: 15000 });
+  await page.waitForSelector("[data-testid=studio-confirm]", { timeout: 15000 });
+  check("confirm shows the inferred purpose and its default runtime", (await selVal("confirm-purpose")).includes("조사") && (await selVal("confirm-runtime")).includes("Claude Code"));
   check("studio asks a question for a short goal", (await page.locator("[data-testid=studio-option]").count()) >= 2);
+  await page.click("[data-testid=confirm-settings] .ant-collapse-header");
+  await pickOption("confirm-clarify", "묻지 않기(바로 생성)");
+  const hiddenWhenNeverAsk = (await page.locator("[data-testid=studio-ask]").count()) === 0;
+  await pickOption("confirm-clarify", "모호하면 먼저 묻기");
+  check("'never ask' hides the questions (they become assumptions)", hiddenWhenNeverAsk && (await page.locator("[data-testid=studio-ask]").count()) === 1);
+  await pickOption("confirm-runtime", "채팅");   // 변수 채우기 흐름을 보려고 붙여넣기 모드로
   await page.locator("label.ant-radio-button-wrapper:has([data-testid=studio-option])").first().click();
-  await page.click("[data-testid=studio-answer]");
+  await page.click("[data-testid=studio-make]");
   await page.waitForSelector("[data-testid=studio-save]:not([disabled])", { timeout: 20000 });
-  check("studio renders all slot cards", (await page.locator("[data-slot]").count()) === 14);
   const rendered = await page.textContent("[data-testid=studio-rendered]");
-  check("rendered prompt has delimited variable", rendered.includes("<code>") && rendered.includes("{{code}}"));
+  check("rendered prompt has delimited variable (runtime changed on the confirm screen)", rendered.includes("<code>") && rendered.includes("{{code}}"));
+  check("result shows the output first with details folded", (await page.locator("[data-slot]").count()) === 0 && ((await page.textContent("[data-testid=result-line]")) ?? "").includes("점검"));
+  await page.click("[data-testid=result-detail-toggle]");
+  await page.waitForSelector("[data-slot]", { timeout: 5000 });
+  check("studio renders all slot cards in details", (await page.locator("[data-slot]").count()) === 14);
   check("checks panel present", (await page.locator("[data-testid=studio-checks]").count()) === 1);
   await page.click("[data-testid=studio-save]");
   await page.waitForSelector("text=보관함에 저장했습니다", { timeout: 5000 });
@@ -266,12 +281,12 @@ try {
   const drawerText = await page.textContent(".ant-drawer [data-testid=studio-rendered]");
   check("filled prompt replaces the variable", drawerText.includes("function retry() {}") && !drawerText.includes("{{code}}"));
 
-  // 스튜디오 실행 기록: 위 흐름(의도 정리 2회 + 생성 1회, 보관함 저장)이 기록 화면 프롬프트 탭에 남고, 저장한 생성은 보관함으로 이어진다
+  // 스튜디오 실행 기록: 위 흐름(의도 정리 1회 — 확인 화면에서 '만들기'로 바로 생성 — + 생성 1회, 보관함 저장)이 기록 화면 프롬프트 탭에 남고, 저장한 생성은 보관함으로 이어진다
   await page.goto(`http://127.0.0.1:${PORT}/runs`, { waitUntil: "load" });
   await page.click("[data-testid=runs-tab] >> text=프롬프트");
   await page.waitForSelector("[data-testid=prompt-runs] .ant-table-row", { timeout: 10000 });
   const promptRunText = await page.locator("[data-testid=prompt-runs] .ant-table-row").allTextContents();
-  check("prompt runs tab lists plan and generate runs", promptRunText.length >= 3 && promptRunText.some((t) => t.includes("생성")) && promptRunText.filter((t) => t.includes("의도 정리")).length >= 2);
+  check("prompt runs tab lists plan and generate runs", promptRunText.length >= 2 && promptRunText.some((t) => t.includes("생성")) && promptRunText.some((t) => t.includes("의도 정리")));
   check("saved generate run links to the library", (await page.locator("[data-testid=run-prompt-link]").count()) === 1);
   await page.click("[data-testid=run-prompt-link]");
   await page.waitForSelector(".ant-drawer [data-testid=studio-rendered]", { timeout: 10000 });
@@ -282,6 +297,7 @@ try {
   await fillUntil(page, "[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]", "여러 번 묻는 재시도 조사", "[data-testid=studio-run]:not([disabled])");
   await page.click("[data-testid=studio-run]");
   await page.waitForSelector("[data-testid=studio-ask]", { timeout: 15000 });
+  await page.waitForTimeout(300);
   const round1 = await page.locator("[data-testid=studio-ask] .rounded-lg").count();
   await page.locator("label.ant-radio-button-wrapper:has([data-testid=studio-option])").first().click();
   await page.click("[data-testid=studio-answer]");
@@ -294,15 +310,21 @@ try {
   await page.waitForSelector("[data-testid=studio-ask]", { timeout: 5000 });
   check("earlier answer stays selected and editable (even after switching tabs)", (await page.locator("[data-testid=studio-ask] .rounded-lg").first().locator(".ant-radio-button-wrapper-checked").count()) === 1
     && (await page.locator("[data-testid=studio-ask] .rounded-lg").first().locator(".ant-radio-button-wrapper-disabled").count()) === 0);
-  await page.click("[data-testid=studio-now]");
+  await page.click("[data-testid=studio-make]");
   await page.waitForSelector("[data-testid=studio-save]:not([disabled])", { timeout: 20000 });
   check("ask_first from the form becomes 'stop and ask before starting'", ((await page.textContent("[data-testid=studio-rendered]")) ?? "").includes("작업을 시작하기 전에 멈추고"));
+  check("an opened detail view stays open for the next result", (await page.locator("[data-slot]").count()) === 14);
 
-  // 영어 지시문: 긴 목표는 바로 ready → 생성. 답변 언어 규칙이 자동 삽입된다.
+  // 영어 지시문: 긴 목표는 질문이 없어도 확인 화면을 거친다 → 전체 설정에서 언어 → 만들기. 답변 언어 규칙이 자동 삽입된다.
   await page.goto(`http://127.0.0.1:${PORT}/prompts`, { waitUntil: "load" });
   await fillUntil(page, "[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]", "결제 승인 모듈의 재시도 로직을 파악해서 타임아웃 버그를 고치기 전에 흐름을 정리한 문서를 만든다", "[data-testid=studio-run]:not([disabled])");
-  await page.click("[data-testid=studio-lang] >> text=영어 지시문");
   await page.click("[data-testid=studio-run]");
+  await page.waitForSelector("[data-testid=studio-confirm]", { timeout: 15000 });
+  check("a goal with no questions still stops at the confirm screen", (await page.locator("[data-testid=studio-ask]").count()) === 0 && (await page.locator("[data-testid=studio-save]").count()) === 0);
+  await page.click("[data-testid=confirm-settings] .ant-collapse-header");
+  await page.click("[data-testid=studio-lang] >> text=영어 지시문");
+  check("the one-line summary follows the settings", ((await page.textContent("[data-testid=confirm-line]")) ?? "").includes("영어"));
+  await page.click("[data-testid=studio-make]");
   await page.waitForSelector("[data-testid=studio-save]:not([disabled])", { timeout: 20000 });
   const en = await page.textContent("[data-testid=studio-rendered]");
   check("english prompt forces korean answers", en.includes("## Scope and constraints") && en.includes("## Done when") && en.includes("respond in Korean"));
@@ -318,39 +340,33 @@ try {
   await page.waitForSelector("[data-testid=studio-run]");
   await page.waitForTimeout(500);
   check("clearing the goal deletes the draft (no revival after reload)", restoredGoal.length > 0 && (await page.inputValue("[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]")) === "");
-  // 설정 프리셋: 채팅·영어로 바꿔 저장 → 처음부터(기본값) → 프리셋을 고르면 다시 채팅·영어. 목표 문장은 저장하지 않는다
-  const picked = async (tid) => ((await page.textContent(`[data-testid=${tid}] .ant-segmented-item-selected`)) ?? "").trim();
-  await page.click("[data-testid=studio-runtime] >> text=채팅");
-  await page.click("[data-testid=studio-lang] >> text=영어 지시문");
-  await page.click("[data-testid=preset-save]");
-  await page.fill("[data-testid=preset-name]", "채팅·영어");
-  await page.click(".ant-modal-footer .ant-btn-primary");
-  await page.waitForSelector("text=현재 설정을 프리셋으로 저장했습니다", { timeout: 5000 });
-  await page.click("[data-testid=studio-reset]");
-  const afterReset = [await picked("studio-runtime"), await picked("studio-lang")];
-  await page.click("[data-testid=studio-preset]");
-  await page.click(".ant-select-item-option >> text=채팅·영어");
-  check("reset returns to defaults and a preset refills its settings", !afterReset[0].includes("채팅") && !afterReset[1].includes("영어") && (await picked("studio-runtime")).includes("채팅") && (await picked("studio-lang")).includes("영어"));
-  const presetsJson = await (await fetch(`http://127.0.0.1:${PORT}/api/prompts/presets`)).json();
-  const withGoal = await fetch(`http://127.0.0.1:${PORT}/api/prompts/presets`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "x", settings: { ...presetsJson[0].settings, goal: "목표 문장" } }) });
-  check("presets store settings only and reject a goal", presetsJson.length === 1 && !("goal" in presetsJson[0].settings) && "clarify" in presetsJson[0].settings && withGoal.status === 400);
-  // 보관함 '이 설정으로 새로 만들기': 처음 보관한 채팅 프롬프트의 설정으로 폼이 열리고 목표는 비어 있다
-  await page.click("[data-testid=studio-runtime] >> text=Claude Code");
-  await page.click("[data-testid=studio-tab] >> text=보관함");
-  await page.waitForSelector("[data-prompt-item]", { timeout: 10000 });
-  await page.locator("[data-prompt-item]").first().click();
-  await page.waitForSelector("[data-testid=prompt-reuse]", { timeout: 10000 });
-  await page.click("[data-testid=prompt-reuse]");
-  await page.waitForSelector("[data-testid=studio-run]", { timeout: 5000 });
-  check("library 'reuse settings' opens the form with that prompt's settings and an empty goal", (await picked("studio-runtime")).includes("채팅") && (await page.inputValue("[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]")) === "");
+  // 언어는 이 브라우저에서 마지막에 고른 값(영어)이 다음 목표에 그대로. 목적 추론: 메시지 목표는 글쓰기·채팅, 목적을 바꾸면 그 목적으로 다시 정리
+  await fillUntil(page, "[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]", "배포 지연 사유와 새 일정을 팀장에게 보고하는 메시지", "[data-testid=studio-run]:not([disabled])");
+  await page.click("[data-testid=studio-run]");
+  await page.waitForSelector("[data-testid=studio-confirm]", { timeout: 15000 });
+  check("the last chosen prompt language is remembered", ((await page.textContent("[data-testid=confirm-line]")) ?? "").includes("영어"));
+  check("a message goal is classified as writing with the chat runtime", (await selVal("confirm-purpose")).includes("글쓰기") && (await selVal("confirm-runtime")).includes("채팅"));
+  await pickOption("confirm-purpose", "개발 · 조사");
+  await page.waitForFunction(() => (document.querySelector("[data-testid=confirm-runtime] .ant-select-content")?.getAttribute("title") ?? "").includes("Claude Code"), null, { timeout: 15000 });
+  check("changing the purpose re-plans with that purpose and its default runtime", (await selVal("confirm-purpose")).includes("조사") && (await selVal("confirm-runtime")).includes("Claude Code"));
+  // 세부 유형을 고르면 다시 정리해도 모델 값으로 돌아가지 않는다(가짜 프로바이더는 null을 내므로 코드가 지키지 않으면 기본 유형으로 돌아간다)
+  await page.click("[data-testid=confirm-settings] .ant-collapse-header");
+  await page.click("[data-testid=confirm-subtype]");
+  const subPick = ((await page.locator(".ant-select-dropdown:visible .ant-select-item-option").nth(1).textContent()) ?? "").split("·")[0].trim();
+  await page.locator(".ant-select-dropdown:visible .ant-select-item-option").nth(1).click();
+  await page.waitForFunction((t) => (document.querySelector("[data-testid=confirm-subtype]")?.textContent ?? "").includes(t) && !document.querySelector("[data-testid=studio-make][disabled]"), subPick, { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(500);
+  check("a chosen subtype sticks after re-planning", subPick.length > 0 && ((await page.textContent("[data-testid=confirm-subtype]")) ?? "").includes(subPick));
+  await page.click("[data-testid=studio-lang] >> text=한국어");
+  check("presets and their API are gone", (await fetch(`http://127.0.0.1:${PORT}/api/prompts/presets`)).status === 404);
 
   // Jira 티켓 → 프롬프트 (DEMO-1: 토큰 없이). 첨부 때문에 질문 1개 → 답변 → 생성 → 보관 → 보관함 태그
   await page.goto(`http://127.0.0.1:${PORT}/prompts`, { waitUntil: "load" });
-  await page.click("[data-testid=studio-mode] >> text=Jira 티켓");
-  await fillUntil(page, "[data-testid=ticket-input]", "DEMO-1", "[data-testid=ticket-fetch]:not([disabled])");
+  await fillUntil(page, "[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]", "DEMO-1", "[data-testid=studio-run]:not([disabled])");
   await page.waitForSelector("[data-testid=workspace-status]", { timeout: 10000 });
   check("workspace profile status is shown", ((await page.textContent("[data-testid=workspace-status]")) ?? "").includes("저장소 3개"));
-  await page.click("[data-testid=ticket-fetch]");
+  check("an issue key alone in the goal box switches to the ticket flow", ((await page.textContent("[data-testid=studio-run]")) ?? "").includes("티켓"));
+  await page.click("[data-testid=studio-run]");
   await page.waitForSelector("[data-testid=ticket-review]", { timeout: 15000 });
   check("ticket review shows suggested goal", (await page.inputValue("[data-testid=ticket-goal]")).includes("DEMO-1"));
   check("profile resolved the repo from the label (no 'where' question)", ((await page.textContent("[data-testid=ticket-review]")) ?? "").includes("코드가 확정") && (await page.locator("[data-testid=ticket-option]").count()) === 2);
@@ -390,9 +406,8 @@ try {
 
   // 제목뿐인 티켓(DEMO-2): 프로필이 [partner] → eximbay-partner를 확정하므로 저장소는 묻지 않고 업무 판단(policy) 하나만 묻는다.
   await page.goto(`http://127.0.0.1:${PORT}/prompts`, { waitUntil: "load" });
-  await page.click("[data-testid=studio-mode] >> text=Jira 티켓");
-  await fillUntil(page, "[data-testid=ticket-input]", "DEMO-2", "[data-testid=ticket-fetch]:not([disabled])");
-  await page.click("[data-testid=ticket-fetch]");
+  await fillUntil(page, "[data-testid=studio-goal] textarea, textarea[data-testid=studio-goal]", "DEMO-2", "[data-testid=studio-run]:not([disabled])");
+  await page.click("[data-testid=studio-run]");
   await page.waitForSelector("[data-testid=ticket-review]", { timeout: 15000 });
   const terseText = (await page.textContent("[data-testid=ticket-review]")) ?? "";
   check("terse ticket: repo resolved by alias, only the policy question remains", terseText.includes("eximbay-partner") && terseText.includes("[partner]") && !terseText.includes("어느 저장소에서 작업하나요") && (await page.locator("[data-testid=ticket-option]").count()) === 2);

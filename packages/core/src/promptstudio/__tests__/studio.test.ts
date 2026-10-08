@@ -5,7 +5,7 @@ import { runChecks } from "../checks";
 import { fillVariables, renderClaude } from "../render/claude";
 import { generatePrompt, planPrompt, regenerateSlot } from "../pipeline";
 import { DOMAINS, DOMAIN_LIST, LIFECYCLE, PURPOSES, defaultLength, defaultRuntime, domainOf, findSubtype } from "../taxonomy";
-import { PresetSettings, PromptSpec, SLOT_KEYS, type StudioRequest } from "../spec";
+import { PromptSpec, SLOT_KEYS, type StudioRequest } from "../spec";
 import { buildGeneratePrompt, studioStableSystem, type StudioContext } from "../meta-prompt";
 
 const ctx = (over: Partial<StudioContext> = {}): StudioContext => ({
@@ -207,15 +207,6 @@ describe("meta prompt", () => {
   });
 });
 
-describe("PresetSettings", () => {
-  it("설정만 받고 목표 문장(goal)이 섞이면 거부한다", () => {
-    const ok = { purpose: "build", subtype: null, length: "short", runtime: "codex", promptLanguage: "en", includeStyleRules: false, repos: [], clarify: "never_ask" };
-    expect(PresetSettings.safeParse(ok).success).toBe(true);
-    expect(PresetSettings.safeParse({ ...ok, goal: "로그인 재시도 구현" }).success).toBe(false);
-    expect(PresetSettings.safeParse({ ...ok, clarify: undefined }).success).toBe(false);
-  });
-});
-
 describe("pipeline with fake provider", () => {
   const provider = new FakeProvider(0);
   it("plan asks for short goals and is ready once answered", async () => {
@@ -225,6 +216,22 @@ describe("pipeline with fake provider", () => {
     const b = await planPrompt(provider, ctx({ goal: "재시도 로직 조사", answers: { depth: "deep" } }));
     expect(b.plan?.mode).toBe("ready");
     expect(b.plan?.subtype).toBe("source");
+  });
+  it("classify mode (simple flow): the model picks purpose/subtype from the whole taxonomy, code keeps only that subtype's ledger", async () => {
+    const seen: string[] = [];
+    const spy = new FakeProvider();
+    const orig = spy.correct.bind(spy);
+    spy.correct = (input) => { seen.push(input.system.map((b) => b.text).join("\n") + input.user); return orig(input); };
+    const w = await planPrompt(spy, ctx({ classify: true, purpose: "investigate", goal: "배포 지연 사유를 팀장에게 보고하는 메시지" }));
+    expect(w.plan?.purpose).toBe("write_business");
+    expect(PURPOSES.write_business.subtypes.map((x) => x.id)).toContain(w.plan?.subtype);
+    // 다른 세부 유형의 장부(investigate의 depth·next)는 허용 목록에서 걸러진다
+    expect(w.plan?.needs.some((n) => n.id === "depth" || n.id === "next")).toBe(false);
+    expect(seen[0]).toContain("write_business");
+    expect(seen[0]).toContain("research_compare");
+    // 목적이 정해진 요청은 모델 값과 상관없이 요청 값
+    const fixed = await planPrompt(provider, ctx({ purpose: "investigate", goal: "배포 지연 보고 메시지 흐름 조사" }));
+    expect(fixed.plan?.purpose).toBe("investigate");
   });
   it("generate streams slots then spec/rendered/checks/usage/done", async () => {
     const events: string[] = [];

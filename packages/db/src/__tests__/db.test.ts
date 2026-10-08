@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createDraft, createPrompt, createRun, ensureUser, getVersion, finishRun, getRunContext, getStats, getTeamStats, listDictionary, listOkRunIds, listProfiles, listRecentRuns, listRules,
-  deletePreset, deleteIntegration, getIntegration, saveIntegration, updateIntegrationTokens, getWorkspaceOverlay, saveWorkspaceOverlay, linkPromptRun, listPresets, listPromptRuns, openDb, savePreset, recordFeedback, recordFinal, recordPromptRun, runOwnerId, saveSuggestions, seedDefaultProfiles, teamStatsCsv, upsertDictionary, upsertProfile, upsertRule,
+  deleteIntegration, getIntegration, saveIntegration, updateIntegrationTokens, getWorkspaceOverlay, saveWorkspaceOverlay, linkPromptRun, listPromptRuns, openDb, recordFeedback, recordFinal, recordPromptRun, runOwnerId, saveSuggestions, seedDefaultProfiles, teamStatsCsv, upsertDictionary, upsertProfile, upsertRule,
 } from "../index";
 
 describe("db", () => {
@@ -148,21 +148,6 @@ describe("db", () => {
     upsertProfile(db, { id: "tmp-1", userId: u.id, name: "임시 · 10:00", audience: "peer", channel: "messenger", lang: "ko", honorific: "haeyo", formality: 3, length: "concise", intent: "request", tone: "polite", isDefault: true, temporary: true });
     expect(listProfiles(db, u.id).find((p) => p.id === "tmp-1")).toMatchObject({ temporary: true, isDefault: false });
     expect(listProfiles(db, u.id).filter((p) => p.isDefault).map((p) => p.id)).toEqual(["boss-slack"]);
-  });
-
-  it("설정 프리셋은 사람별로 나뉘고, 남의 프리셋은 바꾸거나 지울 수 없다", () => {
-    const db = openDb(":memory:");
-    const a = ensureUser(db, "a@team.com"), b = ensureUser(db, "b@team.com");
-    const settings = { purpose: "build", subtype: null, length: "short", runtime: "claude_code", promptLanguage: "ko", includeStyleRules: false, repos: ["reporter-api"], clarify: "ask_first" };
-    const p = savePreset(db, { userId: a.id, name: "구현 · CC", settings })!;
-    expect(listPresets(db, a.id).map((x) => x.name)).toEqual(["구현 · CC"]);
-    expect(listPresets(db, b.id)).toEqual([]);
-    expect(savePreset(db, { userId: b.id, id: p.id, name: "가로채기", settings })).toBeNull();
-    expect(deletePreset(db, b.id, p.id)).toBe(false);
-    expect(savePreset(db, { userId: a.id, id: p.id, name: "새 이름", settings: { ...settings, length: "standard" } })?.name).toBe("새 이름");
-    expect(listPresets(db, a.id)[0]?.settings).toMatchObject({ length: "standard", repos: ["reporter-api"] });
-    expect(deletePreset(db, a.id, p.id)).toBe(true);
-    expect(listPresets(db, a.id)).toEqual([]);
   });
 
   it("내 작업 공간은 사람마다 한 행, 다시 저장하면 덮어쓴다", () => {

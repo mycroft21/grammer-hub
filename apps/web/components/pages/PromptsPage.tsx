@@ -1,18 +1,17 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { App, Segmented, Spin, Typography } from "antd";
-import type { StudioRequest } from "@grammer-hub/core";
+import { Segmented, Spin, Typography } from "antd";
 import { PageHeader } from "./_shared";
 import { useStudio } from "@/components/studio/useStudio";
 import { CreateForm } from "@/components/studio/CreateForm";
-import { AskStep } from "@/components/studio/AskStep";
+import { ConfirmStep } from "@/components/studio/ConfirmStep";
 import { ResultPanel } from "@/components/studio/ResultPanel";
 import { LibraryPanel } from "@/components/studio/LibraryPanel";
 import { TicketReview } from "@/components/studio/TicketReview";
 import { ProgressLine } from "@/components/ProgressLine";
 import { RunLog } from "@/components/RunLog";
 
-/** 프롬프트 스튜디오: 개발 생애주기(조사→계획→개발→검토) 목적의 프롬프트를 규격에 맞춰 만들고 보관한다. */
+/** 프롬프트 스튜디오: 목표 한 칸 → 확인(추론한 설정·질문) → 결과(출력 먼저, 상세는 접힘). 보관함 탭은 저장한 프롬프트. */
 export function PromptsPage() {
   const [tab, setTab] = useState<"create" | "library">("create");
   const [refreshKey, setRefreshKey] = useState(0);
@@ -23,18 +22,8 @@ export function PromptsPage() {
     if (id) { setTab("library"); setOpenId(id); }
   }, []);
   const opened = useCallback(() => setOpenId(null), []);
-  // 보관함의 '이 설정으로 새로 만들기': 만들기 탭으로 돌아가 그 설정으로 폼을 새로 연다(key로 다시 마운트)
-  const [seed, setSeed] = useState<{ req: StudioRequest; n: number } | null>(null);
   const studio = useStudio();
-  const { state, reset } = studio;
-  const { modal } = App.useApp();
-  const reuse = useCallback((req: StudioRequest) => {
-    const go = () => { reset(); setSeed((s) => ({ req, n: (s?.n ?? 0) + 1 })); setTab("create"); };
-    // 만들던 것(진행 중·질문 중·보관하지 않은 결과)이 있으면 사라지므로 먼저 묻는다
-    const busyOrUnsaved = state.phase !== "form" && !(state.phase === "result" && state.savedId);
-    if (busyOrUnsaved) modal.confirm({ title: "만들던 것을 닫고 이 설정으로 새로 만들까요?", content: "진행 중인 생성이나 보관하지 않은 결과는 사라집니다.", okText: "새로 만들기", cancelText: "취소", onOk: go });
-    else go();
-  }, [reset, modal, state.phase, state.savedId]);
+  const { state } = studio;
   const busy = state.phase === "planning" || state.phase === "generating";
 
   const save = useCallback(async () => {
@@ -45,27 +34,31 @@ export function PromptsPage() {
 
   return (
     <div>
-      <PageHeader title="프롬프트" description="목표 한 문장 → 규격화된 프롬프트. 내 데이터는 쓰지 않고(중립), 단계별 최소 품질을 코드가 보장합니다."
+      <PageHeader title="프롬프트" description="하고 싶은 일을 한 문장으로 적으면 목적·실행 환경을 추론해 확인받고, 규격에 맞는 프롬프트를 만듭니다. 내 데이터는 쓰지 않습니다(중립)."
         extra={<Segmented data-testid="studio-tab" value={tab} onChange={(v) => setTab(v as typeof tab)} options={[{ value: "create", label: "만들기" }, { value: "library", label: "보관함" }]} />} />
       {tab === "create" ? (
         <div className="flex flex-col gap-4">
-          {state.phase === "form" && <CreateForm key={seed?.n ?? 0} busy={false} error={state.error} initial={state.request ?? seed?.req ?? null} onSubmit={(req) => { setSeed(null); void studio.start(req); }} onTicket={(input) => { setSeed(null); void studio.startFromTicket(input); }} />}
+          {state.phase === "form" && <CreateForm busy={false} error={state.error} initialGoal={state.request?.ticket ?? state.request?.goal ?? null}
+            onSubmit={(goal, ctx) => void studio.start(goal, ctx)} onTicket={(input) => void studio.startFromTicket(input)} />}
           {state.phase === "ticket_review" && state.ticket && (
             <TicketReview ticket={state.ticket.ticket} plan={state.ticket.plan} workspace={state.ticket.workspace} busy={busy} onGenerate={(req) => void studio.generateFromTicket(req)} onBack={studio.backToForm} onWorkspaceChanged={studio.setWorkspace} />
           )}
           {state.phase === "planning" && (
             <div className="flex flex-col gap-2 py-6">
-              <div className="flex items-center gap-3"><Spin /><Typography.Text type="secondary">{state.log[0]?.msg.startsWith("티켓") ? "티켓을 가져와 분류하는 중…" : "의도를 정리하는 중… 필요한 것만 묻습니다."}</Typography.Text></div>
+              <div className="flex items-center gap-3"><Spin /><Typography.Text type="secondary">{state.log[0]?.msg.startsWith("티켓") ? "티켓을 가져와 분류하는 중…" : "목적을 추론하고 의도를 정리하는 중… 필요한 것만 묻습니다."}</Typography.Text></div>
               <ProgressLine compact stage="requesting" startedAt={state.progress.startedAt} expectedMs={null} />
               <RunLog entries={state.log} running compact />
             </div>
           )}
-          {state.phase === "ask" && state.plan && <AskStep plan={state.plan} initial={state.request?.answers} busy={busy || state.replanning} error={state.error} onAnswer={(a, now) => void studio.answer(a, now)} onBack={studio.backToForm} />}
+          {state.phase === "ask" && state.plan && state.request && (
+            <ConfirmStep key={state.planSeq} request={state.request} plan={state.plan} workspace={state.workspace} busy={busy || state.replanning} error={state.error}
+              onChange={studio.updateRequest} onReplan={(p, s) => void studio.replanAs(p, s)} onAnswer={(a, now) => void studio.answer(a, now)} onBack={studio.backToForm} />
+          )}
           {(state.phase === "generating" || state.phase === "result") && (
             <ResultPanel state={state} onRegenerate={(s, i) => void studio.regenerate(s, i)} onEdit={(s, v) => void studio.editSlot(s, v)} onSave={save} onReset={studio.reset} />
           )}
         </div>
-      ) : <LibraryPanel refreshKey={refreshKey} openId={openId} onOpened={opened} onReuse={reuse} />}
+      ) : <LibraryPanel refreshKey={refreshKey} openId={openId} onOpened={opened} />}
     </div>
   );
 }

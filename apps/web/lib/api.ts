@@ -1,4 +1,4 @@
-import type { CheckResult, DictionaryEntry, PlanResult, PresetSettings, ProfileOp, PromptSpec, RenderedPrompt, SituationProfile, SlotKey, StudioRequest, StyleRule, Ticket, TicketPlanResult, OverlayDrop, WorkspaceOverlay, WorkspaceProfile } from "@grammer-hub/core";
+import type { CheckResult, DictionaryEntry, PlanResult, ProfileOp, PromptSpec, RenderedPrompt, SituationProfile, SlotKey, StudioRequest, StyleRule, Ticket, TicketPlanResult, OverlayDrop, WorkspaceOverlay, WorkspaceProfile } from "@grammer-hub/core";
 
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -32,11 +32,6 @@ export const api = {
   runs: () => fetch("/api/runs").then(j<RunSummary[]>),
   stats: () => fetch("/api/stats").then(j<Stats>),
   /** 만들기 폼 설정 프리셋(본인 것만, 목표 문장 없음) */
-  presets: {
-    list: () => fetch("/api/prompts/presets").then(j<Preset[]>),
-    save: (body: { id?: string | null; name: string; settings: PresetSettings }) => fetch("/api/prompts/presets", json("POST", body)).then(j<Preset>),
-    remove: (id: string) => fetch(`/api/prompts/presets?id=${encodeURIComponent(id)}`, { method: "DELETE" }).then(j<{ ok: true }>),
-  },
   /** 스튜디오 실행 기록(본인 것만) */
   promptRuns: () => fetch("/api/prompts/runs").then(j<PromptRun[]>),
   prompts: {
@@ -139,7 +134,6 @@ export interface TeamMember {
 export interface TeamStats { since: number; weeks: number; members: TeamMember[]; team: Stats; weeklyActive: { weekStart: number; users: number }[] }
 
 /** settings가 null이면 지금 스키마와 맞지 않는 옛 프리셋(고를 수 없고 지울 수만 있다) */
-export interface Preset { id: string; userId: string; name: string; settings: PresetSettings | null; createdAt: number; updatedAt: number }
 export type ProbeTarget = "cloud" | "local" | "jira" | "oidc";
 export interface ProbeDto { target: ProbeTarget; checkedAt: number; ok: boolean; summary: string; steps: { label: string; state: "ok" | "fail" | "warn"; detail: string }[] }
 /** packages/db repo/prompt-runs.ts 의 행 모양(원문 없음) */
