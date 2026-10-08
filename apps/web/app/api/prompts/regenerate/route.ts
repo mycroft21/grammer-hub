@@ -20,7 +20,7 @@ const Body = z.object({
 export async function POST(req: Request): Promise<Response> {
   const body = await parseBody(req, Body);
   if (!body.ok) return body.res;
-  const p = studioProvider(body.data.request.provider);
+  const p = studioProvider(body.data.request.provider, "generate");
   if (!p.ok) return p.res;
   const c = await toStudioContext(body.data.request);
   if (!c.ok) return c.res;

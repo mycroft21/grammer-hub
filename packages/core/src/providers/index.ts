@@ -4,3 +4,4 @@ export * from "./partial";
 export * from "./cloud";
 export * from "./local";
 export * from "./fake";
+export * from "./thinking";

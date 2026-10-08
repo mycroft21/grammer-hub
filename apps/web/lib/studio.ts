@@ -38,10 +38,11 @@ async function baseContext(req: StudioRequest): Promise<StudioContext> {
   return ctx;
 }
 
-/** provider 확보. 키 없음/미설정은 503 응답으로. model은 단계별 모델(의도 정리·티켓 분류는 env.studioPlanModel). */
-export function studioProvider(id: "cloud" | "local" | null | undefined, model?: string | null): { ok: true; provider: ReturnType<typeof getProvider> } | { ok: false; res: Response } {
+/** provider 확보. 키 없음/미설정은 503 응답으로. */
+export function studioProvider(id: "cloud" | "local" | null | undefined, stage: "plan" | "generate"): { ok: true; provider: ReturnType<typeof getProvider> } | { ok: false; res: Response } {
   let provider: ReturnType<typeof getProvider>;
-  try { provider = getProvider(id ?? null, model); }
+  // 의도 정리·티켓 분류는 단계 모델·thinking(STUDIO_PLAN_*), 생성·재생성은 기본 모델 + STUDIO_GENERATE_THINKING
+  try { provider = getProvider(id ?? null, stage === "plan" ? { model: env.studioPlanModel, thinking: env.studioPlanThinking } : { thinking: env.studioGenerateThinking }); }
   catch (e) { return { ok: false, res: Response.json({ error: { code: "provider_unavailable", message: String(e) } }, { status: 503 }) }; }
   if (provider.id === "cloud" && !cloudReady()) {
     return { ok: false, res: Response.json({ error: { code: "provider_unavailable", message: "ANTHROPIC_API_KEY가 설정되지 않았습니다" } }, { status: 503 }) };

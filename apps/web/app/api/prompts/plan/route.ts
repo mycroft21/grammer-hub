@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request): Promise<Response> {
   const body = await parseBody(req, StudioRequest);
   if (!body.ok) return body.res;
-  const p = studioProvider(body.data.provider, env.studioPlanModel);
+  const p = studioProvider(body.data.provider, "plan");
   if (!p.ok) return p.res;
   const c = await toStudioContext(body.data);
   if (!c.ok) return c.res;

@@ -57,6 +57,21 @@ describe("ClaudeCliProvider", () => {
     expect((await p.health()).ok).toBe(true);
   });
 
+  it("thinking off runs with --effort low and MAX_THINKING_TOKENS=0; other levels go to --effort", async () => {
+    const script = fakeCli(`
+      const get = (k) => args[args.indexOf(k) + 1];
+      streamJson({ effort: get("--effort"), mtt: process.env.MAX_THINKING_TOKENS ?? null }, { usage: { input_tokens: 1, output_tokens: 1 } });
+    `);
+    const run = async (thinking: "off" | "high") => {
+      const p = new ClaudeCliProvider({ bin: process.execPath, binArgs: [script], thinking });
+      for await (const ev of p.correct({ system: [{ text: "S", cache: false }], user: "u", level: "L2", schema: { type: "object" } })) if (ev.type === "final") return JSON.parse(ev.raw);
+      return null;
+    };
+    delete process.env["MAX_THINKING_TOKENS"];
+    expect(await run("off")).toEqual({ effort: "low", mtt: "0" });
+    expect(await run("high")).toEqual({ effort: "high", mtt: null });
+  });
+
   it("falls back to JSON inside result text when structured_output is absent", async () => {
     const script = fakeCli(`emit({ type: "result", subtype: "success", result: "Here you go:\\n\`\`\`json\\n{\\"a\\":1}\\n\`\`\`", usage: {} });`);
     const p = new ClaudeCliProvider({ bin: process.execPath, binArgs: [script] });

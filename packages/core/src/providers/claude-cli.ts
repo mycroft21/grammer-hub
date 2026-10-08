@@ -3,6 +3,7 @@ import { appendFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { costUsd } from "./pricing";
+import type { ThinkingLevel } from "./thinking";
 import type { CorrectionProvider, ProviderEvent, ProviderInput, ProviderUsage } from "./types";
 
 export interface ClaudeCliOptions {
@@ -10,7 +11,9 @@ export interface ClaudeCliOptions {
   binArgs?: string[];        // bin 앞에 붙는 인자(테스트용: node <script>)
   model?: string;            // 기본 claude-sonnet-5
   timeoutMs?: number;        // 기본 180s
-  effort?: "low" | "medium" | "high"; // 기본 low(API provider와 동일). 교정은 low면 충분하고 지연이 크게 준다
+  // 기본 low(API provider와 동일). low~high는 --effort, off는 --effort low + MAX_THINKING_TOKENS=0
+  // (Claude Code 문서 model-config: 0이면 Anthropic API에서 thinking을 끈다. Opus 5.5·Sonnet 5.5·Haiku 5.5·Fable은 끌 수 없어 무시됨)
+  thinking?: ThinkingLevel;
   cwd?: string;              // 기본: 빈 임시 디렉터리(프로젝트 CLAUDE.md·훅이 섞이지 않게)
   logPath?: string;          // 지정하면 stream-json 원문을 그대로 덧붙여 기록(진단용). 환경 변수 CLAUDE_CLI_LOG
   onLog?: (msg: string) => void; // 진행 로그(사람이 읽는 한 줄). 서버 터미널에 찍는 용도
@@ -75,7 +78,7 @@ export class ClaudeCliProvider implements CorrectionProvider {
   private readonly bin: string;
   private readonly binArgs: string[];
   private readonly timeoutMs: number;
-  private readonly effort: "low" | "medium" | "high";
+  readonly thinking: ThinkingLevel;
   private readonly cwd: string;
   private readonly logPath: string | null;
   private readonly onLog: ((msg: string) => void) | null;
@@ -85,7 +88,7 @@ export class ClaudeCliProvider implements CorrectionProvider {
     this.binArgs = opts.binArgs ?? [];
     this.model = opts.model ?? "claude-sonnet-5";
     this.timeoutMs = opts.timeoutMs ?? 180_000;
-    this.effort = opts.effort ?? "low";
+    this.thinking = opts.thinking ?? "low";
     this.cwd = opts.cwd ?? mkdtempSync(join(tmpdir(), "gh-claude-cli-"));
     this.logPath = opts.logPath ?? process.env["CLAUDE_CLI_LOG"] ?? null;
     this.onLog = opts.onLog ?? null;
@@ -101,7 +104,7 @@ export class ClaudeCliProvider implements CorrectionProvider {
       "--json-schema", JSON.stringify(input.schema),
       "--system-prompt", system,
       "--model", this.model,
-      "--effort", this.effort,
+      "--effort", this.thinking === "off" ? "low" : this.thinking,
       ...ISOLATION_ARGS,
     ];
     const ch = new Channel<ProviderEvent>();
@@ -110,7 +113,7 @@ export class ClaudeCliProvider implements CorrectionProvider {
     const st: { lastNote: string; rateLimit: NonNullable<StreamLine["rate_limit_info"]> | null } = { lastNote: "", rateLimit: null };
     this.log(`# ${new Date().toISOString()} ${args.filter((a) => a.length < 80).join(" ")}`);
     const t0 = Date.now(); const el = () => `+${((Date.now() - t0) / 1000).toFixed(1)}s`;
-    this.note(`spawn ${this.bin} model=${this.model} effort=${this.effort} system=${system.length}자 user=${input.user.length}자`);
+    this.note(`spawn ${this.bin} model=${this.model} thinking=${this.thinking} system=${system.length}자 user=${input.user.length}자`);
     let firstLine = true;
     const onLine = (line: string) => {
       this.log(line);
@@ -175,7 +178,7 @@ export class ClaudeCliProvider implements CorrectionProvider {
     return new Promise((resolve) => {
       let child: ReturnType<typeof spawn>;
       try {
-        child = spawn(this.bin, args, { cwd: this.cwd, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" } });
+        child = spawn(this.bin, args, { cwd: this.cwd, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", ...(this.thinking === "off" ? { MAX_THINKING_TOKENS: "0" } : {}) } });
       } catch (e) { onDone(); resolve({ kind: "error", code: "provider_unavailable", message: `claude 실행 실패: ${String(e)}` }); return; }
       let out = ""; let buf = ""; let err = ""; let done = false;
       const finish = (v: Outcome) => { if (!done) { done = true; clearTimeout(timer); signal?.removeEventListener("abort", onAbort); onDone(); resolve(v); } };

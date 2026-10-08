@@ -66,6 +66,8 @@ DATABASE_URL=file:./data/grammer.db
 
 **단계별 모델**(선택): 기본 모델(API는 claude-sonnet-5, claude-cli는 `CLAUDE_CLI_MODEL`)을 무겁게 두었다면, 짧은 단계만 빠른 모델로 돌릴 수 있습니다. `STUDIO_PLAN_MODEL`은 프롬프트 스튜디오의 의도 정리·티켓 분류(질문 고르기·분류, 짧은 JSON), `CORRECTION_MODEL`은 교정입니다. 생성·재생성은 계속 기본 모델입니다. 비우면 기본 모델, 클라우드에만 적용(로컬 LLM은 `LOCAL_LLM_MODEL` 하나). 설정 화면은 가격표(`packages/core/src/providers/pricing.ts`)에 있는 이름만 받습니다. `.env`에 직접 쓸 때도 같은 이름을 쓰세요: 표에 없는 이름은 비용이 0으로 기록되고, 연결 확인은 기본 모델만 보므로 오타가 드러나지 않습니다. 실행 기록(`prompt_runs`·교정 기록)에 단계마다 실제 모델이 남으므로 바꾼 뒤 지연·비용을 비교할 수 있습니다.
 
+**단계별 thinking**(선택): `STUDIO_PLAN_THINKING`(의도 정리·티켓 분류), `STUDIO_GENERATE_THINKING`(생성·재생성), `CORRECTION_THINKING`(교정) — `off | low | medium | high`, 비우면 `low`(지금까지의 동작: adaptive thinking + effort low). 설정 화면 백엔드 카드에서도 고릅니다. 모델마다 받는 값이 달라 코드가 바꿔 보냅니다(core `apiThinking`): Opus 5·Sonnet 5는 '끄기'면 thinking을 끄고 effort low, Opus 5.5·Sonnet 5.5·Fable은 끌 수 없어 effort low로 대신, Haiku 4.5는 thinking·effort를 받지 않아 thinking 없이 돕니다. claude-cli는 `--effort`, 끄기는 `--effort low` + `MAX_THINKING_TOKENS=0`. 실행 기록에는 thinking 단계가 남지 않으니 바꾼 시점을 기준으로 지연·비용을 비교하세요.
+
 API 키가 아직 없어도 UI는 볼 수 있습니다. `.env`에 `FAKE_PROVIDER=1`을 넣으면 규칙 기반 가짜 교정으로 전체 흐름이 돌아갑니다(품질은 무의미, 흐름 확인용).
 
 ### A-4. 실행

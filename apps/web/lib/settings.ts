@@ -1,7 +1,7 @@
 import "server-only";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { EMPTY_PROFILE, EXAMPLE_PROFILE, PRICES, applyProfileOps, formatProfile, parseWorkspaceProfile, type ProfileOp, type WorkspaceProfile } from "@grammer-hub/core";
+import { EMPTY_PROFILE, EXAMPLE_PROFILE, PRICES, applyProfileOps, isThinkingLevel, formatProfile, parseWorkspaceProfile, type ProfileOp, type WorkspaceProfile } from "@grammer-hub/core";
 import { resetProviders } from "./providers";
 import { serverLog } from "./log";
 import { loadWorkspace, workspacePath } from "./workspace";
@@ -24,6 +24,8 @@ export interface SettingDef {
   /** 이 값이 이럴 때만 의미 있음(UI에서 접기) — [key, values] */
   showWhen?: [string, string[]];
 }
+// 모델마다 받는 값이 달라 core apiThinking이 바꾼다: Opus 5.5·Sonnet 5.5는 끌 수 없어 '끄기'가 effort low, Haiku 4.5는 thinking 없이
+const THINKING_OPTIONS = [{ value: "", label: "기본(낮게)" }, { value: "off", label: "끄기" }, { value: "low", label: "낮게 (effort low)" }, { value: "medium", label: "보통 (effort medium)" }, { value: "high", label: "높게 (effort high)" }];
 export const SETTINGS: SettingDef[] = [
   { key: "DEFAULT_PROVIDER", label: "기본 처리 위치", group: "backend", kind: "select", options: [{ value: "cloud", label: "클라우드(Claude)" }, { value: "local", label: "로컬 LLM" }], help: "교정·프롬프트 생성을 어디서 돌릴지. 화면에서 건마다 바꿀 수 있고 이것은 기본값." },
   { key: "CLOUD_BACKEND", label: "클라우드 방식", group: "backend", kind: "select", options: [{ value: "api", label: "API 키 (ANTHROPIC_API_KEY, 사용량 과금)" }, { value: "claude-cli", label: "Claude Code 구독 로그인 (claude -p, 개인 테스트용)" }], help: "api는 Anthropic API 키로 호출해 토큰 단위 과금. claude-cli는 이 컴퓨터에 로그인된 Claude Code CLI를 빌려 쓰며 구독 사용량이 나간다(팀 제공 시엔 api 권장)." },
@@ -32,6 +34,9 @@ export const SETTINGS: SettingDef[] = [
   { key: "CLAUDE_CLI_MODEL", label: "claude-cli 모델", group: "backend", kind: "text", help: "claude -p --model 값.", placeholder: "claude-sonnet-5", showWhen: ["CLOUD_BACKEND", ["claude-cli"]] },
   { key: "STUDIO_PLAN_MODEL", label: "의도 정리·티켓 분류 모델", group: "backend", kind: "text", help: "프롬프트 스튜디오의 짧은 단계(질문 고르기·분류)만 이 모델로. 생성·재생성은 기본 모델. 비우면 기본 모델. 클라우드에만 적용.", placeholder: "claude-sonnet-5" },
   { key: "CORRECTION_MODEL", label: "교정 모델", group: "backend", kind: "text", help: "교정(에디터)만 이 모델로. 비우면 기본 모델. 클라우드에만 적용.", placeholder: "claude-sonnet-5" },
+  { key: "STUDIO_PLAN_THINKING", label: "의도 정리·티켓 분류 thinking", group: "backend", kind: "select", options: THINKING_OPTIONS, help: "끄면 빠르지만 질문 고르기·분류가 단순해질 수 있다. 비우면 낮게(adaptive + effort low). 클라우드에만 적용." },
+  { key: "STUDIO_GENERATE_THINKING", label: "프롬프트 생성·재생성 thinking", group: "backend", kind: "select", options: THINKING_OPTIONS, help: "높일수록 생성이 느리고 비싸진다. 비우면 낮게. 클라우드에만 적용." },
+  { key: "CORRECTION_THINKING", label: "교정 thinking", group: "backend", kind: "select", options: THINKING_OPTIONS, help: "교정은 낮게(기본)나 끄기로 충분한 경우가 많다. 클라우드에만 적용." },
   { key: "LOCAL_LLM_URL", label: "로컬 LLM 주소", group: "backend", kind: "text", help: "llama.cpp 서버(OpenAI 호환) 주소.", placeholder: "http://127.0.0.1:8080", showWhen: ["DEFAULT_PROVIDER", ["local"]] },
   { key: "LOCAL_LLM_MODEL", label: "로컬 LLM 모델", group: "backend", kind: "text", help: "서버에 올라간 모델 이름.", placeholder: "gemma-4-26B-A4B-it-qat-q4_0", showWhen: ["DEFAULT_PROVIDER", ["local"]] },
   { key: "JIRA_BASE_URL", label: "Jira 주소", group: "jira", kind: "text", help: "예: https://xxx.atlassian.net", placeholder: "https://xxx.atlassian.net" },
@@ -101,6 +106,9 @@ const VALIDATORS: Record<string, (v: string) => string | null> = {
   AUTH_ADMIN_EMAILS: (v) => (v.split(",").map((x) => x.trim()).filter(Boolean).every((x) => x.includes("@")) ? null : "이메일 주소를 쉼표로"),
   AUTH_SECRET: (v) => (!v || v.length >= 16 ? null : "16자 이상"),
   // 단계별 모델은 가격표에 있는 이름만 — 오타는 연결 확인(기본 모델만 봄)에 안 걸리고, 표에 없는 이름은 비용이 0으로 기록된다
+  STUDIO_PLAN_THINKING: (v) => (!v || isThinkingLevel(v) ? null : "off, low, medium, high 중에서"),
+  STUDIO_GENERATE_THINKING: (v) => (!v || isThinkingLevel(v) ? null : "off, low, medium, high 중에서"),
+  CORRECTION_THINKING: (v) => (!v || isThinkingLevel(v) ? null : "off, low, medium, high 중에서"),
   STUDIO_PLAN_MODEL: (v) => (!v || v in PRICES ? null : `${Object.keys(PRICES).join(", ")} 중에서`),
   CORRECTION_MODEL: (v) => (!v || v in PRICES ? null : `${Object.keys(PRICES).join(", ")} 중에서`),
 };

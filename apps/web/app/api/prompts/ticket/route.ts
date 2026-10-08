@@ -21,7 +21,7 @@ export async function POST(req: Request): Promise<Response> {
   const user = await getUser();
   const t = await fetchTicket(body.data.ticket, user.id);
   if (!t.ok) return Response.json({ error: { code: t.code ?? "ticket_unavailable", message: t.message } }, { status: t.status });
-  const p = studioProvider(body.data.provider, env.studioPlanModel);
+  const p = studioProvider(body.data.provider, "plan");
   if (!p.ok) return p.res;
   const log = runLogger("ticket", t.ticket.key);
   const ws = loadMergedWorkspace(user.id);

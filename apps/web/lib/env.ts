@@ -1,10 +1,12 @@
 import "server-only";
+import { isThinkingLevel, type ThinkingLevel } from "@grammer-hub/core";
 
 /**
  * 환경 변수 접근. 게터라서 매번 process.env를 읽는다 — 설정 화면(/settings)이 process.env를 갱신하면 재시작 없이 반영된다.
  * 예외: DATABASE_URL·ALLOWED_EMAIL은 첫 사용 때 연결·사용자가 고정되므로 재시작이 필요하다(설정 화면에 표시).
  */
 const s = (k: string) => process.env[k] ?? "";
+const thinking = (k: string): ThinkingLevel => { const v = s(k); return isThinkingLevel(v) ? v : "low"; };
 export const env = {
   get databaseUrl() { return s("DATABASE_URL") || "file:./data/grammer.db"; },
   get allowedEmail() { return s("ALLOWED_EMAIL") || "local@grammer-hub"; },
@@ -22,6 +24,10 @@ export const env = {
   /** 단계별 클라우드 모델(비우면 기본 모델). 의도 정리·티켓 분류처럼 짧은 JSON 단계와 교정을 빠른 모델로 돌린다. 로컬 LLM에는 적용하지 않는다 */
   get studioPlanModel() { return s("STUDIO_PLAN_MODEL") || null; },
   get correctionModel() { return s("CORRECTION_MODEL") || null; },
+  /** 단계별 thinking(off | low | medium | high, 비우면 low = 지금까지의 동작). 클라우드에만 적용 */
+  get studioPlanThinking() { return thinking("STUDIO_PLAN_THINKING"); },
+  get studioGenerateThinking() { return thinking("STUDIO_GENERATE_THINKING"); },
+  get correctionThinking() { return thinking("CORRECTION_THINKING"); },
   /** Jira 티켓 → 프롬프트. 셋 다 있어야 켜진다. DEMO-* 키는 없이도 동작. */
   get jiraBaseUrl() { return s("JIRA_BASE_URL"); },
   get jiraEmail() { return s("JIRA_EMAIL"); },

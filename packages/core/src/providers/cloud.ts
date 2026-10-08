@@ -1,27 +1,29 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { CorrectionProvider, ProviderEvent, ProviderInput, ProviderUsage } from "./types";
 import { costUsd } from "./pricing";
+import { apiThinking, type ThinkingLevel } from "./thinking";
 
 export interface CloudProviderOptions {
   client?: Anthropic;
   model?: string;
   maxTokens?: number;
-  effort?: "low" | "medium" | "high";
+  /** 단계별 thinking(기본 low = adaptive + effort low). 모델이 받는 값으로는 apiThinking이 바꾼다 */
+  thinking?: ThinkingLevel;
 }
 
-/** Claude Sonnet 5 기본. system[0..1]에 cache_control, 구조화 출력, adaptive thinking(effort low). */
+/** Claude Sonnet 5 기본. system[0..1]에 cache_control, 구조화 출력, thinking은 단계 설정(기본 adaptive + effort low). */
 export class CloudProvider implements CorrectionProvider {
   readonly id = "cloud" as const;
   readonly model: string;
   private readonly client: Anthropic;
   private readonly maxTokens: number;
-  private readonly effort: "low" | "medium" | "high";
+  readonly thinking: ThinkingLevel;
 
   constructor(opts: CloudProviderOptions = {}) {
     this.client = opts.client ?? new Anthropic();
     this.model = opts.model ?? "claude-sonnet-5";
     this.maxTokens = opts.maxTokens ?? 8000;
-    this.effort = opts.effort ?? "low";
+    this.thinking = opts.thinking ?? "low";
   }
 
   async *correct(input: ProviderInput): AsyncIterable<ProviderEvent> {
@@ -29,6 +31,7 @@ export class CloudProvider implements CorrectionProvider {
       .filter((b) => b.text.length > 0)
       .map((b) => (b.cache ? { type: "text", text: b.text, cache_control: { type: "ephemeral" } } : { type: "text", text: b.text }));
 
+    const t = apiThinking(this.model, this.thinking);
     let stream: ReturnType<Anthropic["messages"]["stream"]>;
     try {
       stream = this.client.messages.stream(
@@ -37,8 +40,8 @@ export class CloudProvider implements CorrectionProvider {
           max_tokens: this.maxTokens,
           system,
           messages: [{ role: "user", content: input.user }],
-          thinking: { type: "adaptive" },
-          output_config: { effort: this.effort, format: { type: "json_schema", schema: input.schema } },
+          ...(t.thinking ? { thinking: t.thinking } : {}),
+          output_config: { ...(t.effort ? { effort: t.effort } : {}), format: { type: "json_schema", schema: input.schema } },
         },
         input.signal ? { signal: input.signal } : undefined,
       );

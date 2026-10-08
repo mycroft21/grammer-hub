@@ -75,7 +75,7 @@ PromptSpec = {
 - 어느 쪽이든 **사용자 데이터는 읽지 않는다.** 프로필·규칙·사전·기록 어느 것도 프롬프트에 넣지 않는다. 이것이 "중립"의 정의다.
 
 ### [2] PromptSpec 생성 (LLM, 구조화 출력)
-- 모델: `claude-sonnet-5`, adaptive thinking, effort **medium**(교정의 low보다 한 단계 위. 프롬프트 작성은 계획이 필요한 작업).
+- 모델: 기본 클라우드 모델(API는 `claude-sonnet-5`), adaptive thinking + effort **low**가 기본. 단계별로 바꿀 수 있다: 의도 정리·티켓 분류는 `STUDIO_PLAN_MODEL`·`STUDIO_PLAN_THINKING`, 생성·재생성은 `STUDIO_GENERATE_THINKING`(off | low | medium | high, 모델별 변환은 core `apiThinking`). 자세한 것은 docs/05 §A-3.
 - `output_config.format = json_schema(PromptSpec)` — 교정과 같은 `toOutputJsonSchema` 헬퍼 재사용.
 - 시스템 프롬프트(메타 프롬프트)는 고정 블록 하나 + 목적별 블록 하나. 고정 블록은 캐시.
   - 고정 블록: "좋은 프롬프트의 조건"을 규칙으로. 목표는 결과물로 쓴다, 성공 기준은 검증 가능하게, 입력은 구분자로 감싼다, 절대 규칙은 5개 이하, 모델이 흔히 틀리는 지점을 방어한다, 역할은 직함이 아니라 판단 기준이다, 예시는 도움이 될 때만.
