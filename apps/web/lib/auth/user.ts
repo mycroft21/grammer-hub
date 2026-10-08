@@ -1,7 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
-import { isAdminEmail } from "./access";
+import { isAdminEmail, isAllowedEmail } from "./access";
 import { SESSION_COOKIE, verifyValue, type Session } from "./session";
 
 /** 이 요청의 세션(로그인 모드일 때). 쿠키 서명을 다시 확인하므로 proxy를 믿지 않아도 된다. */
@@ -9,7 +9,8 @@ export async function currentSession(): Promise<Session | null> {
   if (!env.authEnabled) return null;
   const jar = await cookies();
   const s = await verifyValue<Session>(jar.get(SESSION_COOKIE)?.value, env.authSecret);
-  return s && typeof s.email === "string" && s.email ? s : null;
+  // 허용 목록에서 빠진 사람은 세션이 남아 있어도 없는 것으로(proxy와 같은 규칙)
+  return s && typeof s.email === "string" && s.email && isAllowedEmail(s.email) ? s : null;
 }
 /** 설정 라우트의 2차 방어. proxy가 먼저 막지만 라우트도 스스로 확인한다. */
 export async function requireAdmin(): Promise<Response | null> {

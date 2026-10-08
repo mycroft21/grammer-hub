@@ -1,7 +1,7 @@
 import "server-only";
 import { PromptLanguage, Purpose, STUDIO_PROMPT_VERSION, defaultRuntime, renderRulesSnapshot, ticketCut, ticketToText, type StudioContext, type StudioRequest } from "@grammer-hub/core";
 import { fetchTicket } from "./jira";
-import { loadWorkspace } from "./workspace";
+import { loadMergedWorkspace } from "./workspace";
 import { listRules, recordPromptRun, type PromptRunInput } from "@grammer-hub/db";
 import { serverLog } from "./log";
 import { z } from "zod";
@@ -12,7 +12,7 @@ import { getProvider } from "./providers";
 /** 요청 → StudioContext. 어투 규칙은 사용자가 켰을 때만(기본 중립). 티켓 키가 있으면 가져와 <ticket>으로 넣는다. */
 export async function toStudioContext(req: StudioRequest): Promise<{ ok: true; ctx: StudioContext } | { ok: false; res: Response }> {
   const ctx = await baseContext(req);
-  ctx.profile = loadWorkspace().profile;
+  ctx.profile = loadMergedWorkspace((await getUser()).id).profile;
   if (req.ticket) {
     const t = await fetchTicket(req.ticket);
     if (!t.ok) return { ok: false, res: Response.json({ error: { code: "ticket_unavailable", message: t.message } }, { status: t.status }) };

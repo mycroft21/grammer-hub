@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ProfileOp } from "@grammer-hub/core";
 import { requireAdmin } from "@/lib/auth/user";
+import { getUser } from "@/lib/db";
 import { parseBody } from "@/lib/json";
 import { getWorkspaceFile, patchWorkspaceProfile, saveWorkspaceFile, saveWorkspaceProfile } from "@/lib/settings";
 import { workspaceStatus } from "@/lib/workspace";
@@ -24,12 +25,13 @@ export async function PUT(req: Request): Promise<Response> {
   return Response.json({ ok: true, repos: r.repos, ...getWorkspaceFile() });
 }
 
-/** 검토 화면의 "프로필에 추가": 별칭·검증 명령·저장소를 한 건씩 병합한다. 파일이 없으면 만든다. 로그인한 사람이면 누구나(추가만 되고 검증을 거친다). */
+/** 검토 화면의 "프로필에 추가"를 팀 기본값(파일)에: 관리자만. 다른 사람은 /api/me/workspace PATCH(내 작업 공간)로 간다. */
 const PatchBody = z.object({ ops: z.array(ProfileOp).min(1).max(10) });
 export async function PATCH(req: Request): Promise<Response> {
+  const denied = await requireAdmin(); if (denied) return denied;
   const body = await parseBody(req, PatchBody);
   if (!body.ok) return body.res;
   const r = patchWorkspaceProfile(body.data.ops);
   if (!r.ok) return Response.json({ error: { code: "profile_patch_failed", message: r.message } }, { status: 400 });
-  return Response.json({ ok: true, changes: r.changes, repos: r.repos, workspace: workspaceStatus() });
+  return Response.json({ ok: true, changes: r.changes, repos: r.repos, workspace: workspaceStatus((await getUser()).id) });
 }

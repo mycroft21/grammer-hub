@@ -1,7 +1,9 @@
 import "server-only";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
-import { parseWorkspaceProfile, profileSummary, type WorkspaceProfile } from "@grammer-hub/core";
+import { EMPTY_OVERLAY, WorkspaceOverlay, mergeWorkspace, parseWorkspaceProfile, profileSummary, type OverlayDrop, type WorkspaceProfile } from "@grammer-hub/core";
+import { getWorkspaceOverlay } from "@grammer-hub/db";
+import { getDb } from "./db";
 import { env } from "./env";
 import { serverLog } from "./log";
 
@@ -29,9 +31,29 @@ export function loadWorkspace(): { profile: WorkspaceProfile | null; error: stri
   return { profile: cache.profile, error: cache.error, path, exists: true };
 }
 
-/** 클라이언트에 보여 줄 요약(비밀값 없음). */
-export function workspaceStatus() {
+/** 내 작업 공간(개인 층). 저장된 값이 지금 스키마와 안 맞으면(옛 모양) 빈 층으로 보고 로그에 이름만 남긴다. */
+export function readOverlay(userId: string): WorkspaceOverlay {
+  const raw = getWorkspaceOverlay(getDb(), userId);
+  if (!raw) return EMPTY_OVERLAY;
+  const r = WorkspaceOverlay.safeParse(raw);
+  if (!r.success) { serverLog("workspace", "내 작업 공간이 스키마와 맞지 않아 무시", { issues: r.error.issues.length }); return EMPTY_OVERLAY; }
+  return r.data;
+}
+
+/**
+ * 실제로 쓰는 작업 공간 = 팀 파일 + 내 층(core mergeWorkspace). 스튜디오 컨텍스트·티켓 분류·폼 선택지는 이것을 쓴다.
+ * 관리자 설정 화면·health는 팀 파일만 본다(loadWorkspace).
+ */
+export function loadMergedWorkspace(userId: string): ReturnType<typeof loadWorkspace> & { team: WorkspaceProfile | null; overlay: WorkspaceOverlay; drops: OverlayDrop[] } {
   const w = loadWorkspace();
+  const overlay = readOverlay(userId);
+  const m = mergeWorkspace(w.profile, overlay, { teamUnreadable: w.exists && !w.profile });
+  return { ...w, profile: m.profile, team: w.profile, overlay, drops: m.drops };
+}
+
+/** 클라이언트에 보여 줄 요약(비밀값 없음). userId를 주면 내 층까지 합친 값. */
+export function workspaceStatus(userId?: string) {
+  const w = userId ? loadMergedWorkspace(userId) : loadWorkspace();
   return {
     exists: w.exists, error: w.error, summary: profileSummary(w.profile),
     repoNames: w.profile?.repos.map((r) => r.name) ?? [],

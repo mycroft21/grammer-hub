@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createDraft, createPrompt, createRun, ensureUser, getVersion, finishRun, getRunContext, getStats, getTeamStats, listDictionary, listOkRunIds, listProfiles, listRecentRuns, listRules,
-  deletePreset, linkPromptRun, listPresets, listPromptRuns, openDb, savePreset, recordFeedback, recordFinal, recordPromptRun, runOwnerId, saveSuggestions, seedDefaultProfiles, teamStatsCsv, upsertDictionary, upsertProfile, upsertRule,
+  deletePreset, getWorkspaceOverlay, saveWorkspaceOverlay, linkPromptRun, listPresets, listPromptRuns, openDb, savePreset, recordFeedback, recordFinal, recordPromptRun, runOwnerId, saveSuggestions, seedDefaultProfiles, teamStatsCsv, upsertDictionary, upsertProfile, upsertRule,
 } from "../index";
 
 describe("db", () => {
@@ -163,6 +163,16 @@ describe("db", () => {
     expect(listPresets(db, a.id)[0]?.settings).toMatchObject({ length: "standard", repos: ["reporter-api"] });
     expect(deletePreset(db, a.id, p.id)).toBe(true);
     expect(listPresets(db, a.id)).toEqual([]);
+  });
+
+  it("내 작업 공간은 사람마다 한 행, 다시 저장하면 덮어쓴다", () => {
+    const db = openDb(":memory:");
+    const a = ensureUser(db, "a@example.com"), b = ensureUser(db, "b@example.com");
+    expect(getWorkspaceOverlay(db, a.id)).toBeNull();
+    saveWorkspaceOverlay(db, a.id, { version: 1, repos: [{ name: "x" }] });
+    saveWorkspaceOverlay(db, a.id, { version: 1, repos: [{ name: "y" }] });
+    expect(getWorkspaceOverlay(db, a.id)).toEqual({ version: 1, repos: [{ name: "y" }] });
+    expect(getWorkspaceOverlay(db, b.id)).toBeNull();
   });
 
   it("예전에 <system> 태그로 감싸 보관한 한 덩어리는 읽을 때 태그 없이 돌려준다", () => {

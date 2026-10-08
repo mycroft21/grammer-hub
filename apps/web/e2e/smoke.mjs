@@ -301,7 +301,7 @@ try {
   check("profile resolved the repo from the label (no 'where' question)", ((await page.textContent("[data-testid=ticket-review]")) ?? "").includes("코드가 확정") && (await page.locator("[data-testid=ticket-option]").count()) === 2);
   check("verify-in-repo list is prefilled from the ledger", ((await page.inputValue("[data-testid=ticket-verify]")) ?? "").length > 0);
   // "프로필에 추가": 코드가 확정한 저장소(reporter-api, 검증 명령 있음)에는 힌트가 없다. 사용자가 reporter-legacy로 바꾸면
-  // 별칭 후보([Feature]·feature — 이미 아는 reporter-api 라벨은 제외)와 검증 명령 입력이 나오고, 클릭하면 임시 프로필 파일에 쓰인다.
+  // 별칭 후보([Feature]·feature — 이미 아는 reporter-api 라벨은 제외)와 검증 명령 입력이 나오고, 클릭하면 내 작업 공간(DB)에 얹힌다(팀 파일은 그대로).
   check("no profile hints while the code-resolved repo is selected", (await page.locator("[data-testid=profile-hints]").count()) === 0);
   await page.click("[data-testid=ticket-repos] .ant-select-selection-item[title=reporter-api] .ant-select-selection-item-remove");
   await page.click("[data-testid=ticket-repos]");
@@ -316,9 +316,12 @@ try {
   await page.fill("[data-testid=profile-hint-cmd]", "./gradlew test");
   await page.click("[data-testid=profile-hint-add-verify]");
   await page.waitForSelector("[data-testid=profile-hint-verify]", { state: "detached", timeout: 5000 });
-  const patched = JSON.parse(readFileSync(profilePath, "utf8"));
-  const legacy = patched.repos.find((r) => r.name === "reporter-legacy");
-  check("one-click additions are written to the profile file", legacy.aliases.includes("[Feature]") && legacy.verify.includes("./gradlew test") && patched.repos.length === 3);
+  const teamFile = JSON.parse(readFileSync(profilePath, "utf8"));
+  const myWs = await (await fetch(`http://127.0.0.1:${PORT}/api/me/workspace`)).json();
+  const myLegacy = myWs.overlay.repos.find((r) => r.name === "reporter-legacy");
+  check("one-click additions land in my workspace as an add-on, team file unchanged",
+    myLegacy?.aliases.includes("[Feature]") && myLegacy.verify.includes("./gradlew test") && !myLegacy.what
+    && !teamFile.repos.find((r) => r.name === "reporter-legacy").aliases.includes("[Feature]") && myWs.workspace.repos.find((r) => r.name === "reporter-legacy").aliases.includes("[Feature]"));
   await page.locator("label.ant-radio-button-wrapper:has([data-testid=ticket-option])").first().click();
   await page.click("[data-testid=ticket-generate]");
   await page.waitForSelector("[data-testid=studio-save]:not([disabled])", { timeout: 20000 });
@@ -362,10 +365,10 @@ try {
   await page.goto(`http://127.0.0.1:${PORT}/settings`, { waitUntil: "load" });
   await page.waitForSelector("[data-testid=setting-LOG_FILE] input", { timeout: 15000 });
   check("saved setting survives reload and is written to the env file", (await page.inputValue("[data-testid=setting-LOG_FILE] input")) === "/tmp/gh-e2e.log" && readFileSync(join(dir, "e2e.env"), "utf8").includes("LOG_FILE=/tmp/gh-e2e.log"));
-  // 프로필 폼: 파일이 폼으로 열리고(검토 화면에서 추가한 별칭이 보인다), 빈 저장소는 칸 옆 오류로 막히며, 채우면 저장된다
+  // 팀 프로필 폼: 파일이 폼으로 열리고(검토 화면에서 추가한 별칭은 내 작업 공간에 있으므로 팀 폼엔 없다), 빈 저장소는 칸 옆 오류로 막히며, 채우면 저장된다
   await page.waitForSelector("[data-testid=workspace-form]", { timeout: 10000 });
   check("profile opens as a form with the file's repos", (await page.locator("[data-testid=ws-repo-0]").count()) === 1 && (await page.inputValue("[data-testid=ws-repo-name-0]")) === "reporter-api");
-  check("form shows the alias added from the ticket review", ((await page.textContent("[data-testid=ws-repo-aliases-1]")) ?? "").includes("[Feature]"));
+  check("team form does not show my personal alias", !((await page.textContent("[data-testid=ws-repo-aliases-1]")) ?? "").includes("[Feature]"));
   await page.click("[data-testid=ws-repo-add]");
   await page.click("[data-testid=workspace-save]");
   await page.waitForSelector("[data-testid=ws-field-error]", { timeout: 5000 });
@@ -375,7 +378,7 @@ try {
   await page.click("[data-testid=workspace-save]");
   await page.waitForSelector("text=프로필을 저장했습니다 · 저장소 4개", { timeout: 5000 });
   const savedProfile = JSON.parse(readFileSync(profilePath, "utf8"));
-  check("form save writes a valid profile with the new repo", savedProfile.repos.length === 4 && savedProfile.repos[3].name === "billing-batch" && savedProfile.repos[1].aliases.includes("[Feature]"));
+  check("form save writes a valid profile with the new repo", savedProfile.repos.length === 4 && savedProfile.repos[3].name === "billing-batch" && !savedProfile.repos[1].aliases.includes("[Feature]"));
   // 내보내기: 현재 내용이 studio.workspace.json 으로 내려온다
   const [download] = await Promise.all([page.waitForEvent("download", { timeout: 5000 }), page.click("[data-testid=workspace-export]")]);
   check("export downloads studio.workspace.json", download.suggestedFilename() === "studio.workspace.json");
@@ -397,7 +400,9 @@ try {
   const health = await (await fetch(`http://127.0.0.1:${PORT}/api/health`)).json();
   check("health reflects the runtime-updated setting without restart", health.ok === true && (await (await fetch(`http://127.0.0.1:${PORT}/api/settings`)).json()).items.some((i) => i.key === "LOG_FILE" && i.value === "/tmp/gh-e2e.log" && i.source === "file"));
 
-  // 화면 취향: 글자 크기를 바꾸면 body zoom이 걸리고 새로고침해도 남는다(localStorage)
+  // 화면 취향(내 설정): 글자 크기를 바꾸면 body zoom이 걸리고 새로고침해도 남는다(localStorage)
+  await page.goto(`http://127.0.0.1:${PORT}/me`, { waitUntil: "load" });
+  await page.waitForSelector("[data-testid=appearance-card]", { timeout: 15000 });
   await page.click("[data-testid=pref-scale] >> text=더 크게");
   await page.waitForTimeout(200);
   check("font scale applies as body zoom", (await page.evaluate(() => document.body.style.zoom)) === "1.25");
@@ -450,7 +455,15 @@ try {
   check("auth: non-admin is bounced from /settings", new URL(p2.url()).pathname === "/");
   check("auth: non-admin settings API is 403", (await call("/api/settings")).status === 403 && (await call("/api/settings/probe", jsonInit("POST", { target: "cloud" }))).status === 403);
   check("team: non-admin cannot read team stats", (await call("/api/team/stats")).status === 403 && (await p2.locator("a[href='/team']").count()) === 0);
-  check("auth: non-admin can still add to the team profile from review (PATCH)", (await call("/api/settings/workspace", jsonInit("PATCH", { ops: [{ op: "add_verify", repo: "reporter-legacy", command: "./gradlew test" }] }))).status === 200);
+  // 작업 공간: 팀 기본값(파일)은 관리자만, '프로필에 추가'와 내 작업 공간은 본인 것
+  check("auth: non-admin cannot write the team workspace (PATCH)", (await call("/api/settings/workspace", jsonInit("PATCH", { ops: [{ op: "add_verify", repo: "reporter-legacy", command: "./gradlew test" }] }))).status === 403);
+  check("workspace: non-admin adds to their own workspace from review (PATCH)", (await call("/api/me/workspace", jsonInit("PATCH", { ops: [{ op: "add_alias", repo: "reporter-legacy", alias: "tester-only" }] }))).status === 200);
+  const badOverlay = await call("/api/me/workspace", jsonInit("PUT", { overlay: { version: 1, repos: [{ name: "reporter-api", what: "덮어쓰기", aliases: [], entry: [], verify: [], notes: [] }] } }));
+  check("workspace: my layer cannot override a team repo's description", badOverlay.status === 400 && Boolean(badOverlay.json?.error?.issues?.["repos.0.what"]));
+  check("workspace: merged repos include my alias for me", (await call("/api/prompts/ticket")).json?.workspace?.repos?.find((r) => r.name === "reporter-legacy")?.aliases.includes("tester-only"));
+  await p2.goto(`${BASE2}/me`, { waitUntil: "load" });
+  await p2.waitForSelector("[data-testid=my-workspace-card] [data-testid=ws-repo-onteam-0]", { timeout: 15000 });
+  check("me: non-admin sees My settings with the add-on marked as a team repo", (await p2.locator("a[href='/me']").count()) > 0 && (await p2.inputValue("[data-testid=ws-repo-name-0]")) === "reporter-legacy");
   const corr = await call("/api/correct", jsonInit("POST", { text: "보내드릴께요 확인 부탁드립니다", profileId: "boss-slack", level: "L2" }));
   check("auth: team member can run a correction", corr.status === 200 && corr.text.includes("event: done"));
   check("auth: team member sees own run", (await call("/api/runs")).json?.length === 1);
@@ -461,6 +474,7 @@ try {
   await p2.waitForTimeout(300);
   const draftKeys = () => p2.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("gh:studio:draft")));
   const keysIn = await draftKeys();
+  const testerToken = (await ctx2.cookies()).find((c) => c.name === "gh_session")?.value ?? "";
   await p2.click("[data-testid=logout]");
   await p2.waitForURL((u) => u.pathname === "/login", { timeout: 10000 });
   check("auth: studio draft is kept per person and cleared on logout", keysIn.length === 1 && keysIn[0] === "gh:studio:draft:tester@example.com" && (await draftKeys()).length === 0);
@@ -475,6 +489,8 @@ try {
   await p2.waitForURL((u) => u.pathname === "/", { timeout: 15000 });
   const meAdmin = (await call("/api/auth/me")).json;
   check("auth: admin logs in", meAdmin?.email === "admin@example.com" && meAdmin.admin === true);
+  const adminLegacy = (await call("/api/prompts/ticket")).json?.workspace?.repos?.find((r) => r.name === "reporter-legacy");
+  check("workspace: the member's personal alias is not in the admin's workspace", Array.isArray(adminLegacy?.aliases) && !adminLegacy.aliases.includes("tester-only"));
   check("auth: admin does not see the other member's runs or stats", (await call("/api/runs")).json?.length === 0 && (await call("/api/stats")).json?.collection?.runsOk === 0);
   check("auth: admin settings API is 200", (await call("/api/settings")).status === 200);
   const oidcProbe = (await call("/api/settings/probe", jsonInit("POST", { target: "oidc" }))).json;
@@ -497,6 +513,11 @@ try {
   const sess = (await ctx2.cookies()).find((c) => c.name === "gh_session");
   const forged = sess.value.slice(0, -2) + (sess.value.endsWith("AA") ? "BB" : "AA");
   check("auth: a tampered session cookie is rejected", Boolean(sess) && (await fetch(`${BASE2}/api/runs`, { headers: { cookie: `gh_session=${forged}` } })).status === 401);
+  // 허용 목록에서 빠지면 아직 유효한 세션도 막힌다(세션은 14일)
+  const asTester = () => fetch(`${BASE2}/api/runs`, { headers: { cookie: `gh_session=${testerToken}` } }).then((r) => r.status);
+  const before = await asTester();
+  await call("/api/settings", jsonInit("PUT", { values: { AUTH_ALLOWED_DOMAINS: "example.org" } }));
+  check("auth: a still-valid session is refused once the email leaves the allowlist", before === 200 && (await asTester()) === 401 && (await call("/api/runs")).status === 200);
   await ctx2.close();
 
   check("no page errors", pageErrors.length === 0);

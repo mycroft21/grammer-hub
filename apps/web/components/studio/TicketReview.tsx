@@ -1,9 +1,10 @@
 "use client";
 import { useMemo, useState } from "react";
-import { Alert, App, Button, Collapse, Input, Radio, Segmented, Select, Space, Tag, Typography } from "antd";
+import { Alert, App, Button, Checkbox, Collapse, Input, Radio, Segmented, Select, Space, Tag, Typography } from "antd";
 import { PlusOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { AGENT_DEFAULTS, DOMAINS, DOMAIN_LIST, PURPOSES, defaultLength, defaultRuntime, isAgentRuntime, suggestAliases, type Need, type ProfileOp, type PromptLanguage, type PromptLength, type Purpose, type Runtime, type StudioRequest, type Ticket, type TicketPlanResult } from "@grammer-hub/core";
 import { api, type WorkspaceStatus } from "@/lib/api";
+import { useAuth } from "@/components/providers/AppProviders";
 import { LANG_LABEL, LENGTH_KO, NEED_STATUS_KO, RUNTIME_LABEL } from "./labels";
 
 /**
@@ -76,8 +77,8 @@ export function TicketReview({ ticket, plan, workspace, busy, onGenerate, onBack
         <Alert type="warning" showIcon data-testid="purpose-suggestion" message={`분류를 '${PURPOSES[plan.suggested_purpose.purpose].label}'으로 바꾸는 것이 맞아 보입니다`} description={plan.suggested_purpose.why}
           action={<Button size="small" type="primary" onClick={() => { const v = plan.suggested_purpose!.purpose; setPurpose(v); setSubtype(null); setRuntime(rtFor(v)); setLength(lenFor(v)); }}>바꾸기</Button>} />
       )}
-      {workspace && !workspace.exists && PURPOSES[purpose].domain === "dev" && (
-        <Typography.Text type="secondary" style={label(12)}>작업 공간 프로필이 없어 저장소를 티켓 텍스트에서만 추측했습니다. 루트에 <code>studio.workspace.json</code>을 두면(예시: <code>studio.workspace.example.json</code>) 저장소·검증 명령·팀 규칙을 매번 묻지 않습니다.</Typography.Text>
+      {workspace && workspace.repoNames.length === 0 && PURPOSES[purpose].domain === "dev" && (
+        <Typography.Text type="secondary" style={label(12)}>작업 공간에 저장소가 없어 티켓 텍스트에서만 추측했습니다. <a href="/me">내 설정</a>에 저장소·검증 명령·규칙을 적어 두면(팀 기본값은 관리자 설정) 매번 묻지 않습니다.</Typography.Text>
       )}
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -190,6 +191,9 @@ function ProfileHints({ ticket, plan, workspace, repos, onChanged }: { ticket: T
   const [cmd, setCmd] = useState("");
   const [busyOp, setBusyOp] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  // 기본은 내 작업 공간. 관리자는 팀 기본값(파일)에 넣을 수도 있다 — 서버도 관리자만 허용
+  const me = useAuth();
+  const [toTeam, setToTeam] = useState(false);
   const small = { fontSize: 12 } as const;
   if (!workspace || workspace.error || dismissed || repos.length !== 1) return null;
   const name = repos[0]!.trim();
@@ -204,8 +208,8 @@ function ProfileHints({ ticket, plan, workspace, repos, onChanged }: { ticket: T
   const apply = async (key: string, ops: ProfileOp[]) => {
     setBusyOp(key);
     try {
-      const r = await api.settings.patchWorkspace(ops);
-      message.success(r.changes.length ? `프로필에 추가: ${r.changes.join(", ")}` : "이미 프로필에 있습니다");
+      const r = toTeam && me?.admin ? await api.settings.patchWorkspace(ops) : await api.me.patchWorkspace(ops);
+      message.success(r.changes.length ? `${toTeam && me?.admin ? "팀 기본값" : "내 작업 공간"}에 추가: ${r.changes.join(", ")}` : "이미 있습니다");
       onChanged(r.workspace);
       setWhat(""); setCmd("");
     } catch (e) { message.error(`프로필에 추가하지 못했습니다: ${e instanceof Error ? e.message : String(e)}`); }
@@ -215,8 +219,11 @@ function ProfileHints({ ticket, plan, workspace, repos, onChanged }: { ticket: T
   return (
     <div className="mt-2 rounded-lg border border-dashed p-2" style={{ borderColor: "var(--ant-color-border-secondary)" }} data-testid="profile-hints">
       <div className="flex items-start justify-between gap-2">
-        <Typography.Text type="secondary" style={small}>작업 공간 프로필에 적어 두면 다음 티켓부터 묻지 않습니다. {workspace.exists ? "" : "아직 프로필 파일이 없어 처음 추가할 때 만들어집니다."}</Typography.Text>
-        <Button size="small" type="text" onClick={() => setDismissed(true)} style={small}>이번엔 넘기기</Button>
+        <Typography.Text type="secondary" style={small}>작업 공간에 적어 두면 다음 티켓부터 묻지 않습니다.</Typography.Text>
+        <Space size={4}>
+          {me?.admin && <Checkbox checked={toTeam} onChange={(e) => setToTeam(e.target.checked)} style={small} data-testid="profile-hint-to-team">팀 기본값에</Checkbox>}
+          <Button size="small" type="text" onClick={() => setDismissed(true)} style={small}>이번엔 넘기기</Button>
+        </Space>
       </div>
       {!known && (
         <div className="mt-1 flex flex-wrap items-center gap-2" data-testid="profile-hint-repo">

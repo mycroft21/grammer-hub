@@ -1,4 +1,4 @@
-import type { CheckResult, DictionaryEntry, PlanResult, PresetSettings, ProfileOp, PromptSpec, RenderedPrompt, SituationProfile, SlotKey, StudioRequest, StyleRule, Ticket, TicketPlanResult, WorkspaceProfile } from "@grammer-hub/core";
+import type { CheckResult, DictionaryEntry, PlanResult, PresetSettings, ProfileOp, PromptSpec, RenderedPrompt, SituationProfile, SlotKey, StudioRequest, StyleRule, Ticket, TicketPlanResult, OverlayDrop, WorkspaceOverlay, WorkspaceProfile } from "@grammer-hub/core";
 
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -66,13 +66,20 @@ export const api = {
     me: () => fetch("/api/auth/me").then(j<MeDto>),
     logout: () => fetch("/api/auth/logout", { method: "POST" }).then(j<{ ok: true }>),
   },
+  me: {
+    /** 내 작업 공간(팀 기본값 위에 얹는 개인 층) */
+    workspace: () => fetch("/api/me/workspace").then(j<MyWorkspaceDto>),
+    saveWorkspace: (overlay: WorkspaceOverlay) => fetch("/api/me/workspace", json("PUT", { overlay })).then(j<MyWorkspaceDto & { ok: true }>),
+    /** 검토 화면의 "프로필에 추가" — 기본은 내 작업 공간에 */
+    patchWorkspace: (ops: ProfileOp[]) => fetch("/api/me/workspace", json("PATCH", { ops })).then(j<{ ok: true; changes: string[]; workspace: WorkspaceStatus }>),
+  },
   settings: {
     get: () => fetch("/api/settings").then(j<SettingsDto>),
     save: (values: Record<string, string>) => fetch("/api/settings", json("PUT", { values })).then(j<SettingsDto & { ok: true; restart: string[]; changed: string[] }>),
     workspace: () => fetch("/api/settings/workspace").then(j<WorkspaceFileDto>),
     saveWorkspace: (text: string) => fetch("/api/settings/workspace", json("PUT", { text })).then(j<WorkspaceFileDto & { ok: true; repos: number }>),
     saveWorkspaceProfile: (profile: WorkspaceProfile) => fetch("/api/settings/workspace", json("PUT", { profile })).then(j<WorkspaceFileDto & { ok: true; repos: number }>),
-    /** 검토 화면의 "프로필에 추가" — 별칭·검증 명령·저장소를 파일에 병합 */
+    /** 관리자: 검토 화면의 "프로필에 추가"를 팀 기본값(파일)에 병합 */
     patchWorkspace: (ops: ProfileOp[]) => fetch("/api/settings/workspace", json("PATCH", { ops })).then(j<{ ok: true; changes: string[]; repos: number; workspace: WorkspaceStatus }>),
     health: (probe: boolean) => fetch(`/api/health${probe ? "?probe=1" : ""}`).then(j<HealthDto>),
     /** 관리자: 대상별 연결 확인(실제 외부 호출) */
@@ -89,6 +96,10 @@ export const api = {
 export interface MeDto { authEnabled: boolean; email: string; name: string | null; admin: boolean }
 export interface SettingDefDto { key: string; label: string; group: "backend" | "jira" | "team" | "behavior"; kind: "text" | "secret" | "select" | "bool"; help: string; options?: { value: string; label: string }[]; placeholder?: string; restart?: boolean; showWhen?: [string, string[]] }
 export interface SettingsDto { items: { key: string; value: string; masked: boolean; set: boolean; source: "file" | "os" | "default" }[]; envFile: string; exists: boolean; defs: SettingDefDto[] }
+export interface MyWorkspaceDto {
+  overlay: WorkspaceOverlay; drops: OverlayDrop[]; teamError: string | null; workspace: WorkspaceStatus;
+  team: { team: string | null; repos: { name: string; what: string; aliases: string[]; verify: string[] }[]; conventions: string[]; defaults: WorkspaceProfile["defaults"] } | null;
+}
 export interface WorkspaceFileDto { path: string; exists: boolean; text: string; profile: WorkspaceProfile | null; error: string | null; summary: { repos: number } | null; example: string }
 export interface HealthDto { ok: boolean; cloud: { backend: string; ready: boolean; model: string; cliPath?: string; hasApiKey?: boolean; health: { ok: boolean; detail?: string } | null }; defaultProvider: string; jira: { configured: boolean; baseUrl: string | null }; auth?: { enabled: boolean; issuer: string | null; appUrl: string | null; allowedDomains: number; allowedEmails: number; admins: number; sessionSecretSet: boolean }; workspace: { exists: boolean; path: string; error: string | null; repos?: number; conventions?: number }; code: { branch: string | null; head: string | null; committedAt: string | null; dirtyFiles: number | null }; build: { id: string; builtAt: string; staleAgainstHead: boolean | null } | null; node: string }
 

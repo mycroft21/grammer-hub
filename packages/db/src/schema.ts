@@ -227,3 +227,10 @@ export const studioPresets = sqliteTable("studio_presets", {
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
 }, (t) => [primaryKey({ columns: [t.userId, t.id] })]);
+
+/** 내 작업 공간(사람별 한 행). 팀 파일(studio.workspace.json) 위에 얹는 개인 층 — 모양은 core의 WorkspaceOverlay가 정한다. */
+export const userWorkspaceOverlays = sqliteTable("user_workspace_overlays", {
+  userId: text("user_id").primaryKey().references(() => users.id),
+  overlay: text("overlay", { mode: "json" }).notNull().$type<Record<string, unknown>>(),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+});

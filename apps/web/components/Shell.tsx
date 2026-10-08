@@ -3,7 +3,7 @@ import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Layout, Menu, Tooltip, Button } from "antd";
-import { EditOutlined, IdcardOutlined, HighlightOutlined, BookOutlined, HistoryOutlined, ExperimentOutlined, MoonOutlined, SunOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SettingOutlined, LogoutOutlined, TeamOutlined } from "@ant-design/icons";
+import { EditOutlined, IdcardOutlined, HighlightOutlined, BookOutlined, HistoryOutlined, ExperimentOutlined, MoonOutlined, SunOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SettingOutlined, LogoutOutlined, TeamOutlined, UserOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { clearDrafts } from "@/lib/studio-draft";
 import { useAuth, useThemeMode } from "./providers/AppProviders";
@@ -17,6 +17,7 @@ const ITEMS = [
   { key: "/dictionary", label: "사전", icon: <BookOutlined />, group: 1 },
   { key: "/runs", label: "기록", icon: <HistoryOutlined />, group: 2 },
   { key: "/team", label: "팀", icon: <TeamOutlined />, group: 2 },
+  { key: "/me", label: "내 설정", icon: <UserOutlined />, group: 2 },
   { key: "/settings", label: "설정", icon: <SettingOutlined />, group: 2 },
 ];
 const ADMIN_ONLY = new Set(["/team", "/settings"]);

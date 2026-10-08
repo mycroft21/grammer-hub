@@ -107,8 +107,8 @@ export function CreateForm({ busy, error, initial, onSubmit, onTicket }: { busy:
 
   const submit = () => onSubmit({ purpose, subtype, goal: goal.trim(), length, clarify, promptLanguage: language, includeStyleRules, runtime, provider: null, ...(repos.length ? { hints: { repos } } : {}) });
   const ws = status?.workspace ?? null;
-  const wsLine = ws === null ? null : !ws.exists
-    ? <>작업 공간 프로필 없음 — 루트에 <code>studio.workspace.json</code>을 두면(예시 <code>studio.workspace.example.json</code>) 저장소·검증 명령·팀 규칙을 매번 묻지 않습니다.</>
+  const wsLine = ws === null ? null : ws.repoNames.length === 0 && !ws.error
+    ? <>작업 공간 없음 — <a href="/me">내 설정</a>에서 저장소·검증 명령·규칙을 적어 두면(팀 기본값은 관리자 설정) 매번 묻지 않습니다.</>
     : ws.error ? <>작업 공간 프로필 오류: {ws.error}</>
     : <>작업 공간 프로필 · 저장소 {ws.summary?.repos ?? 0}개 · 팀 규칙 {ws.summary?.conventions ?? 0}개{ws.summary?.team ? ` · ${ws.summary.team}` : ""}</>;
   // 대분류가 바뀌면 실행 환경·길이 기본값을 따라 바꾼다(개발 = Claude Code·짧게)
@@ -183,7 +183,7 @@ export function CreateForm({ busy, error, initial, onSubmit, onTicket }: { busy:
         )}
       </div>
 
-      {domain === "dev" && ws?.exists && ws.repoNames.length > 0 && (
+      {domain === "dev" && ws && ws.repoNames.length > 0 && (
         <div>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>대상 저장소 <span style={{ opacity: .7 }}>(프로필에서 · 비우면 목표 문장에서 찾고, 못 찾으면 묻습니다)</span></Typography.Text>
           <Select data-testid="studio-repos" className="mt-1 w-full" mode="multiple" allowClear placeholder="예: reporter-api" value={repos} onChange={(v) => setRepos(v as string[])} options={ws.repoNames.map((r) => ({ value: r, label: r }))} />
@@ -225,7 +225,7 @@ export function CreateForm({ busy, error, initial, onSubmit, onTicket }: { busy:
         </div>
       </div>
 
-      {domain === "dev" && wsLine && !ws?.exists && <Typography.Text type="secondary" style={{ fontSize: 12 }} data-testid="workspace-status">{wsLine}</Typography.Text>}
+      {domain === "dev" && wsLine && ws?.repoNames.length === 0 && <Typography.Text type="secondary" style={{ fontSize: 12 }} data-testid="workspace-status">{wsLine}</Typography.Text>}
       {language === "en" && <Alert type="info" showIcon message="지시문은 영어로, 답변은 한국어로 나오도록 렌더 시 규칙이 자동 삽입됩니다." style={{ padding: "6px 12px" }} />}
       {restored && !error && <Alert type="info" showIcon closable onClose={() => setRestored(false)} message="마지막에 입력하던 목표를 복원했습니다." style={{ padding: "6px 12px" }} />}
       {error && <Alert type="error" showIcon message="생성에 실패했습니다. 입력은 그대로 남아 있습니다." description={error}

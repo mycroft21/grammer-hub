@@ -57,6 +57,13 @@
       "when": 1791365280483,
       "tag": "0007_chubby_newton_destine",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791417495724,
+      "tag": "0008_tricky_hairball",
+      "breakpoints": true
     }
   ]
 }

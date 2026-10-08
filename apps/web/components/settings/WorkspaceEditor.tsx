@@ -15,17 +15,17 @@ import { LANG_LABEL, LENGTH_KO, RUNTIME_LABEL } from "@/components/studio/labels
  * 저장은 두 탭 모두 서버에서 같은 검증(parseWorkspaceProfile)을 거친다.
  */
 
-interface KV { k: string; v: string }
-interface FormRepo { name: string; what: string; stack: string; aliases: string[]; verify: string[]; entryText: string; notesText: string }
-interface FormModel { team: string; repos: FormRepo[]; projects: KV[]; conventions: string[]; glossary: KV[]; defaults: WorkspaceProfile["defaults"] }
+export interface KV { k: string; v: string }
+export interface FormRepo { name: string; what: string; stack: string; aliases: string[]; verify: string[]; entryText: string; notesText: string }
+export interface FormModel { team: string; repos: FormRepo[]; projects: KV[]; conventions: string[]; glossary: KV[]; defaults: WorkspaceProfile["defaults"] }
 
 const toKV = (r: Record<string, string>): KV[] => Object.entries(r).map(([k, v]) => ({ k, v }));
-const fromKV = (rows: KV[]): Record<string, string> => Object.fromEntries(rows.map((r) => [r.k, r.v]));
-const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
-function toModel(p: WorkspaceProfile): FormModel {
+export const fromKV = (rows: KV[]): Record<string, string> => Object.fromEntries(rows.map((r) => [r.k, r.v]));
+export const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
+export function toModel(p: { team?: string | undefined; repos: { name: string; what?: string | undefined; stack?: string | undefined; aliases: string[]; verify: string[]; entry: string[]; notes: string[] }[]; projects: Record<string, string>; conventions: string[]; glossary: Record<string, string>; defaults: WorkspaceProfile["defaults"] }): FormModel {
   return {
     team: p.team ?? "",
-    repos: p.repos.map((r) => ({ name: r.name, what: r.what, stack: r.stack ?? "", aliases: r.aliases, verify: r.verify, entryText: r.entry.join("\n"), notesText: r.notes.join("\n") })),
+    repos: p.repos.map((r) => ({ name: r.name, what: r.what ?? "", stack: r.stack ?? "", aliases: r.aliases, verify: r.verify, entryText: r.entry.join("\n"), notesText: r.notes.join("\n") })),
     projects: toKV(p.projects), conventions: [...p.conventions], glossary: toKV(p.glossary), defaults: { ...p.defaults },
   };
 }
@@ -37,7 +37,7 @@ function toProfile(m: FormModel): WorkspaceProfile {
   });
 }
 /** 키-값 표는 Record로 바뀌면서 중복 키가 합쳐지므로 폼 단계에서 잡는다. 빈 행(키·값 모두 빈 칸)은 저장 때 버려지니 오류가 아니다. */
-function kvIssues(rows: KV[], prefix: string, out: Record<string, string>): void {
+export function kvIssues(rows: KV[], prefix: string, out: Record<string, string>): void {
   const seen = new Map<string, number>();
   rows.forEach((r, i) => {
     const k = r.k.trim(), v = r.v.trim();
@@ -84,8 +84,6 @@ export function WorkspaceEditor({ file, onSaved }: { file: WorkspaceFileDto | nu
   useEffect(() => { loadFrom(file); }, [file]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = (fn: (m: FormModel) => FormModel) => { setModel((m) => fn(m)); setDirty(true); };
-  const updateRepo = (i: number, patch: Partial<FormRepo>) => update((m) => ({ ...m, repos: m.repos.map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
-  const setKV = (key: "projects" | "glossary", i: number, patch: Partial<KV>) => update((m) => ({ ...m, [key]: m[key].map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
 
   /** 탭을 오갈 때 한쪽을 다른 쪽으로 변환한다. JSON → 폼은 파싱이 되어야 넘어간다. */
   const switchTab = (next: string) => {
@@ -133,110 +131,9 @@ export function WorkspaceEditor({ file, onSaved }: { file: WorkspaceFileDto | nu
   const loadExample = () => { setModel(toModel(EXAMPLE_PROFILE)); setText(formatProfile(EXAMPLE_PROFILE)); setIssues({}); setErr(null); setDirty(true); };
 
   const small = { fontSize: 12 } as const;
-  const fieldErr = (k: string) => (issues[k] ? <Typography.Text type="danger" style={small} className="mt-0.5 block" data-testid="ws-field-error">{issues[k]}</Typography.Text> : null);
   const status = !file ? "" : file.exists ? (file.summary ? `저장소 ${file.summary.repos}개` : "오류") : "없음";
-  const conventionsOver = model.conventions.filter((c) => c.trim()).length > CONVENTIONS_MAX;
 
-  const form = (
-    <div className="flex flex-col gap-4" data-testid="workspace-form">
-      <div className="grid gap-3 md:grid-cols-4">
-        <div className="md:col-span-1">
-          <Typography.Text strong style={{ fontSize: 13 }}>팀 이름</Typography.Text>
-          <Input className="mt-1" value={model.team} placeholder="결제 플랫폼 개발팀" onChange={(e) => update((m) => ({ ...m, team: e.target.value }))} allowClear data-testid="ws-team" />
-        </div>
-        <div>
-          <Typography.Text strong style={{ fontSize: 13 }}>기본 실행 환경</Typography.Text>
-          <Select className="mt-1 w-full" allowClear placeholder="분류별 기본값" value={model.defaults.runtime} onChange={(v: Runtime | undefined) => update((m) => ({ ...m, defaults: setDefault(m.defaults, "runtime", v) }))}
-            options={(Object.keys(RUNTIME_LABEL) as Runtime[]).map((k) => ({ value: k, label: RUNTIME_LABEL[k] }))} />
-        </div>
-        <div>
-          <Typography.Text strong style={{ fontSize: 13 }}>기본 분량</Typography.Text>
-          <Select className="mt-1 w-full" allowClear placeholder="분류별 기본값" value={model.defaults.length} onChange={(v: PromptLength | undefined) => update((m) => ({ ...m, defaults: setDefault(m.defaults, "length", v) }))}
-            options={(Object.keys(LENGTH_KO) as PromptLength[]).map((k) => ({ value: k, label: LENGTH_KO[k] }))} />
-        </div>
-        <div>
-          <Typography.Text strong style={{ fontSize: 13 }}>기본 프롬프트 언어</Typography.Text>
-          <Select className="mt-1 w-full" allowClear placeholder="한국어" value={model.defaults.promptLanguage} onChange={(v: PromptLanguage | undefined) => update((m) => ({ ...m, defaults: setDefault(m.defaults, "promptLanguage", v) }))}
-            options={(Object.keys(LANG_LABEL) as PromptLanguage[]).map((k) => ({ value: k, label: LANG_LABEL[k] }))} />
-        </div>
-      </div>
-      <Typography.Text type="secondary" style={small}>기본값은 개발 목적의 티켓·목표에서 검토 화면의 초기값이 됩니다. 비우면 분류별 기본값을 씁니다.</Typography.Text>
-
-      <div>
-        <div className="flex items-center justify-between">
-          <Typography.Text strong style={{ fontSize: 13 }}>저장소 <Typography.Text type="secondary" style={small}>{model.repos.length}개 · 별칭은 티켓 제목·라벨에서 저장소를 찾는 열쇠</Typography.Text></Typography.Text>
-          <Button size="small" icon={<PlusOutlined />} data-testid="ws-repo-add" onClick={() => update((m) => ({ ...m, repos: [...m.repos, { name: "", what: "", stack: "", aliases: [], verify: [], entryText: "", notesText: "" }] }))}>저장소 추가</Button>
-        </div>
-        <div className="mt-2 flex flex-col gap-3">
-          {model.repos.length === 0 && <Typography.Text type="secondary" style={small}>아직 없습니다. "저장소 추가"를 누르거나 "예시 불러오기"로 형태를 보세요. 티켓 검토 화면에서 저장소를 고르면 여기에 자동으로 쌓이기도 합니다.</Typography.Text>}
-          {model.repos.map((r, i) => (
-            <div key={i} className="rounded-lg border p-3" style={{ borderColor: "var(--ant-color-border-secondary)" }} data-testid={`ws-repo-${i}`}>
-              <div className="grid gap-3 md:grid-cols-12">
-                <div className="md:col-span-3">
-                  <Typography.Text type="secondary" style={small}>이름 *</Typography.Text>
-                  <Input className="mt-1" status={issues[`repos.${i}.name`] ? "error" : ""} value={r.name} placeholder="reporter-api" onChange={(e) => updateRepo(i, { name: e.target.value })} data-testid={`ws-repo-name-${i}`} />
-                  {fieldErr(`repos.${i}.name`)}
-                </div>
-                <div className="md:col-span-6">
-                  <Typography.Text type="secondary" style={small}>무슨 시스템인지 한 줄 *</Typography.Text>
-                  <Input className="mt-1" status={issues[`repos.${i}.what`] ? "error" : ""} value={r.what} placeholder="가맹점 어드민 백엔드 API. 정산·카드사 상태 로직" onChange={(e) => updateRepo(i, { what: e.target.value })} data-testid={`ws-repo-what-${i}`} />
-                  {fieldErr(`repos.${i}.what`)}
-                </div>
-                <div className="md:col-span-3">
-                  <Typography.Text type="secondary" style={small}>스택</Typography.Text>
-                  <Input className="mt-1" value={r.stack} placeholder="Java 17 / Spring Boot" onChange={(e) => updateRepo(i, { stack: e.target.value })} />
-                </div>
-                <div className="md:col-span-6">
-                  <Typography.Text type="secondary" style={small}>별칭 — 티켓에서 이 저장소를 가리키는 말 (입력 후 Enter)</Typography.Text>
-                  <Select className="mt-1 w-full" mode="tags" value={r.aliases} placeholder="[partner], 파트너, partner" tokenSeparators={[","]} open={false} suffixIcon={null} onChange={(v) => updateRepo(i, { aliases: v as string[] })} data-testid={`ws-repo-aliases-${i}`} />
-                </div>
-                <div className="md:col-span-6">
-                  <Typography.Text type="secondary" style={small}>검증 명령 (입력 후 Enter)</Typography.Text>
-                  <Select className="mt-1 w-full" mode="tags" value={r.verify} placeholder="./gradlew test" tokenSeparators={[","]} open={false} suffixIcon={null} onChange={(v) => updateRepo(i, { verify: v as string[] })} data-testid={`ws-repo-verify-${i}`} />
-                </div>
-                <div className="md:col-span-6">
-                  <Typography.Text type="secondary" style={small}>어디부터 보면 되는지 (한 줄에 하나)</Typography.Text>
-                  <Input.TextArea className="mt-1" autoSize={{ minRows: 1, maxRows: 4 }} value={r.entryText} placeholder="어드민 화면 *.do → 같은 이름의 *Controller → *CommandService" onChange={(e) => updateRepo(i, { entryText: e.target.value })} />
-                </div>
-                <div className="md:col-span-6">
-                  <Typography.Text type="secondary" style={small}>주의 (한 줄에 하나)</Typography.Text>
-                  <Input.TextArea className="mt-1" autoSize={{ minRows: 1, maxRows: 4 }} value={r.notesText} placeholder="신규 비즈니스 로직을 넣지 않는다" onChange={(e) => updateRepo(i, { notesText: e.target.value })} />
-                </div>
-              </div>
-              <div className="mt-2 text-right">
-                <Popconfirm title={`${r.name || "이 저장소"}를 목록에서 뺄까요?`} okText="빼기" cancelText="취소" onConfirm={() => update((m) => ({ ...m, repos: m.repos.filter((_, j) => j !== i) }))}>
-                  <Button size="small" type="text" danger icon={<DeleteOutlined />}>빼기</Button>
-                </Popconfirm>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <KVTable title="Jira 프로젝트 키의 뜻" hint="분류 힌트. 키 = 이슈 키 앞부분(EP-1174의 EP)" keyPh="EP" valPh="결제 플랫폼 개발 요청" rows={model.projects} prefix="projects" issues={issues}
-          onChange={(i, p) => setKV("projects", i, p)} onAdd={() => update((m) => ({ ...m, projects: [...m.projects, { k: "", v: "" }] }))} onRemove={(i) => update((m) => ({ ...m, projects: m.projects.filter((_, j) => j !== i) }))} />
-        <KVTable title="용어집" hint="텍스트에 나오는 용어만 프롬프트에 들어갑니다" keyPh="서브몰" valPh="가맹점 아래의 하위 상점 단위" rows={model.glossary} prefix="glossary" issues={issues}
-          onChange={(i, p) => setKV("glossary", i, p)} onAdd={() => update((m) => ({ ...m, glossary: [...m.glossary, { k: "", v: "" }] }))} onRemove={(i) => update((m) => ({ ...m, glossary: m.glossary.filter((_, j) => j !== i) }))} />
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between">
-          <Typography.Text strong style={{ fontSize: 13 }}>팀 규칙 <Tag color={conventionsOver ? "warning" : "default"} style={{ fontSize: 11, marginLeft: 6 }} data-testid="ws-conventions-count">{model.conventions.filter((c) => c.trim()).length}/{CONVENTIONS_MAX} 권장</Tag></Typography.Text>
-          <Button size="small" icon={<PlusOutlined />} data-testid="ws-convention-add" onClick={() => update((m) => ({ ...m, conventions: [...m.conventions, ""] }))}>규칙 추가</Button>
-        </div>
-        <Typography.Text type="secondary" style={small} className="block">모든 개발 프롬프트의 규칙 후보. 모델이 이 목표에 걸리는 것만 고릅니다. 길면 아무것도 지켜지지 않으니 {CONVENTIONS_MAX}개 이하로.</Typography.Text>
-        <div className="mt-2 flex flex-col gap-2">
-          {model.conventions.map((c, i) => (
-            <Space.Compact key={i} className="w-full">
-              <Input value={c} placeholder="티켓 범위 밖 리팩터링은 제안만 하고 코드로 쓰지 않는다" onChange={(e) => update((m) => ({ ...m, conventions: m.conventions.map((x, j) => (j === i ? e.target.value : x)) }))} data-testid={`ws-convention-${i}`} />
-              <Button icon={<DeleteOutlined />} onClick={() => update((m) => ({ ...m, conventions: m.conventions.filter((_, j) => j !== i) }))} aria-label="규칙 빼기" />
-            </Space.Compact>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+  const form = <WorkspaceFields model={model} update={update} issues={issues} mode="team" />;
 
   const jsonTab = (
     <div>
@@ -268,6 +165,121 @@ export function WorkspaceEditor({ file, onSaved }: { file: WorkspaceFileDto | nu
         {file?.exists && <Button type="text" disabled={!dirty} onClick={() => loadFrom(file)}>파일 내용으로 되돌리기</Button>}
       </Space>
     </Card>
+  );
+}
+
+/**
+ * 작업 공간 폼 필드. 팀 파일 편집기(mode=team)와 내 설정의 '내 작업 공간'(mode=mine)이 같이 쓴다.
+ * mine: 팀 이름 칸 없음, 팀 저장소와 이름이 같으면 '얹기'(설명·스택은 팀 값), 규칙은 최대 5개(서버 스키마가 강제).
+ */
+export function WorkspaceFields({ model, update, issues, mode, teamRepoNames = [] }: {
+  model: FormModel; update: (fn: (m: FormModel) => FormModel) => void; issues: Record<string, string>; mode: "team" | "mine"; teamRepoNames?: string[];
+}) {
+  const mine = mode === "mine";
+  const small = { fontSize: 12 } as const;
+  const updateRepo = (i: number, patch: Partial<FormRepo>) => update((m) => ({ ...m, repos: m.repos.map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
+  const setKV = (key: "projects" | "glossary", i: number, patch: Partial<KV>) => update((m) => ({ ...m, [key]: m[key].map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
+  const fieldErr = (k: string) => (issues[k] ? <Typography.Text type="danger" style={small} className="mt-0.5 block" data-testid="ws-field-error">{issues[k]}</Typography.Text> : null);
+  const conventionsOver = model.conventions.filter((c) => c.trim()).length > CONVENTIONS_MAX;
+  return (
+    <div className="flex flex-col gap-4" data-testid="workspace-form">
+      <div className="grid gap-3 md:grid-cols-4">
+        {mine ? <div className="md:col-span-1" /> : <div className="md:col-span-1">
+          <Typography.Text strong style={{ fontSize: 13 }}>팀 이름</Typography.Text>
+          <Input className="mt-1" value={model.team} placeholder="결제 플랫폼 개발팀" onChange={(e) => update((m) => ({ ...m, team: e.target.value }))} allowClear data-testid="ws-team" />
+        </div>}
+        <div>
+          <Typography.Text strong style={{ fontSize: 13 }}>기본 실행 환경</Typography.Text>
+          <Select className="mt-1 w-full" allowClear placeholder="분류별 기본값" value={model.defaults.runtime} onChange={(v: Runtime | undefined) => update((m) => ({ ...m, defaults: setDefault(m.defaults, "runtime", v) }))}
+            options={(Object.keys(RUNTIME_LABEL) as Runtime[]).map((k) => ({ value: k, label: RUNTIME_LABEL[k] }))} />
+        </div>
+        <div>
+          <Typography.Text strong style={{ fontSize: 13 }}>기본 분량</Typography.Text>
+          <Select className="mt-1 w-full" allowClear placeholder="분류별 기본값" value={model.defaults.length} onChange={(v: PromptLength | undefined) => update((m) => ({ ...m, defaults: setDefault(m.defaults, "length", v) }))}
+            options={(Object.keys(LENGTH_KO) as PromptLength[]).map((k) => ({ value: k, label: LENGTH_KO[k] }))} />
+        </div>
+        <div>
+          <Typography.Text strong style={{ fontSize: 13 }}>기본 프롬프트 언어</Typography.Text>
+          <Select className="mt-1 w-full" allowClear placeholder="한국어" value={model.defaults.promptLanguage} onChange={(v: PromptLanguage | undefined) => update((m) => ({ ...m, defaults: setDefault(m.defaults, "promptLanguage", v) }))}
+            options={(Object.keys(LANG_LABEL) as PromptLanguage[]).map((k) => ({ value: k, label: LANG_LABEL[k] }))} />
+        </div>
+      </div>
+      <Typography.Text type="secondary" style={small}>기본값은 개발 목적의 티켓·목표에서 검토 화면의 초기값이 됩니다. 비우면 {mine ? "팀 기본값, 그것도 없으면 " : ""}분류별 기본값을 씁니다.</Typography.Text>
+
+      <div>
+        <div className="flex items-center justify-between">
+          <Typography.Text strong style={{ fontSize: 13 }}>저장소 <Typography.Text type="secondary" style={small}>{model.repos.length}개 · 별칭은 티켓 제목·라벨에서 저장소를 찾는 열쇠</Typography.Text></Typography.Text>
+          <Button size="small" icon={<PlusOutlined />} data-testid="ws-repo-add" onClick={() => update((m) => ({ ...m, repos: [...m.repos, { name: "", what: "", stack: "", aliases: [], verify: [], entryText: "", notesText: "" }] }))}>저장소 추가</Button>
+        </div>
+        <div className="mt-2 flex flex-col gap-3">
+          {model.repos.length === 0 && <Typography.Text type="secondary" style={small}>{mine ? "아직 없습니다. 팀에 없는 저장소를 추가하거나, 팀 저장소와 같은 이름을 적어 별칭·검증 명령을 얹으세요. 티켓 검토 화면의 '프로필에 추가'도 여기에 쌓입니다." : "아직 없습니다. \"저장소 추가\"를 누르거나 \"예시 불러오기\"로 형태를 보세요. 티켓 검토 화면에서 저장소를 고르면 여기에 자동으로 쌓이기도 합니다."}</Typography.Text>}
+          {model.repos.map((r, i) => { const onTeam = mine && teamRepoNames.some((t) => t.toLowerCase() === r.name.trim().toLowerCase()); return (
+            <div key={i} className="rounded-lg border p-3" style={{ borderColor: "var(--ant-color-border-secondary)" }} data-testid={`ws-repo-${i}`}>
+              <div className="grid gap-3 md:grid-cols-12">
+                <div className="md:col-span-3">
+                  <Typography.Text type="secondary" style={small}>이름 *{onTeam && <Tag color="blue" style={{ fontSize: 11, marginLeft: 6 }} data-testid={`ws-repo-onteam-${i}`}>팀 저장소에 얹기</Tag>}</Typography.Text>
+                  <Input className="mt-1" status={issues[`repos.${i}.name`] ? "error" : ""} value={r.name} placeholder="reporter-api" onChange={(e) => updateRepo(i, { name: e.target.value })} data-testid={`ws-repo-name-${i}`} />
+                  {fieldErr(`repos.${i}.name`)}
+                </div>
+                <div className="md:col-span-6">
+                  <Typography.Text type="secondary" style={small}>무슨 시스템인지 한 줄 {onTeam ? "(팀 값 사용)" : "*"}</Typography.Text>
+                  <Input className="mt-1" status={issues[`repos.${i}.what`] ? "error" : ""} value={r.what} disabled={onTeam && !r.what} placeholder={onTeam ? "팀 설명을 그대로 씁니다" : "가맹점 어드민 백엔드 API. 정산·카드사 상태 로직"} onChange={(e) => updateRepo(i, { what: e.target.value })} data-testid={`ws-repo-what-${i}`} />
+                  {fieldErr(`repos.${i}.what`)}
+                </div>
+                <div className="md:col-span-3">
+                  <Typography.Text type="secondary" style={small}>스택</Typography.Text>
+                  <Input className="mt-1" value={r.stack} disabled={onTeam && !r.stack} placeholder={onTeam ? "팀 값" : "Java 17 / Spring Boot"} onChange={(e) => updateRepo(i, { stack: e.target.value })} />
+                </div>
+                <div className="md:col-span-6">
+                  <Typography.Text type="secondary" style={small}>별칭 — 티켓에서 이 저장소를 가리키는 말 (입력 후 Enter)</Typography.Text>
+                  <Select className="mt-1 w-full" mode="tags" value={r.aliases} placeholder="[partner], 파트너, partner" tokenSeparators={[","]} open={false} suffixIcon={null} onChange={(v) => updateRepo(i, { aliases: v as string[] })} data-testid={`ws-repo-aliases-${i}`} />
+                </div>
+                <div className="md:col-span-6">
+                  <Typography.Text type="secondary" style={small}>검증 명령 (입력 후 Enter)</Typography.Text>
+                  <Select className="mt-1 w-full" mode="tags" value={r.verify} placeholder="./gradlew test" tokenSeparators={[","]} open={false} suffixIcon={null} onChange={(v) => updateRepo(i, { verify: v as string[] })} data-testid={`ws-repo-verify-${i}`} />
+                </div>
+                <div className="md:col-span-6">
+                  <Typography.Text type="secondary" style={small}>어디부터 보면 되는지 (한 줄에 하나)</Typography.Text>
+                  <Input.TextArea className="mt-1" autoSize={{ minRows: 1, maxRows: 4 }} value={r.entryText} placeholder="어드민 화면 *.do → 같은 이름의 *Controller → *CommandService" onChange={(e) => updateRepo(i, { entryText: e.target.value })} />
+                </div>
+                <div className="md:col-span-6">
+                  <Typography.Text type="secondary" style={small}>주의 (한 줄에 하나)</Typography.Text>
+                  <Input.TextArea className="mt-1" autoSize={{ minRows: 1, maxRows: 4 }} value={r.notesText} placeholder="신규 비즈니스 로직을 넣지 않는다" onChange={(e) => updateRepo(i, { notesText: e.target.value })} />
+                </div>
+              </div>
+              <div className="mt-2 text-right">
+                <Popconfirm title={`${r.name || "이 저장소"}를 목록에서 뺄까요?`} okText="빼기" cancelText="취소" onConfirm={() => update((m) => ({ ...m, repos: m.repos.filter((_, j) => j !== i) }))}>
+                  <Button size="small" type="text" danger icon={<DeleteOutlined />}>빼기</Button>
+                </Popconfirm>
+              </div>
+            </div>
+          ); })}
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <KVTable title="Jira 프로젝트 키의 뜻" hint="분류 힌트. 키 = 이슈 키 앞부분(EP-1174의 EP)" keyPh="EP" valPh="결제 플랫폼 개발 요청" rows={model.projects} prefix="projects" issues={issues}
+          onChange={(i, p) => setKV("projects", i, p)} onAdd={() => update((m) => ({ ...m, projects: [...m.projects, { k: "", v: "" }] }))} onRemove={(i) => update((m) => ({ ...m, projects: m.projects.filter((_, j) => j !== i) }))} />
+        <KVTable title="용어집" hint="텍스트에 나오는 용어만 프롬프트에 들어갑니다" keyPh="서브몰" valPh="가맹점 아래의 하위 상점 단위" rows={model.glossary} prefix="glossary" issues={issues}
+          onChange={(i, p) => setKV("glossary", i, p)} onAdd={() => update((m) => ({ ...m, glossary: [...m.glossary, { k: "", v: "" }] }))} onRemove={(i) => update((m) => ({ ...m, glossary: m.glossary.filter((_, j) => j !== i) }))} />
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between">
+          <Typography.Text strong style={{ fontSize: 13 }}>{mine ? "내 규칙" : "팀 규칙"} <Tag color={conventionsOver ? "warning" : "default"} style={{ fontSize: 11, marginLeft: 6 }} data-testid="ws-conventions-count">{model.conventions.filter((c) => c.trim()).length}/{CONVENTIONS_MAX} {mine ? "까지" : "권장"}</Tag></Typography.Text>
+          <Button size="small" icon={<PlusOutlined />} data-testid="ws-convention-add" onClick={() => update((m) => ({ ...m, conventions: [...m.conventions, ""] }))}>규칙 추가</Button>
+        </div>
+        <Typography.Text type="secondary" style={small} className="block">{mine ? "팀 규칙 뒤에 붙는 내 규칙." : "모든 개발 프롬프트의 규칙 후보."} 모델이 이 목표에 걸리는 것만 고릅니다. 길면 아무것도 지켜지지 않으니 {CONVENTIONS_MAX}개 이하로.</Typography.Text>
+        <div className="mt-2 flex flex-col gap-2">
+          {model.conventions.map((c, i) => (
+            <Space.Compact key={i} className="w-full">
+              <Input value={c} placeholder="티켓 범위 밖 리팩터링은 제안만 하고 코드로 쓰지 않는다" onChange={(e) => update((m) => ({ ...m, conventions: m.conventions.map((x, j) => (j === i ? e.target.value : x)) }))} data-testid={`ws-convention-${i}`} />
+              <Button icon={<DeleteOutlined />} onClick={() => update((m) => ({ ...m, conventions: m.conventions.filter((_, j) => j !== i) }))} aria-label="규칙 빼기" />
+            </Space.Compact>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
